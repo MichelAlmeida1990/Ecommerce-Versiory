@@ -15,7 +15,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
       
-      <div className="relative bg-versiory-ivory w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[90vh]">
+      <div className="relative bg-versiory-ivory w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[85vh] sm:max-h-[90vh] overflow-y-auto">
         <button 
           onClick={onClose}
           className="absolute top-4 right-4 z-10 bg-white/80 p-2 rounded-full hover:bg-white shadow-sm transition-colors"
@@ -29,7 +29,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
           <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
         </div>
 
-        <div className="lg:w-1/2 p-6 sm:p-8 lg:p-10 overflow-y-auto">
+        <div className="lg:w-1/2 p-6 sm:p-8 lg:p-10">
           <div className="flex items-center gap-2 mb-2">
             <span className="px-3 py-1 bg-[#fff1e7] text-versiory-coral text-sm font-bold rounded-full uppercase tracking-widest">
               {product.category}
