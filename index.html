@@ -1,0 +1,93 @@
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Versiory Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background:
+              radial-gradient(1200px 600px at 10% -10%, rgba(27, 154, 170, 0.18), transparent 60%),
+              radial-gradient(900px 520px at 100% 0%, rgba(255, 107, 74, 0.18), transparent 55%),
+              radial-gradient(700px 420px at 30% 100%, rgba(243, 180, 92, 0.18), transparent 55%),
+              var(--versiory-sand);
+            color: var(--versiory-ink);
+        }
+        h1, h2, h3, .font-display { font-family: 'Fraunces', serif; }
+        :root {
+            --versiory-ink: #0f172a;
+            --versiory-sand: #f6efe6;
+            --versiory-ivory: #fff7ee;
+            --versiory-coral: #ff6b4a;
+            --versiory-teal: #1b9aaa;
+            --versiory-gold: #f3b45c;
+            --versiory-moss: #6b8f71;
+        }
+        .bg-versiory-gradient {
+            background: linear-gradient(135deg, #0b1324 0%, #122335 50%, #1b3a4a 100%);
+        }
+        .text-versiory-accent {
+            background: linear-gradient(to right, var(--versiory-coral), var(--versiory-gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .bg-versiory-ink { background-color: var(--versiory-ink); }
+        .text-versiory-ink { color: var(--versiory-ink); }
+        .bg-versiory-sand { background-color: var(--versiory-sand); }
+        .bg-versiory-ivory { background-color: var(--versiory-ivory); }
+        .bg-versiory-coral { background-color: var(--versiory-coral); }
+        .text-versiory-coral { color: var(--versiory-coral); }
+        .bg-versiory-teal { background-color: var(--versiory-teal); }
+        .text-versiory-teal { color: var(--versiory-teal); }
+        .bg-versiory-gold { background-color: var(--versiory-gold); }
+        .text-versiory-gold { color: var(--versiory-gold); }
+        .bg-versiory-moss { background-color: var(--versiory-moss); }
+        .text-versiory-moss { color: var(--versiory-moss); }
+        .fade-up { animation: fade-up 0.8s ease both; }
+        .float-slow { animation: float-slow 10s ease-in-out infinite; }
+        @keyframes fade-up {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes float-slow {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-12px); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .fade-up, .float-slow { animation: none; }
+        }
+        /* Custom scrollbar matching brand */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(15, 23, 42, 0.25);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--versiory-coral);
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-versiory-sand text-versiory-ink">
+    <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

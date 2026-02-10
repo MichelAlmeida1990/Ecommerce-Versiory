@@ -1,0 +1,86 @@
+
+import React from 'react';
+import { Product } from './types';
+
+export const PRODUCTS: Product[] = [
+  {
+    id: 1,
+    name: "Headphone Wireless Pro",
+    price: 899.90,
+    category: "Eletrônicos",
+    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80",
+    description: "Cancelamento de ruído ativo e som de alta fidelidade para uma experiência imersiva.",
+    rating: 4.8,
+    reviews: 124
+  },
+  {
+    id: 2,
+    name: "Relógio Inteligente S3",
+    price: 1249.00,
+    category: "Eletrônicos",
+    image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&q=80",
+    description: "Monitore sua saúde e receba notificações direto no seu pulso com elegância.",
+    rating: 4.6,
+    reviews: 89
+  },
+  {
+    id: 3,
+    name: "Tênis Runner Speed",
+    price: 459.90,
+    category: "Esportes",
+    image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&q=80",
+    description: "Leveza e amortecimento superior para suas corridas diárias.",
+    rating: 4.9,
+    reviews: 256
+  },
+  {
+    id: 4,
+    name: "Jaqueta Bomber Urbana",
+    price: 299.00,
+    category: "Moda",
+    image: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800&q=80",
+    description: "Estilo e conforto para os dias mais frios na cidade.",
+    rating: 4.5,
+    reviews: 42
+  },
+  {
+    id: 5,
+    name: "Luminária de Mesa Nórdica",
+    price: 189.90,
+    category: "Casa",
+    image: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=800&q=80",
+    description: "Design minimalista que transforma qualquer ambiente de trabalho.",
+    rating: 4.7,
+    reviews: 67
+  },
+  {
+    id: 6,
+    name: "Câmera Mirrorless X100",
+    price: 4500.00,
+    category: "Eletrônicos",
+    image: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&q=80",
+    description: "Capture momentos com qualidade profissional em um corpo compacto.",
+    rating: 4.9,
+    reviews: 31
+  },
+  {
+    id: 7,
+    name: "Mochila Tech Pro",
+    price: 349.00,
+    category: "Moda",
+    image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=800&q=80",
+    description: "Compartimentos inteligentes para todo o seu setup tecnológico.",
+    rating: 4.4,
+    reviews: 112
+  },
+  {
+    id: 8,
+    name: "Garrafa Térmica 1L",
+    price: 129.90,
+    category: "Esportes",
+    image: "https://images.unsplash.com/photo-1602143307185-83e33a695b21?w=800&q=80",
+    description: "Mantém sua bebida gelada por até 24 horas em qualquer aventura.",
+    rating: 4.8,
+    reviews: 534
+  }
+];
