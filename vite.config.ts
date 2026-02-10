@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
-      base: '/Ecommerce-Versiory/',
+      base: process.env.VERCEL ? '/' : '/Ecommerce-Versiory/',
       server: {
         port: 3000,
         host: '0.0.0.0',
