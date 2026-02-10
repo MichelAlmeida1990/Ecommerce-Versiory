@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Versiory Store</title>
+    <script type="module" src="./AdminApp.tsx"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: #f8fafc;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module">
+        import React from 'react';
+        import { createRoot } from 'react-dom/client';
+        import AdminApp from './AdminApp.tsx';
+        
+        const container = document.getElementById('root');
+        const root = createRoot(container);
+        root.render(React.createElement(AdminApp));
+    </script>
+</body>
+</html>

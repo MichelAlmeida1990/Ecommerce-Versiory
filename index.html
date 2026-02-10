@@ -33,6 +33,7 @@
         .text-versiory-accent {
             background: linear-gradient(to right, var(--versiory-coral), var(--versiory-gold));
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         .bg-versiory-ink { background-color: var(--versiory-ink); }
@@ -73,6 +74,23 @@
         }
         ::-webkit-scrollbar-thumb:hover {
             background: var(--versiory-coral);
+        }
+        
+        /* Custom tablet optimizations */
+        @media (min-width: 640px) and (max-width: 1023px) {
+            .tablet-container {
+                padding: 0 2rem;
+            }
+            .tablet-text {
+                font-size: 0.95rem;
+            }
+        }
+        
+        /* Better tablet landscape handling */
+        @media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape) {
+            .tablet-landscape {
+                padding: 1rem;
+            }
         }
     </style>
 <script type="importmap">

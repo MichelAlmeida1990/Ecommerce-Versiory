@@ -98,15 +98,15 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                       <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
                         <button 
                           onClick={() => onUpdateQuantity(item.id, -1)}
-                          className="px-2 py-1 bg-slate-50 hover:bg-slate-100 disabled:opacity-50"
+                          className="px-4 py-2 bg-slate-50 hover:bg-slate-100 disabled:opacity-50 text-lg font-bold min-w-[44px] h-11"
                           disabled={item.quantity <= 1}
                         >
                           -
                         </button>
-                        <span className="px-3 py-1 font-medium text-slate-700 min-w-[30px] text-center">{item.quantity}</span>
+                        <span className="px-4 py-2 font-bold text-slate-700 min-w-[44px] text-center text-lg">{item.quantity}</span>
                         <button 
                           onClick={() => onUpdateQuantity(item.id, 1)}
-                          className="px-2 py-1 bg-slate-50 hover:bg-slate-100"
+                          className="px-4 py-2 bg-slate-50 hover:bg-slate-100 text-lg font-bold min-w-[44px] h-11"
                         >
                           +
                         </button>

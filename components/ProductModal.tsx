@@ -15,7 +15,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
       
-      <div className="relative bg-versiory-ivory w-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[90vh]">
+      <div className="relative bg-versiory-ivory w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[90vh]">
         <button 
           onClick={onClose}
           className="absolute top-4 right-4 z-10 bg-white/80 p-2 rounded-full hover:bg-white shadow-sm transition-colors"
@@ -25,11 +25,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
           </svg>
         </button>
 
-        <div className="md:w-1/2 h-64 md:h-auto">
+        <div className="lg:w-1/2 h-64 sm:h-80 lg:h-auto">
           <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
         </div>
 
-        <div className="md:w-1/2 p-10 overflow-y-auto">
+        <div className="lg:w-1/2 p-6 sm:p-8 lg:p-10 overflow-y-auto">
           <div className="flex items-center gap-2 mb-2">
             <span className="px-3 py-1 bg-[#fff1e7] text-versiory-coral text-sm font-bold rounded-full uppercase tracking-widest">
               {product.category}
@@ -47,9 +47,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
             R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
 
-          <div className="space-y-4 mb-8">
-            <h3 className="text-xl font-bold text-slate-800">Sobre este produto</h3>
-            <p className="text-slate-600 leading-relaxed text-base">
+          <div className="mb-8 rounded-2xl bg-slate-900 p-6 text-white shadow-lg">
+            <h3 className="text-xl font-bold">Sobre este produto</h3>
+            <p className="mt-3 leading-relaxed text-base text-white/90">
               {product.description}
             </p>
           </div>

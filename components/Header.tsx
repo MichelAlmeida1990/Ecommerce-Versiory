@@ -4,6 +4,7 @@ import React from 'react';
 interface HeaderProps {
   cartCount: number;
   onCartClick: () => void;
+  onProfileClick: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
 }
@@ -35,7 +36,7 @@ const DiamondLogo = () => (
   </svg>
 );
 
-const Header: React.FC<HeaderProps> = ({ cartCount, onCartClick, searchQuery, onSearchChange }) => {
+const Header: React.FC<HeaderProps> = ({ cartCount, onCartClick, onProfileClick, searchQuery, onSearchChange }) => {
   return (
     <header className="fixed top-0 left-0 right-0 z-40 bg-[#fff7ef]/90 backdrop-blur-xl border-b border-[#eadfce] h-20 flex items-center">
       <div className="max-w-7xl mx-auto w-full px-4 md:px-8 flex items-center justify-between gap-8">
@@ -65,14 +66,12 @@ const Header: React.FC<HeaderProps> = ({ cartCount, onCartClick, searchQuery, on
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
-          <button className="p-3 text-slate-500 hover:bg-[#fff1e5] rounded-2xl transition-colors md:hidden">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </button>
-          
-          <button className="p-3 text-slate-500 hover:bg-[#fff1e5] rounded-2xl transition-colors">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={onProfileClick}
+            className="p-3 text-slate-500 hover:bg-[#fff1e5] rounded-2xl transition-colors"
+            title="Entrar ou criar conta"
+          >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
@@ -80,9 +79,9 @@ const Header: React.FC<HeaderProps> = ({ cartCount, onCartClick, searchQuery, on
 
           <button 
             onClick={onCartClick}
-            className="relative p-3 bg-versiory-ink text-white rounded-2xl shadow-lg hover:shadow-black/20 transition-all active:scale-95 flex items-center gap-2 group"
+            className="relative p-3.5 sm:p-3 bg-versiory-ink text-white rounded-2xl shadow-lg hover:shadow-black/20 transition-all active:scale-95 flex items-center gap-2 group shrink-0 mr-1 sm:mr-0"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover:rotate-12 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 sm:h-6 sm:w-6 group-hover:rotate-12 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
             </svg>
             <span className="hidden sm:inline font-bold pr-1">Carrinho</span>

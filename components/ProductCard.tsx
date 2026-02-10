@@ -30,7 +30,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
             Frete Gratis
           </div>
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
       </div>
       
       <div className="p-6 flex flex-col flex-1">
@@ -49,9 +49,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
           <span className="text-slate-300 ml-1 font-medium">({product.reviews})</span>
         </div>
         
-        <p className="text-slate-500 text-sm line-clamp-2 mb-6 font-medium leading-relaxed">
-          {product.description}
-        </p>
+        <div className="mb-6 rounded-2xl bg-slate-900 p-4 text-white shadow-md">
+          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white/90">
+            {product.description}
+          </p>
+        </div>
         
         <div className="mt-auto flex items-center justify-between">
           <div className="flex flex-col">
