@@ -25,6 +25,8 @@ const App: React.FC = () => {
   const [currentUserAddress, setCurrentUserAddress] = useState('');
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [addressDraft, setAddressDraft] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastTimeoutId, setToastTimeoutId] = useState<number | null>(null);
 
   // Carregar produtos do localStorage ou usar os produtos padrão
   useEffect(() => {
@@ -170,6 +172,14 @@ const App: React.FC = () => {
       }
       return [...prev, { ...product, quantity: 1 }];
     });
+    setToastMessage(`${product.name} adicionado ao carrinho!`);
+    if (toastTimeoutId) {
+      window.clearTimeout(toastTimeoutId);
+    }
+    const timeoutId = window.setTimeout(() => {
+      setToastMessage('');
+    }, 2200);
+    setToastTimeoutId(timeoutId);
   };
 
   const handleUpdateQuantity = (id: number, delta: number) => {
@@ -520,6 +530,14 @@ const App: React.FC = () => {
       )}
 
       <ChatWidget />
+
+      {toastMessage && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-6 z-[80]">
+          <div className="bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-bold">
+            {toastMessage}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
