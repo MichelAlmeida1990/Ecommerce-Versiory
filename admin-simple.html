@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - Versiory Store</title>
+    <script>
+        window.location.replace('./admin.html');
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -21,36 +24,36 @@
         .bg-versiory-coral { background-color: var(--versiory-coral); }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-slate-900">
     <div id="app">
         <!-- Login Screen -->
         <div id="loginScreen" class="min-h-screen bg-versiory-ink flex items-center justify-center px-4">
-            <div class="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
+            <div class="bg-slate-800 border border-slate-700 rounded-3xl p-8 w-full max-w-md shadow-2xl">
                 <div class="text-center mb-8">
                     <div class="w-20 h-20 bg-versiory-coral rounded-2xl mx-auto mb-4 flex items-center justify-center">
                         <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M36 20 H64 L50 43 L36 20 Z" fill="white" />
                         </svg>
                     </div>
-                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Painel Admin</h1>
-                    <p class="text-gray-600">Versiory Store</p>
+                    <h1 class="text-3xl font-bold text-white mb-2">Painel Admin</h1>
+                    <p class="text-slate-400">Versiory Store</p>
                 </div>
 
                 <form onsubmit="handleLogin(event)" class="space-y-6">
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">
+                        <label class="block text-sm font-bold text-white mb-2">
                             Senha de Acesso
                         </label>
                         <input
                             type="password"
                             id="adminPassword"
-                            class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none transition-all"
+                            class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none transition-all placeholder-slate-400"
                             placeholder="Digite sua senha"
                             required
                         />
                     </div>
 
-                    <div id="errorMessage" class="bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium hidden">
+                    <div id="errorMessage" class="bg-red-900/30 border-2 border-red-700 text-red-400 px-4 py-3 rounded-xl text-sm font-medium hidden">
                         Senha incorreta. Tente novamente.
                     </div>
 
@@ -63,36 +66,36 @@
                 </form>
 
                 <div class="mt-8 text-center">
-                    <p class="text-xs text-gray-500">
+                    <p class="text-xs text-slate-400">
                         Área restrita • Versiory Store © 2024
                     </p>
-                    <p class="text-xs text-gray-400 mt-2">
-                        Senha: <span class="font-mono bg-gray-100 px-2 py-1 rounded">versiory2024</span>
+                    <p class="text-xs text-slate-500 mt-2">
+                        Senha: <span class="font-mono bg-slate-700 px-2 py-1 rounded text-slate-300">versiory2024</span>
                     </p>
                 </div>
             </div>
         </div>
 
         <!-- Dashboard Screen -->
-        <div id="dashboardScreen" class="hidden min-h-screen bg-gray-50">
+        <div id="dashboardScreen" class="hidden h-screen bg-slate-900 flex flex-col">
             <!-- Header -->
-            <div class="bg-versiory-ink text-white shadow-lg">
-                <div class="max-w-7xl mx-auto px-4 py-6">
+            <div class="bg-versiory-ink text-white shadow-lg flex-shrink-0">
+                <div class="max-w-7xl mx-auto px-4 py-4">
                     <div class="flex justify-between items-center">
                         <div class="flex items-center gap-4">
-                            <div class="w-12 h-12 bg-versiory-coral rounded-xl flex items-center justify-center">
-                                <svg width="24" height="24" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <div class="w-10 h-10 bg-versiory-coral rounded-xl flex items-center justify-center">
+                                <svg width="20" height="20" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M36 20 H64 L50 43 L36 20 Z" fill="white" />
                                 </svg>
                             </div>
                             <div>
-                                <h1 class="text-2xl font-bold">Painel Administrativo</h1>
-                                <p class="text-gray-400 text-sm">Versiory Store</p>
+                                <h1 class="text-xl font-bold">Painel Administrativo</h1>
+                                <p class="text-gray-400 text-xs">Versiory Store</p>
                             </div>
                         </div>
                         <button
                             onclick="handleLogout()"
-                            class="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-xl font-medium transition-all"
+                            class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg text-sm font-medium transition-all"
                         >
                             Sair
                         </button>
@@ -101,56 +104,363 @@
             </div>
 
             <!-- Main Content -->
-            <div class="max-w-7xl mx-auto px-4 py-8">
-                <!-- Stats -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                        <div id="totalProducts" class="text-3xl font-bold text-versiory-coral">0</div>
-                        <div class="text-gray-600 font-medium">Total Produtos</div>
-                    </div>
-                    <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                        <div id="eletronicsCount" class="text-3xl font-bold text-versiory-teal">0</div>
-                        <div class="text-gray-600 font-medium">Eletrônicos</div>
-                    </div>
-                    <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                        <div id="modaCount" class="text-3xl font-bold text-versiory-gold">0</div>
-                        <div class="text-gray-600 font-medium">Moda</div>
-                    </div>
-                    <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                        <div id="totalReviews" class="text-3xl font-bold text-purple-500">0</div>
-                        <div class="text-gray-600 font-medium">Total Avaliações</div>
+            <div class="flex-1 overflow-hidden">
+                <div class="h-full max-w-7xl mx-auto px-4 py-4 overflow-y-auto">
+                <!-- Navigation Tabs -->
+                <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 mb-6">
+                    <div class="flex flex-wrap gap-1 p-2">
+                        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-6 py-3 rounded-xl font-medium transition-all bg-versiory-coral text-white">
+                            📊 Dashboard
+                        </button>
+                        <button onclick="switchTab('products')" id="tab-products" class="tab-btn px-6 py-3 rounded-xl font-medium transition-all hover:bg-slate-700 text-slate-300">
+                            📦 Produtos
+                        </button>
+                        <button onclick="switchTab('categories')" id="tab-categories" class="tab-btn px-6 py-3 rounded-xl font-medium transition-all hover:bg-slate-700 text-slate-300">
+                            🏷️ Categorias
+                        </button>
+                        <button onclick="switchTab('orders')" id="tab-orders" class="tab-btn px-6 py-3 rounded-xl font-medium transition-all hover:bg-slate-700 text-slate-300">
+                            🛒 Pedidos
+                        </button>
+                        <button onclick="switchTab('customers')" id="tab-customers" class="tab-btn px-6 py-3 rounded-xl font-medium transition-all hover:bg-slate-700 text-slate-300">
+                            👥 Clientes
+                        </button>
+                        <button onclick="switchTab('tracking')" id="tab-tracking" class="tab-btn px-6 py-3 rounded-xl font-medium transition-all hover:bg-slate-700 text-slate-300">
+                            📍 Rastreamento
+                        </button>
+                        <button onclick="switchTab('inventory')" id="tab-inventory" class="tab-btn px-6 py-3 rounded-xl font-medium transition-all hover:bg-slate-700 text-slate-300">
+                            📦 Estoque
+                        </button>
+                        <button onclick="switchTab('financial')" id="tab-financial" class="tab-btn px-6 py-3 rounded-xl font-medium transition-all hover:bg-slate-700 text-slate-300">
+                            💰 Financeiro
+                        </button>
                     </div>
                 </div>
 
-                <!-- Actions -->
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-xl font-bold text-gray-900">Gerenciar Produtos</h2>
-                    <button
-                        onclick="openAddModal()"
-                        class="bg-versiory-coral hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:-translate-y-1 active:scale-95"
-                    >
-                        + Novo Produto
-                    </button>
+                <!-- Dashboard Content -->
+                <div id="content-dashboard" class="tab-content">
+                    <!-- Stats -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="totalProducts" class="text-2xl font-bold text-blue-400">0</div>
+                            <div class="text-slate-400 font-medium text-sm">Total Produtos</div>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="totalOrders" class="text-2xl font-bold text-blue-400">0</div>
+                            <div class="text-slate-400 font-medium text-sm">Total Pedidos</div>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="totalRevenue" class="text-2xl font-bold text-green-400">R$ 0</div>
+                            <div class="text-slate-400 font-medium text-sm">Faturamento</div>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="totalCustomers" class="text-2xl font-bold text-blue-400">0</div>
+                            <div class="text-slate-400 font-medium text-sm">Clientes</div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Orders -->
+                    <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 p-4">
+                        <h3 class="text-lg font-bold text-white mb-4">Pedidos Recentes</h3>
+                        <div id="recentOrders" class="space-y-3">
+                            <!-- Recent orders will be inserted here -->
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Products Table -->
-                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-gray-50 border-b border-gray-200">
-                                <tr>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">ID</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Produto</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Categoria</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Preço</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Avaliação</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody id="productsTableBody" class="divide-y divide-gray-200">
-                                <!-- Products will be inserted here -->
-                            </tbody>
-                        </table>
+                <!-- Products Content -->
+                <div id="content-products" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white">Gerenciar Produtos</h2>
+                        <button
+                            onclick="openAddModal()"
+                            class="bg-versiory-coral hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+                        >
+                            + Novo Produto
+                        </button>
+                    </div>
+
+                    <!-- Products Table -->
+                    <div class="bg-blue-50 rounded-xl shadow-sm border border-blue-200 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Produto</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Categoria</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Preço</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Estoque</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Avaliação</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="productsTableBody" class="divide-y divide-gray-200">
+                                    <!-- Products will be inserted here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Categories Content -->
+                <div id="content-categories" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white">Gerenciar Categorias</h2>
+                        <button
+                            onclick="openCategoryModal()"
+                            class="bg-versiory-coral hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+                        >
+                            + Nova Categoria
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="categoriesGrid">
+                        <!-- Categories will be inserted here -->
+                    </div>
+                </div>
+
+                <!-- Orders Content -->
+                <div id="content-orders" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white">Gerenciar Pedidos</h2>
+                        <div class="flex gap-3">
+                            <select id="orderFilter" onchange="filterOrders()" class="px-3 py-2 border border-slate-600 bg-slate-700 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none">
+                                <option value="all">Todos os Status</option>
+                                <option value="pending">Aguardando Pagamento</option>
+                                <option value="paid">Pagamento Efetuado</option>
+                                <option value="processing">Em Processamento</option>
+                                <option value="shipped">Enviado</option>
+                                <option value="delivered">Entregue</option>
+                                <option value="cancelled">Cancelado</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-slate-900 border-b border-slate-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Pedido</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Cliente</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Data</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Total</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Status</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ordersTableBody" class="divide-y divide-slate-700">
+                                    <!-- Orders will be inserted here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Customers Content -->
+                <div id="content-customers" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white">Gerenciar Clientes</h2>
+                    </div>
+
+                    <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-slate-900 border-b border-slate-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Nome</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Email</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Telefone</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Pedidos</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Total Gasto</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="customersTableBody" class="divide-y divide-slate-700">
+                                    <!-- Customers will be inserted here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Inventory Content -->
+                <div id="content-inventory" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white">Gestão de Estoque</h2>
+                        <div class="flex gap-3">
+                            <button
+                                onclick="openInventoryModal()"
+                                class="bg-versiory-coral hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+                            >
+                                + Movimentação
+                            </button>
+                            <button
+                                onclick="generateInventoryReport()"
+                                class="bg-versiory-teal hover:bg-[#1b9aaa] text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+                            >
+                                📊 Relatório
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Inventory Stats -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="totalStockValue" class="text-2xl font-bold text-blue-400">R$ 0</div>
+                            <div class="text-slate-400 font-medium text-sm">Valor Total em Estoque</div>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="lowStockItems" class="text-2xl font-bold text-orange-400">0</div>
+                            <div class="text-slate-400 font-medium text-sm">Itens com Estoque Baixo</div>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="outOfStockItems" class="text-2xl font-bold text-red-400">0</div>
+                            <div class="text-slate-400 font-medium text-sm">Itens Esgotados</div>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="totalItemsInStock" class="text-2xl font-bold text-green-400">0</div>
+                            <div class="text-slate-400 font-medium text-sm">Total de Itens</div>
+                        </div>
+                    </div>
+
+                    <!-- Low Stock Alerts -->
+                    <div id="lowStockAlerts" class="bg-orange-900/30 border border-orange-700 rounded-xl p-4 mb-6 hidden">
+                        <h3 class="text-lg font-bold text-orange-400 mb-3">⚠️ Alertas de Estoque Baixo</h3>
+                        <div id="lowStockList" class="space-y-2">
+                            <!-- Low stock items will be inserted here -->
+                        </div>
+                    </div>
+
+                    <!-- Inventory Table -->
+                    <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+                        <div class="p-3 border-b border-slate-700">
+                            <div class="flex gap-4 items-center">
+                                <input
+                                    type="text"
+                                    id="inventorySearch"
+                                    placeholder="Buscar produto..."
+                                    class="flex-1 px-3 py-2 border border-slate-600 bg-slate-700 text-white rounded-lg focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none text-sm placeholder-slate-400"
+                                    onkeyup="filterInventory()"
+                                />
+                                <select id="stockFilter" onchange="filterInventory()" class="px-3 py-2 border border-slate-600 bg-slate-700 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none">
+                                    <option value="all">Todos</option>
+                                    <option value="low">Estoque Baixo (&lt;10)</option>
+                                    <option value="out">Esgotado</option>
+                                    <option value="normal">Normal</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-slate-900 border-b border-slate-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Produto</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Categoria</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Estoque</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Mínimo</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Valor Unit.</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Valor Total</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Status</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inventoryTableBody" class="divide-y divide-slate-700">
+                                    <!-- Inventory items will be inserted here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Financial Content -->
+                <div id="content-financial" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white">Módulo Financeiro</h2>
+                        <div class="flex gap-3">
+                            <button
+                                onclick="openExpenseModal()"
+                                class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+                            >
+                                + Lançar Despesa
+                            </button>
+                            <button
+                                onclick="generateFinancialReport()"
+                                class="bg-versiory-teal hover:bg-[#1b9aaa] text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+                            >
+                                📊 Relatório Financeiro
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Financial Overview -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="totalRevenue" class="text-2xl font-bold text-green-400">R$ 0</div>
+                            <div class="text-slate-400 font-medium text-sm">Receita Total</div>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="totalExpenses" class="text-2xl font-bold text-red-400">R$ 0</div>
+                            <div class="text-slate-400 font-medium text-sm">Despesas Totais</div>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="netProfit" class="text-2xl font-bold text-blue-400">R$ 0</div>
+                            <div class="text-slate-400 font-medium text-sm">Lucro Líquido</div>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-700">
+                            <div id="profitMargin" class="text-2xl font-bold text-purple-400">0%</div>
+                            <div class="text-slate-400 font-medium text-sm">Margem de Lucro</div>
+                        </div>
+                    </div>
+
+                    <!-- Cash Flow Chart -->
+                    <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 p-4 mb-6">
+                        <h3 class="text-lg font-bold text-white mb-4">Fluxo de Caixa</h3>
+                        <div id="cashFlowChart" class="h-48 bg-slate-900 rounded-xl flex items-center justify-center">
+                            <p class="text-slate-400">Gráfico de fluxo de caixa será implementado aqui</p>
+                        </div>
+                    </div>
+
+                    <!-- Recent Transactions -->
+                    <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 p-4">
+                        <h3 class="text-lg font-bold text-white mb-4">Transações Recentes</h3>
+                        <div id="recentTransactions" class="space-y-3">
+                            <!-- Recent transactions will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tracking Content -->
+                <div id="content-tracking" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white">Rastreamento de Pedidos</h2>
+                        <button
+                            onclick="openTrackingModal()"
+                            class="bg-versiory-coral hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+                        >
+                            + Adicionar Rastreamento
+                        </button>
+                    </div>
+
+                    <div class="bg-slate-800 rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-slate-900 border-b border-slate-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Pedido</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Transportadora</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Código</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Data</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Status</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="trackingTableBody" class="divide-y divide-slate-700">
+                                    <!-- Tracking info will be inserted here -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -158,24 +468,32 @@
 
         <!-- Product Modal -->
         <div id="productModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <div class="p-6 border-b border-gray-200">
-                    <h3 id="modalTitle" class="text-xl font-bold text-gray-900">Novo Produto</h3>
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="p-6 border-b border-slate-700">
+                    <h3 id="modalTitle" class="text-xl font-bold text-white">Novo Produto</h3>
                 </div>
 
                 <form onsubmit="handleProductSubmit(event)" class="p-6 space-y-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">Nome do Produto</label>
-                            <input type="text" id="productName" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" />
+                            <label class="block text-sm font-bold text-white mb-2">Nome do Produto</label>
+                            <input type="text" id="productName" required class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none placeholder-slate-400" />
                         </div>
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">Preço (R$)</label>
-                            <input type="number" step="0.01" id="productPrice" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" />
+                            <label class="block text-sm font-bold text-white mb-2">Preço (R$)</label>
+                            <input type="number" step="0.01" id="productPrice" required class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none placeholder-slate-400" />
                         </div>
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">Categoria</label>
-                            <select id="productCategory" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none">
+                            <label class="block text-sm font-bold text-white mb-2">Estoque</label>
+                            <input type="number" min="0" id="productStock" required class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none placeholder-slate-400" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-white mb-2">Tamanhos (separados por vírgula)</label>
+                            <input type="text" id="productSizes" class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none placeholder-slate-400" placeholder="Ex: P, M, G, GG ou 36, 37, 38, 39" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-white mb-2">Categoria</label>
+                            <select id="productCategory" class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none">
                                 <option value="Eletrônicos">Eletrônicos</option>
                                 <option value="Moda">Moda</option>
                                 <option value="Casa">Casa</option>
@@ -184,27 +502,27 @@
                             </select>
                         </div>
                         <div id="customCategoryWrapper" class="hidden">
-                            <label class="block text-sm font-bold text-gray-700 mb-2">Nova Categoria</label>
-                            <input type="text" id="customCategory" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" placeholder="Ex.: Beleza" />
+                            <label class="block text-sm font-bold text-white mb-2">Nova Categoria</label>
+                            <input type="text" id="customCategory" class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none placeholder-slate-400" placeholder="Ex.: Beleza" />
                         </div>
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">Imagem do Produto</label>
-                            <input type="file" id="productImage" accept="image/*" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" />
-                            <img id="productImagePreview" class="hidden mt-3 h-24 w-24 rounded-xl object-cover border border-gray-200" alt="Preview" />
+                            <label class="block text-sm font-bold text-white mb-2">Imagem do Produto</label>
+                            <input type="file" id="productImage" accept="image/*" class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none file:bg-versiory-coral file:text-white file:border-0 file:px-3 file:py-2 file:rounded-lg file:font-bold" />
+                            <img id="productImagePreview" class="hidden mt-3 h-24 w-24 rounded-xl object-cover border border-slate-600" alt="Preview" />
                         </div>
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">Avaliação (0-5)</label>
-                            <input type="number" step="0.1" min="0" max="5" id="productRating" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" />
+                            <label class="block text-sm font-bold text-white mb-2">Avaliação (0-5)</label>
+                            <input type="number" step="0.1" min="0" max="5" id="productRating" required class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none placeholder-slate-400" />
                         </div>
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">Nº de Avaliações</label>
-                            <input type="number" min="0" id="productReviews" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" />
+                            <label class="block text-sm font-bold text-white mb-2">Nº de Avaliações</label>
+                            <input type="number" min="0" id="productReviews" required class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none placeholder-slate-400" />
                         </div>
                     </div>
 
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Descrição</label>
-                        <textarea id="productDescription" rows="4" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"></textarea>
+                        <label class="block text-sm font-bold text-white mb-2">Descrição</label>
+                        <textarea id="productDescription" rows="4" required class="w-full px-4 py-3 border-2 border-slate-600 bg-slate-700 text-white rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none placeholder-slate-400"></textarea>
                     </div>
 
                     <div class="flex gap-4 pt-4">
@@ -218,22 +536,220 @@
                 </form>
             </div>
         </div>
+
+        <!-- Category Modal -->
+        <div id="categoryModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-xl font-bold text-gray-900">Nova Categoria</h3>
+                </div>
+                <form onsubmit="handleCategorySubmit(event)" class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Nome da Categoria</label>
+                        <input type="text" id="categoryName" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Descrição</label>
+                        <textarea id="categoryDescription" rows="3" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"></textarea>
+                    </div>
+                    <div class="flex gap-4 pt-4">
+                        <button type="submit" class="flex-1 bg-versiory-coral hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-all">
+                            Salvar Categoria
+                        </button>
+                        <button type="button" onclick="closeCategoryModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-all">
+                            Cancelar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Order Status Modal -->
+        <div id="orderStatusModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-xl font-bold text-gray-900">Atualizar Status do Pedido</h3>
+                </div>
+                <form onsubmit="handleOrderStatusSubmit(event)" class="p-6 space-y-4">
+                    <input type="hidden" id="orderId" />
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Status</label>
+                        <select id="orderStatus" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none">
+                            <option value="pending">Aguardando Pagamento</option>
+                            <option value="paid">Pagamento Efetuado</option>
+                            <option value="processing">Em Processamento</option>
+                            <option value="shipped">Enviado</option>
+                            <option value="delivered">Entregue</option>
+                            <option value="cancelled">Cancelado</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Observações</label>
+                        <textarea id="orderNotes" rows="3" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"></textarea>
+                    </div>
+                    <div class="flex gap-4 pt-4">
+                        <button type="submit" class="flex-1 bg-versiory-coral hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-all">
+                            Atualizar Status
+                        </button>
+                        <button type="button" onclick="closeOrderStatusModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-all">
+                            Cancelar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Tracking Modal -->
+        <div id="trackingModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-xl font-bold text-gray-900">Adicionar Rastreamento</h3>
+                </div>
+                <form onsubmit="handleTrackingSubmit(event)" class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Número do Pedido</label>
+                        <select id="trackingOrderId" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none">
+                            <!-- Orders will be populated here -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Transportadora</label>
+                        <input type="text" id="trackingCarrier" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" placeholder="Ex: Correios, Jadlog" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Código de Rastreamento</label>
+                        <input type="text" id="trackingCode" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" placeholder="Ex: AA123456789BR" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Status do Envio</label>
+                        <select id="trackingStatus" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none">
+                            <option value="posted">Postado</option>
+                            <option value="in_transit">Em Trânsito</option>
+                            <option value="out_for_delivery">Saiu para Entrega</option>
+                            <option value="delivered">Entregue</option>
+                            <option value="delayed">Atrasado</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-4 pt-4">
+                        <button type="submit" class="flex-1 bg-versiory-coral hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-all">
+                            Salvar Rastreamento
+                        </button>
+                        <button type="button" onclick="closeTrackingModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-all">
+                            Cancelar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Inventory Movement Modal -->
+        <div id="inventoryModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-xl font-bold text-gray-900">Movimentação de Estoque</h3>
+                </div>
+                <form onsubmit="handleInventorySubmit(event)" class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Produto</label>
+                        <select id="inventoryProductId" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none">
+                            <option value="">Selecione um produto</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Tipo de Movimentação</label>
+                        <select id="inventoryType" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none">
+                            <option value="in">Entrada</option>
+                            <option value="out">Saída</option>
+                            <option value="adjustment">Ajuste</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Quantidade</label>
+                        <input type="number" id="inventoryQuantity" required min="1" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Motivo</label>
+                        <input type="text" id="inventoryReason" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" placeholder="Ex: Compra, Venda, Devolução" />
+                    </div>
+                    <div class="flex gap-4 pt-4">
+                        <button type="submit" class="flex-1 bg-versiory-coral hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-all">
+                            Salvar Movimentação
+                        </button>
+                        <button type="button" onclick="closeInventoryModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-all">
+                            Cancelar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Expense Modal -->
+        <div id="expenseModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-xl font-bold text-gray-900">Lançar Despesa</h3>
+                </div>
+                <form onsubmit="handleExpenseSubmit(event)" class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Descrição</label>
+                        <input type="text" id="expenseDescription" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" placeholder="Ex: Aluguel, Fornecedores" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Categoria</label>
+                        <select id="expenseCategory" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none">
+                            <option value="">Selecione uma categoria</option>
+                            <option value="fixed">Fixa</option>
+                            <option value="variable">Variável</option>
+                            <option value="investment">Investimento</option>
+                            <option value="emergency">Emergencial</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Valor (R$)</label>
+                        <input type="number" step="0.01" id="expenseAmount" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Data</label>
+                        <input type="date" id="expenseDate" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Observações</label>
+                        <textarea id="expenseNotes" rows="3" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"></textarea>
+                    </div>
+                    <div class="flex gap-4 pt-4">
+                        <button type="submit" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-all">
+                            Lançar Despesa
+                        </button>
+                        <button type="button" onclick="closeExpenseModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-all">
+                            Cancelar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <script>
         const ADMIN_PASSWORD = 'versiory2024';
         const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes'];
         let products = [];
+        let categories = [];
+        let orders = [];
+        let customers = [];
+        let tracking = [];
+        let inventoryMovements = [];
+        let expenses = [];
         let editingProductId = null;
         let currentImageData = '';
+        let currentTab = 'dashboard';
 
-        // Load products from localStorage or use defaults
-        function loadProducts() {
-            const saved = localStorage.getItem('versiory_products');
-            if (saved) {
-                products = JSON.parse(saved);
+        // Load data from localStorage or use defaults
+        function loadAllData() {
+            // Load products
+            const savedProducts = localStorage.getItem('versiory_products');
+            if (savedProducts) {
+                products = JSON.parse(savedProducts);
             } else {
-                // Default products
                 products = [
                     {
                         id: 1,
@@ -243,7 +759,9 @@
                         image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80",
                         description: "Cancelamento de ruído ativo e som de alta fidelidade.",
                         rating: 4.8,
-                        reviews: 124
+                        reviews: 124,
+                        stock: 50,
+                        sizes: ""
                     },
                     {
                         id: 2,
@@ -253,10 +771,108 @@
                         image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&q=80",
                         description: "Monitore sua saúde e receba notificações.",
                         rating: 4.6,
-                        reviews: 89
+                        reviews: 89,
+                        stock: 30,
+                        sizes: ""
                     }
                 ];
                 localStorage.setItem('versiory_products', JSON.stringify(products));
+            }
+
+            // Load categories
+            const savedCategories = localStorage.getItem('versiory_categories');
+            if (savedCategories) {
+                categories = JSON.parse(savedCategories);
+            } else {
+                categories = BASE_CATEGORIES.map(cat => ({
+                    id: cat.toLowerCase().replace(/\s+/g, '_'),
+                    name: cat,
+                    description: `Produtos de ${cat.toLowerCase()}`,
+                    productCount: products.filter(p => p.category === cat).length
+                }));
+                localStorage.setItem('versiory_categories', JSON.stringify(categories));
+            }
+
+            // Load orders
+            const savedOrders = localStorage.getItem('versiory_orders');
+            if (savedOrders) {
+                orders = JSON.parse(savedOrders);
+            } else {
+                orders = [
+                    {
+                        id: "ORD-001",
+                        customerId: 1,
+                        customerName: "João Silva",
+                        date: new Date('2024-01-15').toISOString(),
+                        total: 899.90,
+                        status: "paid",
+                        items: [{ productId: 1, name: "Headphone Wireless Pro", quantity: 1, price: 899.90 }],
+                        notes: ""
+                    },
+                    {
+                        id: "ORD-002",
+                        customerId: 2,
+                        customerName: "Maria Santos",
+                        date: new Date('2024-01-16').toISOString(),
+                        total: 1249.00,
+                        status: "processing",
+                        items: [{ productId: 2, name: "Relógio Inteligente S3", quantity: 1, price: 1249.00 }],
+                        notes: ""
+                    }
+                ];
+                localStorage.setItem('versiory_orders', JSON.stringify(orders));
+            }
+
+            // Load customers
+            const savedCustomers = localStorage.getItem('versiory_customers');
+            if (savedCustomers) {
+                customers = JSON.parse(savedCustomers);
+            } else {
+                customers = [
+                    {
+                        id: 1,
+                        name: "João Silva",
+                        email: "joao@email.com",
+                        phone: "(11) 98765-4321",
+                        totalOrders: 1,
+                        totalSpent: 899.90
+                    },
+                    {
+                        id: 2,
+                        name: "Maria Santos",
+                        email: "maria@email.com",
+                        phone: "(11) 91234-5678",
+                        totalOrders: 1,
+                        totalSpent: 1249.00
+                    }
+                ];
+                localStorage.setItem('versiory_customers', JSON.stringify(customers));
+            }
+
+            // Load tracking
+            const savedTracking = localStorage.getItem('versiory_tracking');
+            if (savedTracking) {
+                tracking = JSON.parse(savedTracking);
+            } else {
+                tracking = [];
+                localStorage.setItem('versiory_tracking', JSON.stringify(tracking));
+            }
+
+            // Load inventory movements and expenses
+            const savedInventoryMovements = localStorage.getItem('versiory_inventory_movements');
+            if (savedInventoryMovements) {
+                inventoryMovements = JSON.parse(savedInventoryMovements);
+            } else {
+                inventoryMovements = [];
+                localStorage.setItem('versiory_inventory_movements', JSON.stringify(inventoryMovements));
+            }
+
+            const savedExpenses = localStorage.getItem('versiory_expenses');
+            if (savedExpenses) {
+                expenses = JSON.parse(savedExpenses);
+            } else {
+                expenses = [];
+                localStorage.setItem('versiory_expenses', JSON.stringify(expenses));
             }
         }
 
@@ -285,13 +901,52 @@
             syncCategoryOptions();
             updateStats();
             renderProductsTable();
+            renderCategories();
+            renderOrdersTable();
+            renderCustomersTable();
+            renderTrackingTable();
+            renderRecentOrders();
         }
 
         function updateStats() {
             document.getElementById('totalProducts').textContent = products.length;
-            document.getElementById('eletronicsCount').textContent = products.filter(p => p.category === 'Eletrônicos').length;
-            document.getElementById('modaCount').textContent = products.filter(p => p.category === 'Moda').length;
-            document.getElementById('totalReviews').textContent = products.reduce((sum, p) => sum + p.reviews, 0);
+            document.getElementById('totalOrders').textContent = orders.length;
+            document.getElementById('totalCustomers').textContent = customers.length;
+            
+            const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+            document.getElementById('totalRevenue').textContent = `R$ ${totalRevenue.toFixed(2)}`;
+        }
+
+        function switchTab(tabName) {
+            // Hide all content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            
+            // Remove active state from all tabs
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-versiory-coral', 'text-white');
+                btn.classList.add('hover:bg-gray-100');
+            });
+            
+            // Show selected content
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+            
+            // Add active state to selected tab
+            const activeTab = document.getElementById(`tab-${tabName}`);
+            activeTab.classList.add('bg-versiory-coral', 'text-white');
+            activeTab.classList.remove('hover:bg-gray-100');
+            
+            currentTab = tabName;
+            
+            // Render specific tab content
+            if (tabName === 'inventory') {
+                renderInventoryTable();
+                updateInventoryStats();
+            } else if (tabName === 'financial') {
+                renderFinancialData();
+                updateFinancialStats();
+            }
         }
 
         function renderProductsTable() {
@@ -305,6 +960,7 @@
                             <div>
                                 <div class="text-sm font-medium text-gray-900">${product.name}</div>
                                 <div class="text-xs text-gray-500 line-clamp-1">${product.description}</div>
+                                ${product.sizes ? `<div class="text-xs text-blue-600">Tamanhos: ${product.sizes}</div>` : ''}
                             </div>
                         </div>
                     </td>
@@ -315,6 +971,11 @@
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         R$ ${product.price.toFixed(2)}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span class="${product.stock < 10 ? 'text-red-600 font-bold' : ''}">
+                            ${product.stock} unidades
+                        </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="flex items-center">
@@ -335,11 +996,173 @@
             `).join('');
         }
 
+        function renderCategories() {
+            const grid = document.getElementById('categoriesGrid');
+            grid.innerHTML = categories.map(category => `
+                <div class="bg-blue-50 rounded-xl p-6 shadow-sm border border-blue-200">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-lg font-bold text-gray-900">${category.name}</h3>
+                        <button onclick="deleteCategory('${category.id}')" class="text-red-500 hover:text-red-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="text-gray-600 text-sm mb-4">${category.description}</p>
+                    <div class="text-sm text-gray-500">
+                        <span class="font-semibold">${products.filter(p => p.category === category.name).length}</span> produtos
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderOrdersTable() {
+            const tbody = document.getElementById('ordersTableBody');
+            const filter = document.getElementById('orderFilter')?.value || 'all';
+            const filteredOrders = filter === 'all' ? orders : orders.filter(order => order.status === filter);
+            
+            tbody.innerHTML = filteredOrders.map(order => {
+                const statusColors = {
+                    pending: 'bg-yellow-100 text-yellow-800',
+                    paid: 'bg-green-100 text-green-800',
+                    processing: 'bg-blue-100 text-blue-800',
+                    shipped: 'bg-purple-100 text-purple-800',
+                    delivered: 'bg-gray-100 text-gray-800',
+                    cancelled: 'bg-red-100 text-red-800'
+                };
+                
+                const statusLabels = {
+                    pending: 'Aguardando Pagamento',
+                    paid: 'Pagamento Efetuado',
+                    processing: 'Em Processamento',
+                    shipped: 'Enviado',
+                    delivered: 'Entregue',
+                    cancelled: 'Cancelado'
+                };
+                
+                return `
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${order.id}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${order.customerName}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(order.date).toLocaleDateString('pt-BR')}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">R$ ${order.total.toFixed(2)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[order.status]}">
+                                ${statusLabels[order.status]}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button onclick="openOrderStatusModal('${order.id}')" class="bg-versiory-coral hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]">
+                                Atualizar Status
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderCustomersTable() {
+            const tbody = document.getElementById('customersTableBody');
+            tbody.innerHTML = customers.map(customer => `
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${customer.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${customer.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${customer.email}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${customer.phone}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${customer.totalOrders}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">R$ ${customer.totalSpent.toFixed(2)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderTrackingTable() {
+            const tbody = document.getElementById('trackingTableBody');
+            tbody.innerHTML = tracking.map(track => {
+                const statusColors = {
+                    posted: 'bg-blue-100 text-blue-800',
+                    in_transit: 'bg-yellow-100 text-yellow-800',
+                    out_for_delivery: 'bg-purple-100 text-purple-800',
+                    delivered: 'bg-green-100 text-green-800',
+                    delayed: 'bg-red-100 text-red-800'
+                };
+                
+                const statusLabels = {
+                    posted: 'Postado',
+                    in_transit: 'Em Trânsito',
+                    out_for_delivery: 'Saiu para Entrega',
+                    delivered: 'Entregue',
+                    delayed: 'Atrasado'
+                };
+                
+                return `
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${track.orderId}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${track.carrier}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${track.code}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[track.status]}">
+                                ${statusLabels[track.status]}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${new Date(track.lastUpdate).toLocaleDateString('pt-BR')}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button onclick="updateTracking('${track.orderId}')" class="bg-versiory-coral hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]">
+                                Atualizar
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderRecentOrders() {
+            const container = document.getElementById('recentOrders');
+            const recentOrders = orders.slice(-5).reverse();
+            
+            container.innerHTML = recentOrders.map(order => {
+                const statusColors = {
+                    pending: 'bg-yellow-100 text-yellow-800',
+                    paid: 'bg-green-100 text-green-800',
+                    processing: 'bg-blue-100 text-blue-800',
+                    shipped: 'bg-purple-100 text-purple-800',
+                    delivered: 'bg-gray-100 text-gray-800',
+                    cancelled: 'bg-red-100 text-red-800'
+                };
+                
+                const statusLabels = {
+                    pending: 'Aguardando Pagamento',
+                    paid: 'Pagamento Efetuado',
+                    processing: 'Em Processamento',
+                    shipped: 'Enviado',
+                    delivered: 'Entregue',
+                    cancelled: 'Cancelado'
+                };
+                
+                return `
+                    <div class="flex justify-between items-center p-4 bg-gray-50 rounded-xl">
+                        <div>
+                            <div class="font-medium text-gray-900">${order.id} - ${order.customerName}</div>
+                            <div class="text-sm text-gray-600">${new Date(order.date).toLocaleDateString('pt-BR')} • R$ ${order.total.toFixed(2)}</div>
+                        </div>
+                        <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[order.status]}">
+                            ${statusLabels[order.status]}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function filterOrders() {
+            renderOrdersTable();
+        }
+
         function openAddModal() {
             editingProductId = null;
             document.getElementById('modalTitle').textContent = 'Novo Produto';
             document.getElementById('productName').value = '';
             document.getElementById('productPrice').value = '';
+            document.getElementById('productStock').value = '';
+            document.getElementById('productSizes').value = '';
             document.getElementById('productCategory').value = 'Eletrônicos';
             document.getElementById('productImage').value = '';
             document.getElementById('productDescription').value = '';
@@ -359,6 +1182,8 @@
                 document.getElementById('modalTitle').textContent = 'Editar Produto';
                 document.getElementById('productName').value = product.name;
                 document.getElementById('productPrice').value = product.price;
+                document.getElementById('productStock').value = product.stock || 0;
+                document.getElementById('productSizes').value = product.sizes || '';
                 ensureCategoryOption(product.category);
                 document.getElementById('productCategory').value = product.category;
                 document.getElementById('productImage').value = '';
@@ -379,6 +1204,7 @@
                 localStorage.setItem('versiory_products', JSON.stringify(products));
                 updateStats();
                 renderProductsTable();
+                renderCategories();
             }
         }
 
@@ -408,6 +1234,8 @@
             const productData = {
                 name: document.getElementById('productName').value,
                 price: parseFloat(document.getElementById('productPrice').value),
+                stock: parseInt(document.getElementById('productStock').value),
+                sizes: document.getElementById('productSizes').value,
                 category: selectedCategory,
                 image: currentImageData,
                 description: document.getElementById('productDescription').value,
@@ -434,7 +1262,140 @@
             ensureCategoryOption(productData.category);
             updateStats();
             renderProductsTable();
+            renderCategories();
             closeModal();
+        }
+
+        // Category functions
+        function openCategoryModal() {
+            document.getElementById('categoryName').value = '';
+            document.getElementById('categoryDescription').value = '';
+            document.getElementById('categoryModal').classList.remove('hidden');
+        }
+
+        function closeCategoryModal() {
+            document.getElementById('categoryModal').classList.add('hidden');
+        }
+
+        function handleCategorySubmit(event) {
+            event.preventDefault();
+            
+            const categoryName = document.getElementById('categoryName').value.trim();
+            const categoryDescription = document.getElementById('categoryDescription').value.trim();
+            
+            if (!categoryName) {
+                alert('Informe o nome da categoria.');
+                return;
+            }
+            
+            const newCategory = {
+                id: categoryName.toLowerCase().replace(/\s+/g, '_'),
+                name: categoryName,
+                description: categoryDescription,
+                productCount: 0
+            };
+            
+            categories.push(newCategory);
+            localStorage.setItem('versiory_categories', JSON.stringify(categories));
+            
+            ensureCategoryOption(categoryName);
+            renderCategories();
+            closeCategoryModal();
+        }
+
+        function deleteCategory(categoryId) {
+            if (confirm('Tem certeza que deseja excluir esta categoria?')) {
+                categories = categories.filter(c => c.id !== categoryId);
+                localStorage.setItem('versiory_categories', JSON.stringify(categories));
+                renderCategories();
+            }
+        }
+
+        // Order status functions
+        function openOrderStatusModal(orderId) {
+            const order = orders.find(o => o.id === orderId);
+            if (order) {
+                document.getElementById('orderId').value = orderId;
+                document.getElementById('orderStatus').value = order.status;
+                document.getElementById('orderNotes').value = order.notes || '';
+                document.getElementById('orderStatusModal').classList.remove('hidden');
+            }
+        }
+
+        function closeOrderStatusModal() {
+            document.getElementById('orderStatusModal').classList.add('hidden');
+        }
+
+        function handleOrderStatusSubmit(event) {
+            event.preventDefault();
+            
+            const orderId = document.getElementById('orderId').value;
+            const newStatus = document.getElementById('orderStatus').value;
+            const notes = document.getElementById('orderNotes').value;
+            
+            const orderIndex = orders.findIndex(o => o.id === orderId);
+            if (orderIndex !== -1) {
+                orders[orderIndex].status = newStatus;
+                orders[orderIndex].notes = notes;
+                localStorage.setItem('versiory_orders', JSON.stringify(orders));
+                
+                renderOrdersTable();
+                renderRecentOrders();
+                updateStats();
+            }
+            
+            closeOrderStatusModal();
+        }
+
+        // Tracking functions
+        function openTrackingModal() {
+            const select = document.getElementById('trackingOrderId');
+            select.innerHTML = orders.map(order => 
+                `<option value="${order.id}">${order.id} - ${order.customerName}</option>`
+            ).join('');
+            
+            document.getElementById('trackingCarrier').value = '';
+            document.getElementById('trackingCode').value = '';
+            document.getElementById('trackingStatus').value = 'posted';
+            document.getElementById('trackingModal').classList.remove('hidden');
+        }
+
+        function closeTrackingModal() {
+            document.getElementById('trackingModal').classList.add('hidden');
+        }
+
+        function handleTrackingSubmit(event) {
+            event.preventDefault();
+            
+            const trackingData = {
+                orderId: document.getElementById('trackingOrderId').value,
+                carrier: document.getElementById('trackingCarrier').value,
+                code: document.getElementById('trackingCode').value,
+                status: document.getElementById('trackingStatus').value,
+                lastUpdate: new Date().toISOString()
+            };
+            
+            // Remove existing tracking for this order
+            tracking = tracking.filter(t => t.orderId !== trackingData.orderId);
+            
+            tracking.push(trackingData);
+            localStorage.setItem('versiory_tracking', JSON.stringify(tracking));
+            
+            renderTrackingTable();
+            closeTrackingModal();
+        }
+
+        function updateTracking(orderId) {
+            const track = tracking.find(t => t.orderId === orderId);
+            if (track) {
+                const newStatus = prompt('Atualizar status (posted, in_transit, out_for_delivery, delivered, delayed):', track.status);
+                if (newStatus && ['posted', 'in_transit', 'out_for_delivery', 'delivered', 'delayed'].includes(newStatus)) {
+                    track.status = newStatus;
+                    track.lastUpdate = new Date().toISOString();
+                    localStorage.setItem('versiory_tracking', JSON.stringify(tracking));
+                    renderTrackingTable();
+                }
+            }
         }
 
         function ensureCategoryOption(category) {
@@ -480,6 +1441,7 @@
             }
         }
 
+        // Event listeners
         document.getElementById('productCategory').addEventListener('change', (event) => {
             setCustomCategoryVisibility(event.target.value === '__new__');
         });
@@ -496,9 +1458,371 @@
             reader.readAsDataURL(file);
         });
 
+        // Inventory Functions
+        function renderInventoryTable() {
+            const tbody = document.getElementById('inventoryTableBody');
+            const searchTerm = document.getElementById('inventorySearch')?.value.toLowerCase() || '';
+            const stockFilter = document.getElementById('stockFilter')?.value || 'all';
+            
+            let filteredProducts = products.filter(product => {
+                const matchesSearch = product.name.toLowerCase().includes(searchTerm) || 
+                                     product.category.toLowerCase().includes(searchTerm);
+                
+                let matchesFilter = true;
+                const stock = product.stock || 0;
+                
+                if (stockFilter === 'low') {
+                    matchesFilter = stock > 0 && stock < 10;
+                } else if (stockFilter === 'out') {
+                    matchesFilter = stock === 0;
+                } else if (stockFilter === 'normal') {
+                    matchesFilter = stock >= 10;
+                }
+                
+                return matchesSearch && matchesFilter;
+            });
+            
+            tbody.innerHTML = filteredProducts.map(product => {
+                const stock = product.stock || 0;
+                const minStock = 10; // Estoque mínimo padrão
+                const totalValue = product.price * stock;
+                
+                let stockStatus, stockStatusClass;
+                if (stock === 0) {
+                    stockStatus = 'Esgotado';
+                    stockStatusClass = 'bg-red-100 text-red-800';
+                } else if (stock < minStock) {
+                    stockStatus = 'Estoque Baixo';
+                    stockStatusClass = 'bg-yellow-100 text-yellow-800';
+                } else {
+                    stockStatus = 'Normal';
+                    stockStatusClass = 'bg-green-100 text-green-800';
+                }
+                
+                return `
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${product.id}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <img src="${product.image}" alt="${product.name}" class="w-10 h-10 rounded-lg object-cover mr-3">
+                                <div>
+                                    <div class="text-sm font-medium text-gray-900">${product.name}</div>
+                                    <div class="text-xs text-gray-500">${product.category}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                ${product.category}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${stock}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${minStock}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">R$ ${product.price.toFixed(2)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">R$ ${totalValue.toFixed(2)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${stockStatusClass}">
+                                ${stockStatus}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button onclick="openInventoryModal(${product.id})" class="bg-versiory-coral hover:bg-red-600 text-white px-3 py-2 rounded-xl font-medium transition-all mr-2">
+                                Movimentar
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateInventoryStats() {
+            const totalStockValue = products.reduce((sum, product) => {
+                return sum + (product.price * (product.stock || 0));
+            }, 0);
+            
+            const lowStockItems = products.filter(product => {
+                const stock = product.stock || 0;
+                return stock > 0 && stock < 10;
+            }).length;
+            
+            const outOfStockItems = products.filter(product => (product.stock || 0) === 0).length;
+            
+            const totalItemsInStock = products.reduce((sum, product) => sum + (product.stock || 0), 0);
+            
+            document.getElementById('totalStockValue').textContent = `R$ ${totalStockValue.toFixed(2)}`;
+            document.getElementById('lowStockItems').textContent = lowStockItems;
+            document.getElementById('outOfStockItems').textContent = outOfStockItems;
+            document.getElementById('totalItemsInStock').textContent = totalItemsInStock;
+            
+            // Show/hide low stock alerts
+            const lowStockAlerts = document.getElementById('lowStockAlerts');
+            const lowStockList = document.getElementById('lowStockList');
+            
+            if (lowStockItems > 0) {
+                lowStockAlerts.classList.remove('hidden');
+                const lowStockProducts = products.filter(product => {
+                    const stock = product.stock || 0;
+                    return stock > 0 && stock < 10;
+                });
+                
+                lowStockList.innerHTML = lowStockProducts.map(product => `
+                    <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-red-200">
+                        <div>
+                            <span class="font-medium text-red-800">${product.name}</span>
+                            <span class="text-sm text-red-600 ml-2">(${product.stock} unidades)</span>
+                        </div>
+                        <button onclick="openInventoryModal(${product.id})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm font-medium">
+                            Reabastecer
+                        </button>
+                    </div>
+                `).join('');
+            } else {
+                lowStockAlerts.classList.add('hidden');
+            }
+        }
+
+        function openInventoryModal(productId = null) {
+            const modal = document.getElementById('inventoryModal');
+            const productSelect = document.getElementById('inventoryProductId');
+            
+            // Populate product select
+            productSelect.innerHTML = '<option value="">Selecione um produto</option>' + 
+                products.map(product => 
+                    `<option value="${product.id}">${product.name} (Estoque: ${product.stock || 0})</option>`
+                ).join('');
+            
+            if (productId) {
+                productSelect.value = productId;
+            }
+            
+            modal.classList.remove('hidden');
+        }
+
+        function closeInventoryModal() {
+            document.getElementById('inventoryModal').classList.add('hidden');
+        }
+
+        function handleInventorySubmit(event) {
+            event.preventDefault();
+            
+            const productId = parseInt(document.getElementById('inventoryProductId').value);
+            const type = document.getElementById('inventoryType').value;
+            const quantity = parseInt(document.getElementById('inventoryQuantity').value);
+            const reason = document.getElementById('inventoryReason').value;
+            
+            if (!productId) {
+                alert('Selecione um produto.');
+                return;
+            }
+            
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+            
+            const currentStock = product.stock || 0;
+            let newStock;
+            
+            if (type === 'in') {
+                newStock = currentStock + quantity;
+            } else if (type === 'out') {
+                if (currentStock < quantity) {
+                    alert('Estoque insuficiente para esta saída.');
+                    return;
+                }
+                newStock = currentStock - quantity;
+            } else { // adjustment
+                newStock = quantity;
+            }
+            
+            // Update product stock
+            product.stock = newStock;
+            localStorage.setItem('versiory_products', JSON.stringify(products));
+            
+            // Record movement
+            const movement = {
+                id: Date.now(),
+                productId: productId,
+                productName: product.name,
+                type: type,
+                quantity: quantity,
+                previousStock: currentStock,
+                newStock: newStock,
+                reason: reason,
+                date: new Date().toISOString(),
+                user: 'Admin'
+            };
+            
+            inventoryMovements.push(movement);
+            localStorage.setItem('versiory_inventory_movements', JSON.stringify(inventoryMovements));
+            
+            // Refresh displays
+            renderInventoryTable();
+            updateInventoryStats();
+            closeInventoryModal();
+            
+            alert('Movimentação de estoque registrada com sucesso!');
+        }
+
+        function filterInventory() {
+            renderInventoryTable();
+        }
+
+        function generateInventoryReport() {
+            const reportData = products.map(product => ({
+                ID: product.id,
+                Produto: product.name,
+                Categoria: product.category,
+                'Estoque Atual': product.stock || 0,
+                'Estoque Mínimo': 10,
+                'Valor Unitário': `R$ ${product.price.toFixed(2)}`,
+                'Valor Total': `R$ ${((product.stock || 0) * product.price).toFixed(2)}`,
+                Status: (product.stock || 0) === 0 ? 'Esgotado' : (product.stock || 0) < 10 ? 'Estoque Baixo' : 'Normal'
+            }));
+            
+            // Simple CSV download
+            const csv = [
+                Object.keys(reportData[0]).join(','),
+                ...reportData.map(row => Object.values(row).join(','))
+            ].join('\n');
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `relatorio_estoque_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Financial Functions
+        function renderFinancialData() {
+            renderRecentTransactions();
+        }
+
+        function updateFinancialStats() {
+            const totalRevenue = orders
+                .filter(order => ['paid', 'processing', 'shipped', 'delivered'].includes(order.status))
+                .reduce((sum, order) => sum + order.total, 0);
+            
+            const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+            const netProfit = totalRevenue - totalExpenses;
+            const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue * 100) : 0;
+            
+            document.getElementById('totalRevenue').textContent = `R$ ${totalRevenue.toFixed(2)}`;
+            document.getElementById('totalExpenses').textContent = `R$ ${totalExpenses.toFixed(2)}`;
+            document.getElementById('netProfit').textContent = `R$ ${netProfit.toFixed(2)}`;
+            document.getElementById('profitMargin').textContent = `${profitMargin.toFixed(1)}%`;
+        }
+
+        function renderRecentTransactions() {
+            const container = document.getElementById('recentTransactions');
+            
+            // Combine orders (revenue) and expenses
+            const transactions = [
+                ...orders.map(order => ({
+                    id: order.id,
+                    description: `Venda - ${order.customerName}`,
+                    amount: order.total,
+                    type: 'revenue',
+                    date: order.date,
+                    category: 'Venda'
+                })),
+                ...expenses.map(expense => ({
+                    id: expense.id,
+                    description: expense.description,
+                    amount: -expense.amount,
+                    type: 'expense',
+                    date: expense.date,
+                    category: expense.category
+                }))
+            ].sort((a, b) => new Date(b.date) - new Date(a.date))
+             .slice(0, 10);
+            
+            container.innerHTML = transactions.map(transaction => `
+                <div class="flex justify-between items-center p-4 bg-gray-50 rounded-xl">
+                    <div>
+                        <div class="font-medium text-gray-900">${transaction.description}</div>
+                        <div class="text-sm text-gray-600">${new Date(transaction.date).toLocaleDateString('pt-BR')} • ${transaction.category}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-bold ${transaction.type === 'revenue' ? 'text-green-600' : 'text-red-600'}">
+                            ${transaction.type === 'revenue' ? '+' : ''}R$ ${Math.abs(transaction.amount).toFixed(2)}
+                        </div>
+                        <div class="text-xs text-gray-500">${transaction.type === 'revenue' ? 'Receita' : 'Despesa'}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openExpenseModal() {
+            const modal = document.getElementById('expenseModal');
+            document.getElementById('expenseDate').value = new Date().toISOString().split('T')[0];
+            modal.classList.remove('hidden');
+        }
+
+        function closeExpenseModal() {
+            document.getElementById('expenseModal').classList.add('hidden');
+        }
+
+        function handleExpenseSubmit(event) {
+            event.preventDefault();
+            
+            const expense = {
+                id: Date.now(),
+                description: document.getElementById('expenseDescription').value,
+                category: document.getElementById('expenseCategory').value,
+                amount: parseFloat(document.getElementById('expenseAmount').value),
+                date: document.getElementById('expenseDate').value,
+                notes: document.getElementById('expenseNotes').value,
+                user: 'Admin'
+            };
+            
+            expenses.push(expense);
+            localStorage.setItem('versiory_expenses', JSON.stringify(expenses));
+            
+            renderFinancialData();
+            updateFinancialStats();
+            closeExpenseModal();
+            
+            alert('Despesa lançada com sucesso!');
+        }
+
+        function generateFinancialReport() {
+            const reportData = [
+                ...orders.map(order => ({
+                    Data: new Date(order.date).toLocaleDateString('pt-BR'),
+                    Tipo: 'Receita',
+                    Descrição: `Venda - ${order.customerName}`,
+                    Categoria: 'Venda',
+                    Valor: order.total
+                })),
+                ...expenses.map(expense => ({
+                    Data: new Date(expense.date).toLocaleDateString('pt-BR'),
+                    Tipo: 'Despesa',
+                    Descrição: expense.description,
+                    Categoria: expense.category,
+                    Valor: -expense.amount
+                }))
+            ].sort((a, b) => new Date(a.Data) - new Date(b.Data));
+            
+            // Simple CSV download
+            const csv = [
+                Object.keys(reportData[0]).join(','),
+                ...reportData.map(row => Object.values(row).join(','))
+            ].join('\n');
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `relatorio_financeiro_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
         // Initialize
-        loadProducts();
+        loadAllData();
         syncCategoryOptions();
     </script>
 </body>
 </html>
+Arquivo atualizado em 02/12/2026 17:57:53

@@ -14,8 +14,8 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
   };
 
   return (
-    <div className="min-h-screen bg-versiory-ink flex items-center justify-center px-4">
-      <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
+    <div className="min-h-screen bg-[#0b1f4b] flex items-center justify-center px-4">
+      <div className="bg-white/80 backdrop-blur-xl border border-white/40 rounded-3xl p-8 w-full max-w-md shadow-2xl">
         <div className="text-center mb-8">
           <div className="w-20 h-20 bg-versiory-coral rounded-2xl mx-auto mb-4 flex items-center justify-center">
             <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -37,14 +37,14 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none transition-all"
+              className="w-full px-4 py-3 border border-gray-200/80 rounded-xl bg-white/70 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none transition-all"
               placeholder="Digite sua senha"
               required
             />
           </div>
 
           {error && (
-            <div className="bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium">
+            <div className="bg-red-50/90 backdrop-blur-sm border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium">
               {error}
             </div>
           )}

@@ -6,6 +6,7 @@ import ProductCard from './components/ProductCard';
 import Cart from './components/Cart';
 import ProductModal from './components/ProductModal';
 import ChatWidget from './components/ChatWidget';
+import CustomerOrders from './components/CustomerOrders';
 
 const App: React.FC = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -27,6 +28,7 @@ const App: React.FC = () => {
   const [addressDraft, setAddressDraft] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [toastTimeoutId, setToastTimeoutId] = useState<number | null>(null);
+  const [isCustomerOrdersOpen, setIsCustomerOrdersOpen] = useState(false);
 
   // Carregar produtos do localStorage ou usar os produtos padrão
   useEffect(() => {
@@ -125,6 +127,26 @@ const App: React.FC = () => {
     setCurrentUserAddress('');
     setIsEditingAddress(false);
     setAddressDraft('');
+  };
+
+  const handleOpenCustomerOrders = () => {
+    setIsCustomerOrdersOpen(true);
+  };
+
+  const handleCloseCustomerOrders = () => {
+    setIsCustomerOrdersOpen(false);
+  };
+
+  const handleOrderComplete = () => {
+    setCartItems([]);
+    setToastMessage('Pedido realizado com sucesso! Você receberá atualizações por email.');
+    if (toastTimeoutId) {
+      window.clearTimeout(toastTimeoutId);
+    }
+    const timeoutId = window.setTimeout(() => {
+      setToastMessage('');
+    }, 3000);
+    setToastTimeoutId(timeoutId);
   };
 
   const handleEditAddress = () => {
@@ -255,7 +277,7 @@ const App: React.FC = () => {
               className={`px-8 py-4 rounded-2xl font-black whitespace-nowrap transition-all border-2 ${
                 activeCategory === cat 
                 ? 'bg-versiory-ink text-white border-versiory-ink shadow-xl shadow-black/10 scale-105' 
-                : 'bg-versiory-ivory text-slate-500 hover:text-slate-700 border-slate-200 hover:border-slate-300'
+                : 'bg-blue-50 text-slate-500 hover:text-slate-700 border-blue-200 hover:border-blue-300'
               }`}
             >
               {cat}
@@ -357,14 +379,11 @@ const App: React.FC = () => {
             <span className="hover:text-white cursor-pointer transition-colors">Termos e Condições</span>
             <span className="hover:text-white cursor-pointer transition-colors">Cookies</span>
             <a 
-              href="/admin.html" 
-              className="inline-flex items-center px-4 py-2 rounded-full border border-slate-700 text-white/90 hover:text-white hover:border-white/40 transition-colors"
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.href = window.location.origin + '/admin.html';
-              }}
+              href="/Ecommerce-Versiory/admin.html" 
+              className="inline-flex items-center px-6 py-2 rounded-lg bg-versiory-coral/20 border border-versiory-coral text-versiory-coral hover:bg-versiory-coral hover:text-white transition-all font-bold"
+              target="_self"
             >
-              Acesso restrito
+              🔐 Acesso Restrito
             </a>
           </div>
         </div>
@@ -376,6 +395,9 @@ const App: React.FC = () => {
         items={cartItems}
         onUpdateQuantity={handleUpdateQuantity}
         onRemove={handleRemoveFromCart}
+        customerEmail={currentUserEmail}
+        customerAddress={currentUserAddress}
+        onOrderComplete={handleOrderComplete}
       />
 
       <ProductModal 
@@ -390,14 +412,14 @@ const App: React.FC = () => {
             className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
             onClick={handleProfileClose}
           />
-          <div className="relative w-full max-w-md bg-versiory-ivory rounded-3xl shadow-2xl p-8">
+          <div className="relative w-full max-w-md bg-blue-50 border border-blue-200 rounded-3xl shadow-2xl p-8">
             <div className="flex items-start justify-between">
               <h3 className="text-2xl font-black text-slate-900">
                 {isAuthenticated ? 'Seu perfil' : 'Entrar ou criar conta'}
               </h3>
               <button
                 onClick={handleProfileClose}
-                className="p-2 hover:bg-white rounded-full transition-colors"
+                className="p-2 hover:bg-blue-100 rounded-full transition-colors"
                 aria-label="Fechar"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -408,11 +430,11 @@ const App: React.FC = () => {
 
             {isAuthenticated ? (
               <div className="mt-6 space-y-4">
-                <div className="rounded-2xl bg-white/80 border border-[#e6d7c7] px-4 py-3 text-slate-700">
+                <div className="rounded-2xl bg-blue-50/80 border border-blue-200 px-4 py-3 text-slate-700">
                   <span className="text-sm text-slate-500">Logado como</span>
                   <div className="font-bold text-slate-900">{currentUserEmail}</div>
                 </div>
-                <div className="rounded-2xl bg-white/80 border border-[#e6d7c7] px-4 py-3 text-slate-700">
+                <div className="rounded-2xl bg-blue-50/80 border border-blue-200 px-4 py-3 text-slate-700">
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-sm text-slate-500">Endereco para envio</span>
                     {!isEditingAddress && (
@@ -430,7 +452,7 @@ const App: React.FC = () => {
                         value={addressDraft}
                         onChange={(event) => setAddressDraft(event.target.value)}
                         rows={3}
-                        className="w-full bg-white border border-[#e6d7c7] rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
+                        className="w-full bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
                       />
                       <div className="flex gap-2">
                         <button
@@ -441,7 +463,7 @@ const App: React.FC = () => {
                         </button>
                         <button
                           onClick={() => setIsEditingAddress(false)}
-                          className="flex-1 border border-slate-200 text-slate-700 py-2 rounded-2xl font-bold bg-white/80 hover:bg-white transition-colors"
+                          className="flex-1 border border-slate-200 text-slate-700 py-2 rounded-2xl font-bold bg-blue-50/80 hover:bg-blue-100 transition-colors"
                         >
                           Cancelar
                         </button>
@@ -454,8 +476,14 @@ const App: React.FC = () => {
                   )}
                 </div>
                 <button
+                  onClick={handleOpenCustomerOrders}
+                  className="w-full bg-versiory-teal hover:bg-[#1b9aaa] text-white py-3 rounded-2xl font-bold transition-all"
+                >
+                  📦 Meus Pedidos
+                </button>
+                <button
                   onClick={handleProfileLogout}
-                  className="w-full border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold bg-white/80 hover:bg-white transition-colors"
+                  className="w-full border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold bg-blue-50/80 hover:bg-blue-100 transition-colors"
                 >
                   Sair da conta
                 </button>
@@ -474,14 +502,14 @@ const App: React.FC = () => {
                     placeholder="Seu e-mail"
                     value={profileEmail}
                     onChange={(event) => setProfileEmail(event.target.value)}
-                    className="w-full bg-white border border-[#e6d7c7] rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
+                    className="w-full bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
                   />
                   <input
                     type="password"
                     placeholder="Sua senha"
                     value={profilePassword}
                     onChange={(event) => setProfilePassword(event.target.value)}
-                    className="w-full bg-white border border-[#e6d7c7] rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
+                    className="w-full bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
                   />
                   {profileMode === 'signup' && (
                     <textarea
@@ -489,7 +517,7 @@ const App: React.FC = () => {
                       value={profileAddress}
                       onChange={(event) => setProfileAddress(event.target.value)}
                       rows={3}
-                      className="w-full bg-white border border-[#e6d7c7] rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
+                      className="w-full bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
                     />
                   )}
                 </div>
@@ -509,7 +537,7 @@ const App: React.FC = () => {
                   </button>
                   <button
                     onClick={handleProfileSignup}
-                    className="flex-1 border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold bg-white/80 hover:bg-white transition-colors"
+                    className="flex-1 border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold bg-blue-50/80 hover:bg-blue-100 transition-colors"
                   >
                     Criar conta
                   </button>
@@ -530,6 +558,12 @@ const App: React.FC = () => {
       )}
 
       <ChatWidget />
+
+      <CustomerOrders
+        customerEmail={currentUserEmail}
+        isOpen={isCustomerOrdersOpen}
+        onClose={handleCloseCustomerOrders}
+      />
 
       {toastMessage && (
         <div className="fixed left-1/2 -translate-x-1/2 bottom-6 z-[80]">

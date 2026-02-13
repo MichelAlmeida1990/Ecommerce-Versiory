@@ -15,10 +15,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
       
-      <div className="relative bg-versiory-ivory w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[85vh] sm:max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-blue-50 border border-blue-200 w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[85vh] sm:max-h-[90vh] overflow-y-auto">
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 bg-white/80 p-2 rounded-full hover:bg-white shadow-sm transition-colors"
+          className="absolute top-4 right-4 z-10 bg-blue-50/80 p-2 rounded-full hover:bg-blue-100 shadow-sm transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -54,7 +54,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
             </p>
           </div>
 
-          <div className="flex gap-4 sticky bottom-0 bg-versiory-ivory pt-4">
+          <div className="flex gap-4 sticky bottom-0 bg-blue-50 pt-4">
             <button 
               onClick={() => onAddToCart(product)}
               className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-bold py-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-[0.98] text-base"

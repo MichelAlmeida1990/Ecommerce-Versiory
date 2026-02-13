@@ -10,7 +10,7 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewDetails }) => {
   return (
-    <div className="group relative bg-versiory-ivory rounded-[2rem] shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden border border-[#ece1d3] flex flex-col h-full">
+    <div className="group relative bg-blue-50 rounded-[2rem] shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden border border-blue-200 flex flex-col h-full">
       <div 
         className="aspect-[4/5] overflow-hidden cursor-pointer relative"
         onClick={() => onViewDetails(product)}

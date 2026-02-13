@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { CartItem } from '../types';
+import Checkout from './Checkout';
 
 interface CartProps {
   isOpen: boolean;
@@ -8,12 +9,16 @@ interface CartProps {
   items: CartItem[];
   onUpdateQuantity: (id: number, delta: number) => void;
   onRemove: (id: number) => void;
+  customerEmail: string;
+  customerAddress: string;
+  onOrderComplete: () => void;
 }
 
-const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove }) => {
+const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove, customerEmail, customerAddress, onOrderComplete }) => {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const whatsappNumber = '5511958540171';
   const [isCheckoutInfoOpen, setIsCheckoutInfoOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
   const buildWhatsAppMessage = () => {
     const lines = items.map(item => (
@@ -33,8 +38,12 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const handleOpenCheckoutInfo = () => {
-    setIsCheckoutInfoOpen(true);
+  const handleOpenCheckout = () => {
+    setIsCheckoutOpen(true);
+  };
+
+  const handleCloseCheckout = () => {
+    setIsCheckoutOpen(false);
   };
 
   const handleCloseCheckoutInfo = () => {
@@ -48,7 +57,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={onClose} />
       
       <div className="absolute inset-y-0 right-0 max-w-full flex">
-        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col">
+        <div className="w-screen max-w-md bg-blue-50 border border-blue-200 shadow-2xl flex flex-col">
           <div className="p-6 border-b border-[#f1e2d5] flex justify-between items-center">
             <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-versiory-coral" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -133,29 +142,38 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                 <span className="text-2xl font-black text-versiory-coral">R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
               </div>
               <button
-                onClick={handleWhatsAppCheckout}
+                onClick={handleOpenCheckout}
                 className="w-full bg-versiory-ink hover:bg-[#1b2a3a] text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-black/10 transition-all active:scale-[0.98]"
               >
-                Finalizar no WhatsApp
+                Finalizar Compra
               </button>
               <button
-                onClick={handleOpenCheckoutInfo}
-                className="w-full mt-3 border border-slate-200 text-slate-700 py-4 rounded-2xl font-bold text-lg bg-white/80 hover:bg-white transition-colors"
+                onClick={handleWhatsAppCheckout}
+                className="w-full mt-3 border border-slate-200 text-slate-700 py-4 rounded-2xl font-bold text-lg bg-blue-50/80 hover:bg-blue-100 transition-colors"
               >
-                Checkout com pagamento (em breve)
+                Comprar via WhatsApp
               </button>
             </div>
           )}
         </div>
       </div>
 
+      <Checkout
+        isOpen={isCheckoutOpen}
+        onClose={handleCloseCheckout}
+        items={items}
+        customerEmail={customerEmail}
+        customerAddress={customerAddress}
+        onOrderComplete={onOrderComplete}
+      />
+
       {isCheckoutInfoOpen && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={handleCloseCheckoutInfo} />
-          <div className="relative w-full max-w-lg bg-versiory-ivory rounded-3xl shadow-2xl p-8">
+          <div className="relative w-full max-w-lg bg-blue-50 border border-blue-200 rounded-3xl shadow-2xl p-8">
             <div className="flex items-start justify-between">
               <h3 className="text-3xl font-black text-slate-900">Checkout em breve</h3>
-              <button onClick={handleCloseCheckoutInfo} className="p-2 hover:bg-white rounded-full transition-colors">
+              <button onClick={handleCloseCheckoutInfo} className="p-2 hover:bg-blue-100 rounded-full transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -175,7 +193,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
               </button>
               <button
                 onClick={handleCloseCheckoutInfo}
-                className="flex-1 border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold bg-white/80 hover:bg-white transition-colors text-base"
+                className="flex-1 border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold bg-blue-50/80 hover:bg-blue-100 transition-colors text-base"
               >
                 Entendi
               </button>

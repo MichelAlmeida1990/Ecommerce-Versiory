@@ -87,7 +87,7 @@ const ChatWidget: React.FC = () => {
   return (
     <div className="fixed right-4 bottom-4 z-[70] flex flex-col items-end gap-3">
       {isOpen && (
-        <div className="w-[92vw] max-w-sm bg-versiory-ivory shadow-2xl rounded-3xl border border-[#f1e2d5] overflow-hidden">
+        <div className="w-[92vw] max-w-sm bg-blue-50 shadow-2xl rounded-3xl border border-blue-200 overflow-hidden">
           <div className="bg-versiory-ink text-white px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-white/60">Atendimento</p>
@@ -114,7 +114,7 @@ const ChatWidget: React.FC = () => {
                   className={`max-w-[80%] rounded-2xl px-3 py-2 text-base leading-relaxed shadow-sm ${
                     message.role === 'user'
                       ? 'bg-versiory-coral text-white'
-                      : 'bg-white text-slate-700 border border-[#f1e2d5]'
+                      : 'bg-blue-50 text-slate-700 border border-blue-200'
                   }`}
                 >
                   {message.text}
@@ -128,14 +128,14 @@ const ChatWidget: React.FC = () => {
               <button
                 key={reply}
                 onClick={() => handleSend(reply)}
-                className="text-sm font-semibold border border-[#ecdccc] text-slate-700 px-3 py-1 rounded-full bg-white/70 hover:bg-white"
+                className="text-sm font-semibold border border-blue-200 text-slate-700 px-3 py-1 rounded-full bg-blue-50/70 hover:bg-blue-100"
               >
                 {reply}
               </button>
             ))}
           </div>
 
-          <div className="border-t border-[#f1e2d5] px-4 py-3 bg-[#fff8f1]">
+          <div className="border-t border-blue-200 px-4 py-3 bg-blue-50">
             <div className="flex items-center gap-2">
               <input
                 value={input}
@@ -146,7 +146,7 @@ const ChatWidget: React.FC = () => {
                   }
                 }}
                 placeholder="Digite sua mensagem"
-                className="flex-1 bg-white border border-[#e6d7c7] rounded-2xl px-3 py-2 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
+                className="flex-1 bg-blue-50 border border-blue-200 rounded-2xl px-3 py-2 text-base focus:outline-none focus:ring-2 ring-[#ffe1d2]"
               />
               <button
                 onClick={() => handleSend(input)}

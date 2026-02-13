@@ -58,7 +58,7 @@ const Header: React.FC<HeaderProps> = ({ cartCount, onCartClick, onProfileClick,
             placeholder="Qual o seu próximo passo para o sucesso?" 
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full bg-white/70 border border-[#eadfce] rounded-2xl py-3 px-12 focus:bg-white focus:ring-4 ring-[#ffe1d2] outline-none transition-all placeholder:text-slate-400 font-medium"
+            className="w-full bg-blue-50/70 border border-blue-200 rounded-2xl py-3 px-12 focus:bg-blue-50 focus:ring-4 ring-[#ffe1d2] outline-none transition-all placeholder:text-slate-400 font-medium"
           />
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
