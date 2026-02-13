@@ -379,7 +379,7 @@ const App: React.FC = () => {
             <span className="hover:text-white cursor-pointer transition-colors">Termos e Condições</span>
             <span className="hover:text-white cursor-pointer transition-colors">Cookies</span>
             <a 
-              href="/Ecommerce-Versiory/admin.html" 
+              href="/admin.html" 
               className="inline-flex items-center px-6 py-2 rounded-lg bg-versiory-coral/20 border border-versiory-coral text-versiory-coral hover:bg-versiory-coral hover:text-white transition-all font-bold"
               target="_self"
             >
