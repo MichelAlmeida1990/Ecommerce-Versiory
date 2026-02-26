@@ -48,8 +48,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
           </div>
 
           <div className="mb-8 rounded-2xl bg-slate-900 p-6 text-white shadow-lg">
-            <h3 className="text-xl font-bold">Sobre este produto</h3>
-            <p className="mt-3 leading-relaxed text-base text-white/90">
+            <h3 className="text-xl font-bold text-white mb-3">Sobre este produto</h3>
+            <p className="leading-relaxed text-base text-white">
               {product.description}
             </p>
           </div>

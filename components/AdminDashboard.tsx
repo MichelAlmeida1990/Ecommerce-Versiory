@@ -104,6 +104,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
   const [orderFilter, setOrderFilter] = useState<OrderStatus | 'all'>('all');
+  // Função para baixar o XML da NF-e salvo no localStorage
+  const handleDownloadNFXml = () => {
+    const xml = localStorage.getItem('versiory_nf_xml');
+    if (!xml) {
+      alert('Nenhum arquivo XML de nota fiscal encontrado. Gere um pedido com solicitação de NF-e.');
+      return;
+    }
+    const blob = new Blob([xml], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'nota-fiscal-versiory.xml';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
   const [inventorySearch, setInventorySearch] = useState('');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
 
@@ -818,6 +835,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-white">Gerenciar Pedidos</h2>
               <div className="flex gap-3">
+                <button
+                  onClick={handleDownloadNFXml}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                >
+                  📄 Baixar XML NF-e
+                </button>
                 <select
                   value={orderFilter}
                   onChange={event => setOrderFilter(event.target.value as OrderStatus | 'all')}
@@ -1665,6 +1688,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+      <footer className="bg-gradient-to-r from-versiory-ink to-slate-900 text-white py-8 mt-12 border-t border-white/10 text-center">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col items-center gap-4">
+          <p className="text-white/80 text-sm font-medium">Área restrita. Acesso exclusivo para administradores. Todas as ações são monitoradas.</p>
+          <button
+            onClick={onLogout}
+            className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-xl font-medium transition-all mt-2"
+          >
+            Sair
+          </button>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados.</p>
+        </div>
+      </footer>
     </div>
   );
 };

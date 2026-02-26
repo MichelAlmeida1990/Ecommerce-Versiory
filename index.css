@@ -1,0 +1,7 @@
+@import './versiory-admin-login.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* You can add global utilities here or migrate inline styles from index.html */

@@ -1,0 +1,16 @@
+
+/* Efeito pulsante para títulos do login admin */
+.versiory-pulse {
+  animation: versioryPulse 2.2s infinite alternate;
+  letter-spacing: 0.5px;
+}
+@keyframes versioryPulse {
+  0% { text-shadow: 0 0 10px #776EF6, 0 0 18px #ff6b4a44; color: #0f172a99; }
+  50% { text-shadow: 0 0 32px #ff6b4a, 0 0 64px #776EF699; color: #0f172a66; }
+  100% { text-shadow: 0 0 10px #776EF6, 0 0 18px #ff6b4a44; color: #0f172a99; }
+}
+
+/* Utilidades para responsividade e contraste (opcional) */
+.admin-login-gradient {
+  background: linear-gradient(135deg, #776EF6 0%, #f6efe6 60%, #ff6b4a 100%);
+}

@@ -50,7 +50,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
         </div>
         
         <div className="mb-6 rounded-2xl bg-slate-900 p-4 text-white shadow-md">
-          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white/90">
+          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white">
             {product.description}
           </p>
         </div>

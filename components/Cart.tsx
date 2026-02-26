@@ -19,6 +19,8 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const whatsappNumber = '5511958540171';
   const [isCheckoutInfoOpen, setIsCheckoutInfoOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  const [addressForm, setAddressForm] = useState('');
 
   const buildWhatsAppMessage = () => {
     const lines = items.map(item => (
@@ -39,7 +41,45 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   };
 
   const handleOpenCheckout = () => {
+    const savedUser = localStorage.getItem('versiory_user');
+    let isAuthenticated = false;
+    let hasAddress = false;
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        isAuthenticated = !!parsed.email;
+        hasAddress = !!parsed.address && parsed.address !== 'Endereço não informado';
+      } catch {}
+    }
+    
+    if (!isAuthenticated) {
+      window.dispatchEvent(new CustomEvent('openProfileModal'));
+      return;
+    }
+    
+    if (!hasAddress) {
+      setIsAddressModalOpen(true);
+      return;
+    }
+    
     setIsCheckoutOpen(true);
+  };
+
+  const handleSaveAddress = () => {
+    if (!addressForm.trim()) {
+      alert('Por favor, preencha o endereço.');
+      return;
+    }
+    
+    const savedUser = localStorage.getItem('versiory_user');
+    if (savedUser) {
+      const parsed = JSON.parse(savedUser);
+      parsed.address = addressForm;
+      localStorage.setItem('versiory_user', JSON.stringify(parsed));
+      setIsAddressModalOpen(false);
+      alert('Endereço salvo com sucesso!');
+      window.location.reload();
+    }
   };
 
   const handleCloseCheckout = () => {
@@ -145,7 +185,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                 onClick={handleOpenCheckout}
                 className="w-full bg-versiory-ink hover:bg-[#1b2a3a] text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-black/10 transition-all active:scale-[0.98]"
               >
-                Finalizar Compra
+                Finalizar Pedido
               </button>
               <button
                 onClick={handleWhatsAppCheckout}
@@ -196,6 +236,49 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                 className="flex-1 border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold bg-blue-50/80 hover:bg-blue-100 transition-colors text-base"
               >
                 Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAddressModalOpen && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsAddressModalOpen(false)} />
+          <div className="relative w-full max-w-lg bg-blue-50 border border-blue-200 rounded-3xl shadow-2xl p-8">
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-2xl font-black text-slate-900">📍 Cadastre seu endereço</h3>
+              <button onClick={() => setIsAddressModalOpen(false)} className="p-2 hover:bg-blue-100 rounded-full transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="text-slate-600 mb-4">
+              Para finalizar seu pedido, precisamos do seu endereço de entrega.
+            </p>
+
+            <textarea
+              value={addressForm}
+              onChange={(e) => setAddressForm(e.target.value)}
+              placeholder="Digite seu endereço completo (Rua, Número, Bairro, Cidade, Estado, CEP)"
+              rows={4}
+              className="w-full border-2 border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
+            />
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={handleSaveAddress}
+                className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white py-3 rounded-2xl font-bold transition-all active:scale-[0.98]"
+              >
+                Salvar e Continuar
+              </button>
+              <button
+                onClick={() => setIsAddressModalOpen(false)}
+                className="flex-1 border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold bg-blue-50/80 hover:bg-blue-100 transition-colors"
+              >
+                Cancelar
               </button>
             </div>
           </div>

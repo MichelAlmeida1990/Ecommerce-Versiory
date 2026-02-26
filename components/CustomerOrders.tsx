@@ -1,21 +1,6 @@
 import React, { useState, useEffect } from 'react';
-
-interface Order {
-  id: string;
-  date: string;
-  total: number;
-  status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-  items: Array<{
-    id: number;
-    name: string;
-    quantity: number;
-    price: number;
-    image: string;
-  }>;
-  trackingCode?: string;
-  carrier?: string;
-  notes?: string;
-}
+import { Order, Customer, Product } from '../types';
+import DanfePreview from './DanfePreview';
 
 interface CustomerOrdersProps {
   customerEmail: string;
@@ -24,8 +9,9 @@ interface CustomerOrdersProps {
 }
 
 const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, onClose }) => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [orders, setOrders] = useState<(Order & { emitNF?: boolean })[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<(Order & { emitNF?: boolean }) | null>(null);
+  const [isPreviewingDanfe, setIsPreviewingDanfe] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,264 +22,375 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
 
   const loadOrders = () => {
     setLoading(true);
-    
-    // Carregar pedidos do localStorage (compatível com admin)
     const savedOrders = localStorage.getItem('versiory_orders');
     const savedTracking = localStorage.getItem('versiory_tracking');
-    
+    const globalProducts = JSON.parse(localStorage.getItem('versiory_products') || '[]');
+
     if (savedOrders) {
-      const allOrders = JSON.parse(savedOrders);
-      const customerOrders = allOrders.filter((order: any) => 
-        order.customerEmail === customerEmail
-      );
-      
-      // Adicionar informações de rastreamento
+      const allOrders = JSON.parse(savedOrders) as Order[];
+      const customerOrders = allOrders.filter((order) => order.customerEmail === customerEmail);
+
+      // Enriquecer pedidos com dados dos produtos (fallback para pedidos legados)
+      customerOrders.forEach(order => {
+        order.items.forEach(item => {
+          if (!item.name || !item.image) {
+            const product = globalProducts.find((p: any) => p.id === item.productId);
+            if (product) {
+              if (!item.name) item.name = product.name;
+              if (!item.image) item.image = product.image;
+              if (!item.description) item.description = product.description;
+            }
+          }
+        });
+      });
+
       if (savedTracking) {
-        const trackingInfo = JSON.parse(savedTracking);
+        const trackingInfo = JSON.parse(savedTracking) as Array<{ orderId: string; code: string; carrier?: string }>;
         customerOrders.forEach((order: Order) => {
-          const tracking = trackingInfo.find((t: any) => t.orderId === order.id);
+          const tracking = trackingInfo.find((t) => t.orderId === order.id);
           if (tracking) {
             order.trackingCode = tracking.code;
             order.carrier = tracking.carrier;
           }
         });
       }
-      
-      // Ordenar por data (mais recentes primeiro)
-      customerOrders.sort((a: Order, b: Order) => {
-        return new Date(b.date).getTime() - new Date(a.date).getTime();
-      });
-      
+
+      customerOrders.sort((a: Order, b: Order) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setOrders(customerOrders);
     }
-    
     setLoading(false);
   };
 
-  const getStatusColor = (status: string) => {
-    const colors = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      paid: 'bg-green-100 text-green-800',
-      processing: 'bg-blue-100 text-blue-800',
-      shipped: 'bg-purple-100 text-purple-800',
-      delivered: 'bg-gray-100 text-gray-800',
-      cancelled: 'bg-red-100 text-red-800'
+  const getStatusConfig = (status: string) => {
+    const configs = {
+      pending: { label: 'Aguardando Pagamento', color: 'text-amber-600', bg: 'bg-amber-50', icon: '🕒' },
+      paid: { label: 'Pagamento Confirmado', color: 'text-emerald-600', bg: 'bg-emerald-50', icon: '✅' },
+      processing: { label: 'Processando', color: 'text-blue-600', bg: 'bg-blue-50', icon: '📦' },
+      shipped: { label: 'Em Trânsito', color: 'text-indigo-600', bg: 'bg-indigo-50', icon: '🚚' },
+      delivered: { label: 'Entregue', color: 'text-slate-600', bg: 'bg-slate-50', icon: '🏠' },
+      cancelled: { label: 'Cancelado', color: 'text-red-600', bg: 'bg-red-50', icon: '❌' }
     };
-    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+    return configs[status as keyof typeof configs] || { label: status, color: 'text-slate-600', bg: 'bg-slate-50', icon: '📄' };
   };
 
-  const getStatusLabel = (status: string) => {
-    const labels = {
-      pending: 'Aguardando Pagamento',
-      paid: 'Pagamento Efetuado',
-      processing: 'Em Processamento',
-      shipped: 'Enviado',
-      delivered: 'Entregue',
-      cancelled: 'Cancelado'
-    };
-    return labels[status as keyof typeof labels] || status;
-  };
-
-  const openOrderDetails = (order: Order) => {
-    setSelectedOrder(order);
-  };
-
-  const closeOrderDetails = () => {
-    setSelectedOrder(null);
-  };
-
-  const trackOrder = () => {
-    if (selectedOrder?.trackingCode) {
-      const url = `https://www.linkcorreios.com.br/?id=${selectedOrder.trackingCode}`;
-      window.open(url, '_blank');
-    }
+  const trackOrder = (code: string) => {
+    window.open(`https://www.linkcorreios.com.br/?id=${code}`, '_blank');
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      
-      <div className="relative w-full max-w-4xl bg-blue-50 border border-blue-200 rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden">
-        <div className="p-6 border-b border-blue-200 flex justify-between items-center">
-          <h3 className="text-2xl font-black text-slate-900">Meus Pedidos</h3>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-blue-100 rounded-full transition-colors"
-            aria-label="Fechar"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-500" onClick={onClose} />
+
+      <div className="relative w-full max-w-5xl bg-white/80 backdrop-blur-2xl border border-white/20 rounded-[40px] shadow-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-500">
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white/40">
+          <div>
+            <h3 className="text-3xl font-black text-slate-900 leading-none">Meus <span className="text-versiory-coral">Pedidos</span></h3>
+            <p className="text-slate-500 font-bold text-xs uppercase tracking-widest mt-2">{orders.length} pedidos realizados</p>
+          </div>
+          <button onClick={onClose} className="p-3 bg-slate-100 hover:bg-slate-900 hover:text-white rounded-2xl transition-all duration-300">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           {loading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-versiory-coral"></div>
-              <p className="mt-4 text-slate-600">Carregando seus pedidos...</p>
+            <div className="h-full flex flex-col items-center justify-center py-20">
+              <div className="w-12 h-12 border-4 border-versiory-coral border-t-transparent rounded-full animate-spin"></div>
+              <p className="mt-4 text-slate-500 font-black uppercase tracking-widest text-[10px]">Sincronizando com a nuvem...</p>
             </div>
           ) : orders.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            <div className="h-full flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-700">
+              <div className="w-32 h-32 bg-slate-50 rounded-[40px] flex items-center justify-center mb-8 rotate-3">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-slate-800 mb-2">Nenhum pedido encontrado</h3>
-              <p className="text-slate-600">Você ainda não fez nenhuma compra.</p>
+              <h3 className="text-2xl font-black text-slate-800 mb-2">Sem pedidos por aqui</h3>
+              <p className="text-slate-500 font-medium mb-8">Parece que você ainda não realizou nenhuma compra conosco.</p>
+              <button onClick={onClose} className="bg-versiory-ink text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-black/10 hover:scale-105 transition-all">Explorar Coleção</button>
             </div>
           ) : (
-            <div className="space-y-4">
-              {orders.map((order) => (
-                <div key={order.id} className="bg-blue-50 rounded-2xl p-6 border border-blue-200 hover:shadow-lg transition-shadow">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-lg">Pedido {order.id}</h4>
-                      <p className="text-slate-600 text-sm">
-                        {new Date(order.date).toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(order.status)}`}>
-                      {getStatusLabel(order.status)}
-                    </span>
-                  </div>
+            <div className="grid grid-cols-1 gap-6">
+              {orders.map((order, idx) => {
+                const config = getStatusConfig(order.status);
+                return (
+                  <div
+                    key={order.id}
+                    className="group bg-white rounded-3xl p-6 border border-slate-100 hover:border-versiory-coral/20 hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-500 animate-in slide-in-from-bottom-8"
+                    style={{ animationDelay: `${idx * 100}ms` }}
+                  >
+                    <div className="flex flex-col md:flex-row gap-8">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-4 mb-6">
+                          <span className="bg-slate-900 text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">
+                            {order.id}
+                          </span>
+                          <span className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${config.bg} ${config.color}`}>
+                            <span>{config.icon}</span> {config.label}
+                          </span>
+                          <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
+                            {new Date(order.date).toLocaleDateString('pt-BR')} às {new Date(order.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
 
-                  <div className="flex justify-between items-center mb-4">
-                    <div>
-                      <p className="text-sm text-slate-600">
-                        {order.items.length} {order.items.length === 1 ? 'item' : 'itens'}
-                      </p>
-                      <p className="font-bold text-slate-900 text-lg">
-                        Total: R$ {order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => openOrderDetails(order)}
-                      className="bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-2 rounded-xl font-medium transition-all"
-                    >
-                      Ver Detalhes
-                    </button>
-                  </div>
+                        {/* Order Items Preview - More expressive like big stores */}
+                        <div className="space-y-4 mb-6">
+                          {order.items.slice(0, 3).map((item, iidx) => (
+                            <div key={iidx} className="flex items-center gap-4">
+                              <div className="w-16 h-16 bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 flex-shrink-0">
+                                <img src={item.image || 'https://images.unsplash.com/photo-1560393464-5c69a73c5770?w=200&h=200&fit=crop'} alt={item.name} className="w-full h-full object-cover" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-black text-slate-900 truncate">{item.name || 'Produto Versiory'}</p>
+                                <p className="text-[10px] text-slate-400 font-medium line-clamp-1 mb-1">{item.description || 'Nenhuma descrição disponível'}</p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{item.quantity} unidade(s) • R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                              </div>
+                            </div>
+                          ))}
+                          {order.items.length > 3 && (
+                            <p className="text-xs font-black text-versiory-coral mt-2">+ {order.items.length - 3} outros itens neste pedido</p>
+                          )}
+                        </div>
+                      </div>
 
-                  {order.trackingCode && (
-                    <div className="bg-blue-50 rounded-xl p-3 text-sm">
-                      <p className="text-blue-800 font-medium">
-                        📦 Código de rastreamento: {order.trackingCode}
-                      </p>
-                      {order.carrier && (
-                        <p className="text-blue-600">Transportadora: {order.carrier}</p>
-                      )}
+                      <div className="md:w-64 flex flex-col justify-between border-t md:border-t-0 md:border-l border-slate-100 pt-6 md:pt-0 md:pl-8">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
+                          <p className="text-3xl font-black text-slate-900 leading-tight">R$ {order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                        </div>
+
+                        <div className="space-y-3 mt-8">
+                          <button
+                            onClick={() => setSelectedOrder(order)}
+                            className="w-full bg-slate-50 hover:bg-slate-900 hover:text-white text-slate-900 p-4 rounded-2xl font-black text-sm transition-all"
+                          >
+                            Detalhes do Pedido
+                          </button>
+                          {order.trackingCode && (
+                            <button
+                              onClick={() => trackOrder(order.trackingCode!)}
+                              className="w-full flex items-center justify-center gap-2 bg-blue-50 text-blue-600 p-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all"
+                            >
+                              🚚 Rastrear
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
 
-      {/* Modal de Detalhes do Pedido */}
+      {/* DETALHES DO PEDIDO OVERLAY (REFINED AMERICANAS STYLE) */}
       {selectedOrder && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-            onClick={closeOrderDetails}
-          />
-          
-          <div className="relative w-full max-w-2xl bg-blue-50 border border-blue-200 rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden">
-            <div className="p-6 border-b border-blue-200 flex justify-between items-center">
-              <h3 className="text-xl font-black text-slate-900">Detalhes do Pedido {selectedOrder.id}</h3>
-              <button
-                onClick={closeOrderDetails}
-                className="p-2 hover:bg-blue-100 rounded-full transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setSelectedOrder(null)} />
+          <div className="relative w-full max-w-3xl bg-white rounded-[40px] shadow-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+            {/* Modal Header */}
+            <div className="p-8 border-b border-slate-50 flex justify-between items-center sticky top-0 bg-white z-10">
+              <div>
+                <h4 className="text-2xl font-black text-slate-900">Pedido <span className="text-versiory-coral">{selectedOrder.id}</span></h4>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                  Realizado em {new Date(selectedOrder.date).toLocaleDateString('pt-BR')} às {new Date(selectedOrder.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+              <button onClick={() => setSelectedOrder(null)} className="p-3 hover:bg-slate-100 rounded-2xl transition-all">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <p className="text-sm text-slate-600">Data do pedido</p>
-                    <p className="font-medium text-slate-900">
-                      {new Date(selectedOrder.date).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-8">
+              {/* Visual Order Progress Bar */}
+              <div className="relative px-4 pt-4 pb-8 border-b border-slate-50 mb-4">
+                <div className="flex justify-between relative z-10">
+                  {['pending', 'paid', 'processing', 'shipped', 'delivered'].map((step, sidx) => {
+                    const steps = ['pending', 'paid', 'processing', 'shipped', 'delivered'];
+                    const currentIndex = steps.indexOf(selectedOrder.status);
+                    const isCompleted = steps.indexOf(step) <= currentIndex;
+                    const isCurrent = step === selectedOrder.status;
+
+                    return (
+                      <div key={step} className="flex flex-col items-center gap-2">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black transition-all ${isCompleted ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-100 text-slate-400'
+                          } ${isCurrent ? 'ring-4 ring-emerald-100 scale-110' : ''}`}>
+                          {isCompleted ? '✓' : sidx + 1}
+                        </div>
+                        <span className={`text-[9px] font-black uppercase tracking-tighter text-center max-w-[60px] ${isCompleted ? 'text-slate-900' : 'text-slate-300'}`}>
+                          {getStatusConfig(step).label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {/* Progress Line */}
+                  <div className="absolute top-5 left-10 right-10 h-0.5 bg-slate-100 -z-10">
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-1000"
+                      style={{ width: `${(Math.max(0, ['pending', 'paid', 'processing', 'shipped', 'delivered'].indexOf(selectedOrder.status)) / 4) * 100}%` }}
+                    />
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm text-slate-600">Status</p>
-                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(selectedOrder.status)}`}>
-                      {getStatusLabel(selectedOrder.status)}
-                    </span>
+                </div>
+              </div>
+
+              {/* Pending Payment Alert */}
+              {selectedOrder.status === 'pending' && (
+                <div className="bg-amber-50 border border-amber-200 p-6 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-500">
+                  <div className="flex items-start gap-4">
+                    <div className="text-3xl">💳</div>
+                    <div className="flex-1">
+                      <h5 className="font-black text-amber-900 text-lg leading-none mb-2">Aguardando seu Pagamento</h5>
+                      <p className="text-amber-700 text-xs font-medium mb-4 leading-relaxed">Seu pedido foi reservado, mas só será processado após a confirmação do pagamento no sistema.</p>
+                      <button
+                        onClick={() => {
+                          const itemsList = selectedOrder.items.map(item =>
+                            `• ${item.name} x${item.quantity} - R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                          ).join('\n');
+
+                          const message = [
+                            `🛒 *PAGAMENTO PENDENTE - ${selectedOrder.id}*`,
+                            '',
+                            '*ITENS DO PEDIDO:*',
+                            itemsList,
+                            '',
+                            `*TOTAL: R$ ${selectedOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*`,
+                            '',
+                            'Olá! Gostaria de finalizar o pagamento deste pedido. Quais são as chaves PIX ou próximos passos?'
+                          ].join('\n');
+
+                          const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
+                          window.open(url, '_blank');
+                        }}
+                        className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-amber-200 transition-all active:scale-95"
+                      >
+                        Finalizar Pagamento Agora
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-4">Logística e Entrega</h4>
+                    <div className="bg-slate-50 p-6 rounded-3xl space-y-4">
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Destinatário</p>
+                        <p className="text-sm font-black text-slate-900 mt-1">{selectedOrder.customerName}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Endereço de Entrega</p>
+                        <p className="text-sm font-bold text-slate-600 leading-relaxed mt-1">
+                          {localStorage.getItem('versiory_user') ? JSON.parse(localStorage.getItem('versiory_user')!).address : 'Endereço registrado no pedido.'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {selectedOrder.notes && (
-                  <div className="bg-slate-50 rounded-xl p-4 mb-4">
-                    <p className="text-sm text-slate-600 mb-1">Observações</p>
-                    <p className="text-slate-900">{selectedOrder.notes}</p>
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-4">Financeiro</h4>
+                    <div className="bg-slate-900 text-white p-6 rounded-3xl space-y-4 shadow-xl">
+                      <div className="flex justify-between items-center text-slate-400 uppercase text-[9px] font-black tracking-widest">
+                        <span>Soma dos Itens</span>
+                        <span className="text-white">R$ {selectedOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-400 uppercase text-[9px] font-black tracking-widest">
+                        <span>Taxa de Entrega</span>
+                        <span className="text-emerald-400">Cortesia Grátis</span>
+                      </div>
+                      <div className="pt-4 border-t border-white/10 flex justify-between items-baseline">
+                        <span className="text-[10px] font-black uppercase tracking-widest">Valor do Pedido</span>
+                        <span className="text-3xl font-black">R$ {selectedOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
 
-              <div className="mb-6">
-                <h4 className="font-bold text-slate-900 mb-4">Itens do Pedido</h4>
-                <div className="space-y-3">
-                  {selectedOrder.items.map((item) => (
-                    <div key={item.id} className="flex gap-4 p-4 bg-slate-50 rounded-xl">
-                      <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded-lg" />
-                      <div className="flex-1">
-                        <h5 className="font-medium text-slate-900">{item.name}</h5>
-                        <p className="text-sm text-slate-600">Quantidade: {item.quantity}</p>
-                        <p className="font-bold text-versiory-coral">
-                          R$ {(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </p>
+              <div>
+                <h4 className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-4">Produtos Adquiridos</h4>
+                <div className="space-y-4">
+                  {selectedOrder.items.map((item, idx) => (
+                    <div key={idx} className="flex gap-6 group">
+                      <div className="w-24 h-24 rounded-3xl overflow-hidden bg-slate-50 border border-slate-100 flex-shrink-0">
+                        <img src={item.image || 'https://images.unsplash.com/photo-1560393464-5c69a73c5770?w=200&h=200&fit=crop'} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                      </div>
+                      <div className="flex-1 flex flex-col justify-center">
+                        <h5 className="font-black text-slate-900 text-lg leading-tight mb-1">{item.name || 'Produto Versiory'}</h5>
+                        <p className="text-xs text-slate-500 font-medium line-clamp-2 mb-3 leading-relaxed">{item.description || 'Este item foi selecionado em nossa coleção premium.'}</p>
+                        <div className="flex items-center gap-4">
+                          <span className="text-xs font-black bg-slate-100 px-4 py-1.5 rounded-full text-slate-600 uppercase tracking-widest">Qtd: {item.quantity}</span>
+                          <span className="font-black text-2xl text-versiory-ink">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
+            </div>
 
-              <div className="border-t border-[#e6d7c7] pt-4">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-lg font-bold text-slate-900">Total do Pedido</span>
-                  <span className="text-xl font-black text-versiory-coral">
-                    R$ {selectedOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+            {/* Modal Footer */}
+            <div className="p-8 bg-slate-50 border-t border-slate-100">
+              <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div className="flex gap-3 w-full md:w-auto">
+                  {selectedOrder.emitNF && selectedOrder.status === 'paid' && (
+                    <button
+                      onClick={() => setIsPreviewingDanfe(true)}
+                      className="flex-1 md:flex-none border-2 border-slate-200 hover:border-versiory-ink text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                    >
+                      Ver Nota Fiscal
+                    </button>
+                  )}
+                  {selectedOrder.emitNF && selectedOrder.status !== 'paid' && (
+                    <div className="flex-1 md:flex-none bg-slate-100 text-slate-400 px-6 py-4 rounded-2xl font-black text-[9px] uppercase tracking-widest text-center flex items-center justify-center gap-2 border border-slate-200 cursor-not-allowed">
+                      🕒 NF Disponível após Confirmação
+                    </div>
+                  )}
+                  {selectedOrder.trackingCode && (
+                    <button
+                      onClick={() => trackOrder(selectedOrder.trackingCode!)}
+                      className="flex-1 md:flex-none bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 hover:scale-105 transition-all"
+                    >
+                      Rastrear Entrega
+                    </button>
+                  )}
                 </div>
-
-                {selectedOrder.trackingCode && (
-                  <button
-                    onClick={trackOrder}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-medium transition-all"
-                  >
-                    📦 Rastrear Pacote
-                  </button>
-                )}
+                <button onClick={() => setSelectedOrder(null)} className="w-full md:w-auto px-8 py-4 font-black text-slate-400 hover:text-slate-900 transition-colors uppercase text-[10px] tracking-widest">
+                  Fechar Detalhes
+                </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* NF-e (DANFE) Preview Modal */}
+      {isPreviewingDanfe && selectedOrder && (
+        <DanfePreview
+          order={selectedOrder}
+          customer={{
+            id: selectedOrder.customerId || 0,
+            name: selectedOrder.customerName || '',
+            email: selectedOrder.customerEmail,
+            phone: '',
+            addresses: [],
+            totalOrders: 0,
+            totalSpent: 0,
+            createdAt: '',
+            orderHistory: []
+          }}
+          onClose={() => setIsPreviewingDanfe(false)}
+        />
       )}
     </div>
   );
