@@ -414,7 +414,8 @@ const Account: React.FC = () => {
 
                 {activeTab === 'orders' && (
                   <div className="animate-in fade-in duration-500">
-                        <h3 className="text-2xl font-black text-slate-900">Histórico de Pedidos</h3>
+                    <div className="flex items-center justify-between mb-8">
+                      <h3 className="text-2xl font-black text-slate-900">Histórico de Pedidos</h3>
                         <button
                           onClick={() => setIsOrdersOverlayOpen(true)}
                           className="bg-slate-900 text-white px-6 py-2 rounded-2xl font-bold text-sm hover:scale-105 transition-all shadow-lg"

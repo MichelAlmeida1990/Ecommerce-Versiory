@@ -20,21 +20,19 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
     }
   }, [isOpen, customerEmail]);
 
-  const loadOrders = () => {
+  const loadOrders = async () => {
     setLoading(true);
-    const savedOrders = localStorage.getItem('versiory_orders');
-    const savedTracking = localStorage.getItem('versiory_tracking');
-    const globalProducts = JSON.parse(localStorage.getItem('versiory_products') || '[]');
-
-    if (savedOrders) {
-      const allOrders = JSON.parse(savedOrders) as Order[];
+    try {
+      const { getOrders, getProducts } = await import('../services/firebase');
+      const allOrders = await getOrders();
       const customerOrders = allOrders.filter((order) => order.customerEmail === customerEmail);
+      const products = await getProducts();
 
-      // Enriquecer pedidos com dados dos produtos (fallback para pedidos legados)
+      // Enriquecer pedidos com dados dos produtos
       customerOrders.forEach(order => {
         order.items.forEach(item => {
           if (!item.name || !item.image) {
-            const product = globalProducts.find((p: any) => p.id === item.productId);
+            const product = products.find(p => p.id === item.productId);
             if (product) {
               if (!item.name) item.name = product.name;
               if (!item.image) item.image = product.image;
@@ -44,19 +42,11 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
         });
       });
 
-      if (savedTracking) {
-        const trackingInfo = JSON.parse(savedTracking) as Array<{ orderId: string; code: string; carrier?: string }>;
-        customerOrders.forEach((order: Order) => {
-          const tracking = trackingInfo.find((t) => t.orderId === order.id);
-          if (tracking) {
-            order.trackingCode = tracking.code;
-            order.carrier = tracking.carrier;
-          }
-        });
-      }
-
-      customerOrders.sort((a: Order, b: Order) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      customerOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setOrders(customerOrders);
+    } catch (error) {
+      console.error('Erro ao carregar pedidos:', error);
+      setOrders([]);
     }
     setLoading(false);
   };
