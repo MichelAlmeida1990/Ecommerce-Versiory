@@ -27,7 +27,9 @@ const ADMIN_PASSWORD = 'versiory2024';
 const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes'];
 
 const AdminApp: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('adminAuth') === 'true';
+  });
   const [error, setError] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
@@ -89,6 +91,7 @@ const AdminApp: React.FC = () => {
   const handleLogin = (password: string) => {
     if (password === ADMIN_PASSWORD) {
       setIsAuthenticated(true);
+      localStorage.setItem('adminAuth', 'true');
       setError('');
     } else {
       setError('Senha incorreta. Tente novamente.');
@@ -97,6 +100,7 @@ const AdminApp: React.FC = () => {
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    localStorage.removeItem('adminAuth');
     setError('');
   };
 

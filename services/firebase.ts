@@ -140,3 +140,35 @@ export const getExpenses = async (): Promise<Expense[]> => {
     return querySnapshot.docs.map(doc => ({ ...doc.data() } as Expense));
 };
 export const saveExpense = (expense: Expense) => setDocument("expenses", expense.id, expense);
+export const deleteExpense = (id: number) => deleteDocument("expenses", id);
+
+// ---- User Session ----
+const USER_SESSION_KEY = "versiory_user_session";
+
+export interface UserSession {
+    email: string;
+    name?: string;
+    address?: string;
+}
+
+export const saveUserSession = async (session: UserSession) => {
+    await setDocument("userSessions", USER_SESSION_KEY, session);
+};
+
+export const getUserSession = async (): Promise<UserSession | null> => {
+    try {
+        const docRef = doc(db, "userSessions", USER_SESSION_KEY);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return docSnap.data() as UserSession;
+        }
+        return null;
+    } catch (error) {
+        console.error('Erro ao buscar sessão:', error);
+        return null;
+    }
+};
+
+export const clearUserSession = async () => {
+    await deleteDocument("userSessions", USER_SESSION_KEY);
+};

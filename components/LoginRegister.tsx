@@ -53,7 +53,7 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!form.email || !form.password) {
@@ -61,88 +61,67 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
       return;
     }
 
-    const savedCustomers = localStorage.getItem('versiory_customers');
-    let customers: Customer[] = savedCustomers ? JSON.parse(savedCustomers) : [];
+    try {
+      const { getCustomers, saveCustomer, saveUserSession } = await import('../services/firebase');
+      let customers: Customer[] = await getCustomers();
 
-    // Usuário de teste padrão
-    const testUser = {
-      email: 'teste@versiory.com',
-      password: '123456',
-      name: 'Usuário Teste',
-      address: 'Rua Teste, 123 - São Paulo/SP'
-    };
-
-    if (isRegister) {
-      if (!form.name || !address.zipCode || !address.street || !address.number) {
-        setError('Preencha todos os campos obrigatórios.');
-        return;
-      }
-
-      if (customers.find(c => c.email === form.email)) {
-        setError('Este e-mail já está cadastrado.');
-        return;
-      }
-
-      const newAddress: Address = {
-        id: Date.now().toString(),
-        street: address.street,
-        number: address.number,
-        complement: address.complement,
-        neighborhood: address.neighborhood,
-        city: address.city,
-        state: address.state,
-        zipCode: address.zipCode.replace(/\D/g, ''),
-        country: 'Brasil',
-        type: 'shipping',
+      // Usuário de teste padrão
+      const testUser = {
+        email: 'teste@versiory.com',
+        password: '123456',
+        name: 'Usuário Teste',
+        address: 'Rua Teste, 123 - São Paulo/SP'
       };
 
-      const newCustomer: Customer = {
-        id: Date.now(),
-        name: form.name,
-        email: form.email,
-        password: form.password,
-        phone: form.phone,
-        cpfCnpj: form.cpfCnpj,
-        avatar: '',
-        addresses: [newAddress],
-        totalOrders: 0,
-        totalSpent: 0,
-        createdAt: new Date().toISOString(),
-        orderHistory: [],
-      };
+      if (isRegister) {
+        if (!form.name || !address.zipCode || !address.street || !address.number) {
+          setError('Preencha todos os campos obrigatórios.');
+          return;
+        }
 
-      customers.push(newCustomer);
-      localStorage.setItem('versiory_customers', JSON.stringify(customers));
+        if (customers.find(c => c.email === form.email)) {
+          setError('Este e-mail já está cadastrado.');
+          return;
+        }
 
-      // Inicia sessão
-      const userSession = {
-        email: form.email,
-        name: form.name,
-        address: `${address.street}, ${address.number}${address.complement ? ', ' + address.complement : ''} - ${address.neighborhood}, ${address.city}/${address.state} - CEP: ${address.zipCode}`
-      };
-      localStorage.setItem('versiory_user', JSON.stringify(userSession));
+        const newAddress: Address = {
+          id: Date.now().toString(),
+          street: address.street,
+          number: address.number,
+          complement: address.complement,
+          neighborhood: address.neighborhood,
+          city: address.city,
+          state: address.state,
+          zipCode: address.zipCode.replace(/\D/g, ''),
+          country: 'Brasil',
+          type: 'shipping',
+        };
 
-      onLoginSuccess?.(userSession.email, userSession.address);
-      onClose?.();
-      
-      // Redirecionar para home se não houver callback
-      if (!onLoginSuccess) {
-        navigate('/');
-        window.location.reload();
-      }
-    } else {
-      const customer = customers.find(c => c.email === form.email);
+        const newCustomer: Customer = {
+          id: Date.now(),
+          name: form.name,
+          email: form.email,
+          password: form.password,
+          phone: form.phone,
+          cpfCnpj: form.cpfCnpj,
+          avatar: '',
+          addresses: [newAddress],
+          totalOrders: 0,
+          totalSpent: 0,
+          createdAt: new Date().toISOString(),
+          orderHistory: [],
+        };
 
-      // Fallback para usuário legado (versiory_user)
-      const legacyAuth = localStorage.getItem('versiory_user');
-      const legacyUser = legacyAuth ? JSON.parse(legacyAuth) : null;
+        await saveCustomer(newCustomer);
 
-      if (customer && customer.password === form.password) {
-        const addr = customer.addresses[0];
-        const formattedAddr = addr ? `${addr.street}, ${addr.number} - ${addr.city}/${addr.state}` : '';
-        const userSession = { email: customer.email, name: customer.name, address: formattedAddr };
+        // Inicia sessão
+        const userSession = {
+          email: form.email,
+          name: form.name,
+          address: `${address.street}, ${address.number}${address.complement ? ', ' + address.complement : ''} - ${address.neighborhood}, ${address.city}/${address.state} - CEP: ${address.zipCode}`
+        };
+        await saveUserSession(userSession);
 
-        localStorage.setItem('versiory_user', JSON.stringify(userSession));
         onLoginSuccess?.(userSession.email, userSession.address);
         onClose?.();
         
@@ -151,28 +130,41 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
           navigate('/');
           window.location.reload();
         }
-      } else if (legacyUser && legacyUser.email === form.email && legacyUser.password === form.password) {
-        onLoginSuccess?.(legacyUser.email, legacyUser.address || '');
-        onClose?.();
-        
-        if (!onLoginSuccess) {
-          navigate('/');
-          window.location.reload();
-        }
-      } else if (form.email === testUser.email && form.password === testUser.password) {
-        // Login com usuário de teste
-        const userSession = { email: testUser.email, name: testUser.name, address: testUser.address };
-        localStorage.setItem('versiory_user', JSON.stringify(userSession));
-        onLoginSuccess?.(testUser.email, testUser.address);
-        onClose?.();
-        
-        if (!onLoginSuccess) {
-          navigate('/');
-          window.location.reload();
-        }
       } else {
-        setError('E-mail ou senha inválidos.');
+        const customer = customers.find(c => c.email === form.email);
+
+        if (customer && customer.password === form.password) {
+          const addr = customer.addresses[0];
+          const formattedAddr = addr ? `${addr.street}, ${addr.number} - ${addr.city}/${addr.state}` : '';
+          const userSession = { email: customer.email, name: customer.name, address: formattedAddr };
+
+          await saveUserSession(userSession);
+          onLoginSuccess?.(userSession.email, userSession.address);
+          onClose?.();
+          
+          // Redirecionar para home se não houver callback
+          if (!onLoginSuccess) {
+            navigate('/');
+            window.location.reload();
+          }
+        } else if (form.email === testUser.email && form.password === testUser.password) {
+          // Login com usuário de teste
+          const userSession = { email: testUser.email, name: testUser.name, address: testUser.address };
+          await saveUserSession(userSession);
+          onLoginSuccess?.(testUser.email, testUser.address);
+          onClose?.();
+          
+          if (!onLoginSuccess) {
+            navigate('/');
+            window.location.reload();
+          }
+        } else {
+          setError('E-mail ou senha inválidos.');
+        }
       }
+    } catch (error) {
+      console.error('Erro ao processar login/cadastro:', error);
+      setError('Erro ao processar. Tente novamente.');
     }
   };
 

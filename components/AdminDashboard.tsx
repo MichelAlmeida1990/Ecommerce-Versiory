@@ -187,6 +187,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
   const [expenseForm, setExpenseForm] = useState({
     description: '',
     category: 'fixed' as Expense['category'],
@@ -264,24 +265,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [products, inventorySearch, stockFilter]);
 
   const financialStats = useMemo(() => {
-    const totalRevenue = orders
-      .filter(order => ['paid', 'processing', 'shipped', 'delivered'].includes(order.status))
-      .reduce((sum, order) => sum + order.total, 0);
+    const paidOrders = orders.filter(order => ['paid', 'processing', 'shipped', 'delivered'].includes(order.status));
+    const totalRevenue = paidOrders.reduce((sum, order) => sum + order.total, 0);
+    const pdvRevenue = paidOrders.filter(o => o.salesChannel === 'physical').reduce((sum, order) => sum + order.total, 0);
+    const onlineRevenue = paidOrders.filter(o => !o.salesChannel || o.salesChannel === 'online').reduce((sum, order) => sum + order.total, 0);
     const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
     const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-    return { totalRevenue, totalExpenses, netProfit, profitMargin };
+    return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
   }, [orders, expenses]);
 
   const recentTransactions = useMemo(() => {
     const revenue = orders.map(order => ({
       id: order.id,
-      description: `Venda - ${order.customerName}`,
+      description: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}`,
       amount: order.total,
       type: 'revenue' as const,
       date: order.date,
-      category: 'Venda'
+      category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online'
     }));
 
     const expenseItems = expenses.map(expense => ({
@@ -290,12 +292,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       amount: -expense.amount,
       type: 'expense' as const,
       date: expense.date,
-      category: expense.category
+      category: expense.category,
+      expenseId: expense.id
     }));
 
     return [...revenue, ...expenseItems]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 10);
+      .slice(0, 20);
   }, [orders, expenses]);
 
   const lowStockProducts = useMemo(() =>
@@ -773,14 +776,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const openExpenseModal = () => {
-    setExpenseForm({
-      description: '',
-      category: 'fixed',
-      amount: 0,
-      date: new Date().toISOString().split('T')[0],
-      notes: ''
-    });
+  const openExpenseModal = (expense?: Expense) => {
+    if (expense) {
+      setExpenseForm({
+        description: expense.description,
+        category: expense.category,
+        amount: expense.amount,
+        date: expense.date,
+        notes: expense.notes || ''
+      });
+      setEditingExpenseId(expense.id);
+    } else {
+      setExpenseForm({
+        description: '',
+        category: 'fixed',
+        amount: 0,
+        date: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      setEditingExpenseId(null);
+    }
     setIsExpenseModalOpen(true);
   };
 
@@ -794,8 +809,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       const { saveExpense } = await import('../services/firebase');
 
-      const newExpense: Expense = {
-        id: Date.now(),
+      const expense: Expense = {
+        id: editingExpenseId || Date.now(),
         description: expenseForm.description,
         category: expenseForm.category,
         amount: expenseForm.amount,
@@ -804,12 +819,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         user: 'Admin'
       };
 
-      await saveExpense(newExpense);
-      onUpdateExpenses([...expenses, newExpense]);
+      await saveExpense(expense);
+      
+      if (editingExpenseId) {
+        const updated = expenses.map(e => e.id === editingExpenseId ? expense : e);
+        onUpdateExpenses(updated);
+      } else {
+        const updated = [...expenses, expense];
+        onUpdateExpenses(updated);
+      }
+      
       setIsExpenseModalOpen(false);
+      setEditingExpenseId(null);
     } catch (error) {
       console.error(error);
       window.alert("Erro ao salvar despesa");
+    }
+  };
+
+  const handleExpenseDelete = async (id: number) => {
+    if (!window.confirm('Tem certeza que deseja excluir esta despesa?')) return;
+    try {
+      const { deleteExpense } = await import('../services/firebase');
+      await deleteExpense(id);
+      onUpdateExpenses(expenses.filter(e => e.id !== id));
+    } catch (error) {
+      console.error(error);
+      window.alert("Erro ao excluir despesa");
     }
   };
 
@@ -846,8 +882,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ...orders.map(order => ({
         Data: formatDate(order.date),
         Tipo: 'Receita',
-        Descricao: `Venda - ${order.customerName}`,
-        Categoria: 'Venda',
+        Descricao: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}`,
+        Categoria: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
         Valor: order.total
       })),
       ...expenses.map(expense => ({
@@ -1530,10 +1566,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {activeTab === 'financial' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
               <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalRevenue)}</div>
               <div className="text-slate-100 font-medium text-sm">Receita Total</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+              <div className="text-2xl font-bold text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
+              <div className="text-slate-100 font-medium text-sm">Vendas PDV</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+              <div className="text-2xl font-bold text-blue-400">{formatCurrency(financialStats.onlineRevenue)}</div>
+              <div className="text-slate-100 font-medium text-sm">Vendas Online</div>
             </div>
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
               <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalExpenses)}</div>
@@ -1569,19 +1613,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="space-y-3">
               {recentTransactions.map(transaction => (
                 <div key={`${transaction.type}-${transaction.id}`} className="flex justify-between items-center p-4 bg-white/5 border border-white/15 rounded-xl">
-                  <div>
+                  <div className="flex-1">
                     <div className="font-medium text-slate-100">{transaction.description}</div>
                     <div className="text-sm text-slate-200">
                       {formatDate(transaction.date)} - {transaction.category}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className={`font-bold ${transaction.type === 'revenue' ? 'text-green-600' : 'text-red-600'}`}>
-                      {transaction.type === 'revenue' ? '+' : '-'}{formatCurrency(Math.abs(transaction.amount))}
+                  <div className="text-right flex items-center gap-3">
+                    <div>
+                      <div className={`font-bold ${transaction.type === 'revenue' ? 'text-green-600' : 'text-red-600'}`}>
+                        {transaction.type === 'revenue' ? '+' : '-'}{formatCurrency(Math.abs(transaction.amount))}
+                      </div>
+                      <div className="text-xs text-slate-200">
+                        {transaction.type === 'revenue' ? 'Receita' : 'Despesa'}
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-200">
-                      {transaction.type === 'revenue' ? 'Receita' : 'Despesa'}
-                    </div>
+                    {transaction.type === 'expense' && 'expenseId' in transaction && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => openExpenseModal(expenses.find(e => e.id === transaction.expenseId))}
+                          className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-all"
+                          title="Editar"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleExpenseDelete(transaction.expenseId!)}
+                          className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-all"
+                          title="Excluir"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -2152,7 +2220,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
         <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
           <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl font-black text-gray-900">Lancar Despesa</h3>
+            <h3 className="text-xl font-black text-gray-900">{editingExpenseId ? 'Editar Despesa' : 'Lancar Despesa'}</h3>
           </div>
           <form onSubmit={handleExpenseSubmit} className="p-6 space-y-4">
             <div>
@@ -2214,7 +2282,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 type="submit"
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white font-black py-3 rounded-xl transition-all"
               >
-                Lancar Despesa
+                {editingExpenseId ? 'Salvar Alterações' : 'Lancar Despesa'}
               </button>
               <button
                 type="button"

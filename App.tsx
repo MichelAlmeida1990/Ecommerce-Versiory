@@ -51,17 +51,22 @@ const App: React.FC = () => {
       }
     };
 
-    loadProducts();
-
-    const savedUser = localStorage.getItem('versiory_user');
-    if (savedUser) {
-      const parsed = JSON.parse(savedUser) as { email?: string; address?: string };
-      if (parsed.email) {
-        setIsAuthenticated(true);
-        setCurrentUserEmail(parsed.email);
-        setCurrentUserAddress(parsed.address || '');
+    const loadUserSession = async () => {
+      try {
+        const { getUserSession } = await import('./services/firebase');
+        const session = await getUserSession();
+        if (session) {
+          setIsAuthenticated(true);
+          setCurrentUserEmail(session.email);
+          setCurrentUserAddress(session.address || '');
+        }
+      } catch (error) {
+        console.error('Erro ao carregar sessão:', error);
       }
-    }
+    };
+
+    loadProducts();
+    loadUserSession();
 
     // Listen for addToCart custom events from ProductDetail
     const onAddToCartEvent = (e: Event) => {
@@ -128,13 +133,18 @@ const App: React.FC = () => {
           onSearchChange={setSearchQuery}
           isAuthenticated={isAuthenticated}
           userEmail={currentUserEmail}
-          onLogout={() => {
-            setIsAuthenticated(false);
-            setCurrentUserEmail('');
-            setCurrentUserAddress('');
-            localStorage.removeItem('versiory_user');
-            setToastMessage('Logout realizado com sucesso!');
-            setTimeout(() => setToastMessage(''), 3000);
+          onLogout={async () => {
+            try {
+              const { clearUserSession } = await import('./services/firebase');
+              await clearUserSession();
+              setIsAuthenticated(false);
+              setCurrentUserEmail('');
+              setCurrentUserAddress('');
+              setToastMessage('Logout realizado com sucesso!');
+              setTimeout(() => setToastMessage(''), 3000);
+            } catch (error) {
+              console.error('Erro ao fazer logout:', error);
+            }
           }}
         />
 
@@ -305,7 +315,6 @@ const App: React.FC = () => {
                   setIsAuthenticated(true);
                   setCurrentUserEmail(email);
                   setCurrentUserAddress(address);
-                  localStorage.setItem('versiory_user', JSON.stringify({ email, address }));
                   setIsProfileOpen(false);
                   setToastMessage('Login realizado com sucesso!');
                   setTimeout(() => setToastMessage(''), 3000);

@@ -78,49 +78,57 @@ const Account: React.FC = () => {
     }
   };
 
-  const loadCustomerData = () => {
+  const loadCustomerData = async () => {
     setLoading(true);
-    const userSession = localStorage.getItem('versiory_user');
-    if (!userSession) {
+    try {
+      const { getUserSession, getCustomers } = await import('../services/firebase');
+      const userSession = await getUserSession();
+      if (!userSession) {
+        setLoading(false);
+        return;
+      }
+
+      const { email } = userSession;
+      const customersList: Customer[] = await getCustomers();
+
+      const currentCustomer = customersList.find(c => c.email === email);
+      if (currentCustomer) {
+        setCustomer(currentCustomer);
+        setProfileForm({
+          name: currentCustomer.name,
+          email: currentCustomer.email,
+          phone: currentCustomer.phone,
+          cpfCnpj: currentCustomer.cpfCnpj || '',
+          avatar: currentCustomer.avatar || '',
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados do cliente:', error);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { email } = JSON.parse(userSession);
-    const allCustomers = localStorage.getItem('versiory_customers');
-    const customersList: Customer[] = allCustomers ? JSON.parse(allCustomers) : [];
-
-    const currentCustomer = customersList.find(c => c.email === email);
-    if (currentCustomer) {
-      setCustomer(currentCustomer);
-      setProfileForm({
-        name: currentCustomer.name,
-        email: currentCustomer.email,
-        phone: currentCustomer.phone,
-        cpfCnpj: currentCustomer.cpfCnpj || '',
-        avatar: currentCustomer.avatar || '',
-      });
-    }
-    setLoading(false);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 1024 * 1024) { // 1MB limit for localStorage
+      if (file.size > 1024 * 1024) { // 1MB limit
         alert('A imagem é muito grande. Escolha uma foto com menos de 1MB.');
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const base64String = reader.result as string;
         setProfileForm(prev => ({ ...prev, avatar: base64String }));
         if (customer) {
-          const allCustomers = JSON.parse(localStorage.getItem('versiory_customers') || '[]');
-          const updated = { ...customer, avatar: base64String };
-          const newList = allCustomers.map((c: any) => c.email === customer.email ? updated : c);
-          localStorage.setItem('versiory_customers', JSON.stringify(newList));
-          setCustomer(updated);
+          try {
+            const { saveCustomer } = await import('../services/firebase');
+            const updated = { ...customer, avatar: base64String };
+            await saveCustomer(updated);
+            setCustomer(updated);
+          } catch (error) {
+            console.error('Erro ao salvar avatar:', error);
+          }
         }
       };
       reader.readAsDataURL(file);
@@ -135,39 +143,46 @@ const Account: React.FC = () => {
     );
   }
 
-  const handleProfileSave = () => {
+  const handleProfileSave = async () => {
     if (!customer) return;
-    const allCustomers = JSON.parse(localStorage.getItem('versiory_customers') || '[]');
-    const updated = { ...customer, ...profileForm };
-    const newList = allCustomers.map((c: any) => c.email === customer.email ? updated : c);
-
-    localStorage.setItem('versiory_customers', JSON.stringify(newList));
-    // Update session info too
-    localStorage.setItem('versiory_user', JSON.stringify({ email: updated.email, name: updated.name }));
-    setCustomer(updated);
-    setEditProfile(false);
+    try {
+      const { saveCustomer, saveUserSession } = await import('../services/firebase');
+      const updated = { ...customer, ...profileForm };
+      await saveCustomer(updated);
+      await saveUserSession({ email: updated.email, name: updated.name });
+      setCustomer(updated);
+      setEditProfile(false);
+    } catch (error) {
+      console.error('Erro ao salvar perfil:', error);
+    }
   };
 
-  const handleAddressSave = () => {
+  const handleAddressSave = async () => {
     if (!customer) return;
-    const allCustomers = JSON.parse(localStorage.getItem('versiory_customers') || '[]');
-    const updated = {
-      ...customer,
-      addresses: customer.addresses.map(a => a.id === editAddressId ? addressForm : a)
-    };
-    const newList = allCustomers.map((c: any) => c.email === customer.email ? updated : c);
-    localStorage.setItem('versiory_customers', JSON.stringify(newList));
-    setCustomer(updated);
-    setEditAddressId(null);
+    try {
+      const { saveCustomer } = await import('../services/firebase');
+      const updated = {
+        ...customer,
+        addresses: customer.addresses.map(a => a.id === editAddressId ? addressForm : a)
+      };
+      await saveCustomer(updated);
+      setCustomer(updated);
+      setEditAddressId(null);
+    } catch (error) {
+      console.error('Erro ao salvar endereço:', error);
+    }
   };
 
-  const handleAddressDelete = (id: string) => {
+  const handleAddressDelete = async (id: string) => {
     if (!customer) return;
-    const allCustomers = JSON.parse(localStorage.getItem('versiory_customers') || '[]');
-    const updated = { ...customer, addresses: customer.addresses.filter(a => a.id !== id) };
-    const newList = allCustomers.map((c: any) => c.email === customer.email ? updated : c);
-    localStorage.setItem('versiory_customers', JSON.stringify(newList));
-    setCustomer(updated);
+    try {
+      const { saveCustomer } = await import('../services/firebase');
+      const updated = { ...customer, addresses: customer.addresses.filter(a => a.id !== id) };
+      await saveCustomer(updated);
+      setCustomer(updated);
+    } catch (error) {
+      console.error('Erro ao deletar endereço:', error);
+    }
   };
 
   if (loading) {
@@ -387,15 +402,19 @@ const Account: React.FC = () => {
                           </div>
                           <div className="flex gap-4 mt-8">
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 if (editAddressId === 'new') {
                                   const newAddr = { ...addressForm, id: crypto.randomUUID() };
                                   const updated = { ...customer, addresses: [...customer.addresses, newAddr] };
-                                  const allCustomers = JSON.parse(localStorage.getItem('versiory_customers') || '[]');
-                                  localStorage.setItem('versiory_customers', JSON.stringify(allCustomers.map((c: any) => c.email === customer.email ? updated : c)));
-                                  setCustomer(updated);
+                                  try {
+                                    const { saveCustomer } = await import('../services/firebase');
+                                    await saveCustomer(updated);
+                                    setCustomer(updated);
+                                  } catch (error) {
+                                    console.error('Erro ao salvar novo endereço:', error);
+                                  }
                                 } else {
-                                  handleAddressSave();
+                                  await handleAddressSave();
                                 }
                                 setEditAddressId(null);
                                 setAddressForm({ id: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '', zipCode: '', country: 'Brasil', type: 'shipping' });
@@ -459,11 +478,8 @@ const Account: React.FC = () => {
                                   {/* Items Preview Section - Americanas Style */}
                                   <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
                                     {order.items.map((item, idx) => {
-                                      // Fallback for missing info in old orders
-                                      const products = JSON.parse(localStorage.getItem('versiory_products') || '[]');
-                                      const pInfo = products.find((p: any) => p.id === item.productId);
-                                      const img = item.image || pInfo?.image || 'https://images.unsplash.com/photo-1560393464-5c69a73c5770?w=200&h=200&fit=crop';
-                                      const name = item.name || pInfo?.name || 'Produto Versiory';
+                                      const img = item.image || 'https://images.unsplash.com/photo-1560393464-5c69a73c5770?w=200&h=200&fit=crop';
+                                      const name = item.name || 'Produto Versiory';
 
                                       return (
                                         <div key={idx} className="flex-shrink-0 flex items-center gap-3 bg-white/50 p-2 rounded-2xl border border-slate-100">
