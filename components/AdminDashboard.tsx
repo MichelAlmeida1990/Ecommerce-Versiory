@@ -204,7 +204,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [categories, products]);
 
   const stats = useMemo(() => {
-    const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+    const paidOrders = orders.filter(order => ['paid', 'processing', 'shipped', 'delivered'].includes(order.status));
+    const totalRevenue = paidOrders.reduce((sum, order) => sum + order.total, 0);
     return {
       totalProducts: products.length,
       totalOrders: orders.length,

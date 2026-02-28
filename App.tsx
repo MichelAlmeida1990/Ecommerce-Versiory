@@ -12,7 +12,17 @@ import LoginRegister from './components/LoginRegister';
 import ProductDetail from './components/ProductDetail';
 import { getProducts } from './services/firebase';
 
-const PrivateRoute: React.FC<{ children: React.ReactNode; isAuthenticated: boolean }> = ({ children, isAuthenticated }) => {
+const PrivateRoute: React.FC<{ children: React.ReactNode; isAuthenticated: boolean; isLoading: boolean }> = ({ children, isAuthenticated, isLoading }) => {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-versiory-coral border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">Verificando autenticação...</p>
+        </div>
+      </div>
+    );
+  }
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
@@ -24,6 +34,7 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<Category>('Todos');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [currentUserAddress, setCurrentUserAddress] = useState('');
   const [isCustomerOrdersOpen, setIsCustomerOrdersOpen] = useState(false);
@@ -62,11 +73,31 @@ const App: React.FC = () => {
         }
       } catch (error) {
         console.error('Erro ao carregar sessão:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
     loadProducts();
     loadUserSession();
+
+    // Listener para detectar quando a página está sendo recarregada
+    const handleBeforeUnload = async () => {
+      // Manter sessão ativa ao recarregar
+      if (isAuthenticated && currentUserEmail) {
+        try {
+          const { saveUserSession } = await import('./services/firebase');
+          await saveUserSession({
+            email: currentUserEmail,
+            address: currentUserAddress
+          });
+        } catch (error) {
+          console.error('Erro ao salvar sessão:', error);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     // Listen for addToCart custom events from ProductDetail
     const onAddToCartEvent = (e: Event) => {
@@ -86,8 +117,28 @@ const App: React.FC = () => {
       window.removeEventListener('addToCart', onAddToCartEvent as EventListener);
       window.removeEventListener('openProfileModal', openHandler);
       window.removeEventListener('closeProfileModal', closeHandler as EventListener);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
+
+  // Salvar sessão quando o estado de autenticação mudar
+  useEffect(() => {
+    const saveSession = async () => {
+      if (isAuthenticated && currentUserEmail) {
+        try {
+          const { saveUserSession } = await import('./services/firebase');
+          await saveUserSession({
+            email: currentUserEmail,
+            address: currentUserAddress
+          });
+        } catch (error) {
+          console.error('Erro ao salvar sessão:', error);
+        }
+      }
+    };
+
+    saveSession();
+  }, [isAuthenticated, currentUserEmail, currentUserAddress]);
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
@@ -220,7 +271,7 @@ const App: React.FC = () => {
             <Route
               path="/account"
               element={
-                <PrivateRoute isAuthenticated={isAuthenticated}>
+                <PrivateRoute isAuthenticated={isAuthenticated} isLoading={isLoading}>
                   <Account />
                 </PrivateRoute>
               }

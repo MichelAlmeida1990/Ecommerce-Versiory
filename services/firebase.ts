@@ -172,3 +172,48 @@ export const getUserSession = async (): Promise<UserSession | null> => {
 export const clearUserSession = async () => {
     await deleteDocument("userSessions", USER_SESSION_KEY);
 };
+
+// ---- Admin Session ----
+const ADMIN_SESSION_KEY = "versiory_admin_session";
+
+export interface AdminSession {
+    isAuthenticated: boolean;
+    loginTime: number;
+    lastActivity: number;
+}
+
+export const saveAdminSession = async (session: AdminSession) => {
+    await setDocument("adminSessions", ADMIN_SESSION_KEY, session);
+};
+
+export const getAdminSession = async (): Promise<AdminSession | null> => {
+    try {
+        const docRef = doc(db, "adminSessions", ADMIN_SESSION_KEY);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return docSnap.data() as AdminSession;
+        }
+        return null;
+    } catch (error) {
+        console.error('Erro ao buscar sessão admin:', error);
+        return null;
+    }
+};
+
+export const updateAdminActivity = async () => {
+    try {
+        const session = await getAdminSession();
+        if (session && session.isAuthenticated) {
+            await saveAdminSession({
+                ...session,
+                lastActivity: Date.now()
+            });
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar atividade admin:', error);
+    }
+};
+
+export const clearAdminSession = async () => {
+    await deleteDocument("adminSessions", ADMIN_SESSION_KEY);
+};
