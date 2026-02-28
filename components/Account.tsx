@@ -49,51 +49,33 @@ const Account: React.FC = () => {
     }
   }, [activeTab, customer]);
 
-  const loadOrders = (email: string) => {
-    const globalProducts = JSON.parse(localStorage.getItem('versiory_products') || '[]');
-
-    // Helper: enrich items with product data regardless of type mismatch (number vs string IDs)
-    const enrichItems = (orders: Order[]) => {
-      orders.forEach(order => {
+  const loadOrders = async (email: string) => {
+    try {
+      // Buscar do Firebase
+      const { getOrders } = await import('../services/firebase');
+      const allOrders = await getOrders();
+      const myOrders = allOrders.filter(o => o.customerEmail === email);
+      
+      // Enriquecer com dados dos produtos
+      const { getProducts } = await import('../services/firebase');
+      const products = await getProducts();
+      
+      myOrders.forEach(order => {
         order.items.forEach(item => {
-          // Use loose equality to handle number/string ID mismatch from legacy data
-          // eslint-disable-next-line eqeqeq
-          const p = globalProducts.find((gp: any) => gp.id == item.productId);
+          const p = products.find(gp => gp.id === item.productId);
           if (p) {
             if (!item.image) item.image = p.image;
             if (!item.name) item.name = p.name;
-            // Always fill description from catalog if missing
             if (!item.description) item.description = p.description;
           }
         });
       });
-      return orders;
-    };
-
-    // Primary source: versiory_orders (global order store)
-    const savedOrders = localStorage.getItem('versiory_orders');
-    let myOrders: Order[] = [];
-    if (savedOrders) {
-      const allOrders = JSON.parse(savedOrders) as Order[];
-      myOrders = allOrders.filter(o => o.customerEmail === email);
+      
+      setCustomerOrders(myOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    } catch (error) {
+      console.error('Erro ao carregar pedidos:', error);
+      setCustomerOrders([]);
     }
-
-    // Fallback: also grab orders from customer.orderHistory (legacy store)
-    // to cover orders placed before the versiory_orders key existed
-    const savedCustomers = localStorage.getItem('versiory_customers');
-    if (savedCustomers) {
-      const customers = JSON.parse(savedCustomers);
-      const customer = customers.find((c: any) => c.email === email);
-      if (customer?.orderHistory?.length) {
-        const legacy = (customer.orderHistory as Order[]).filter(
-          lo => !myOrders.some(o => o.id === lo.id)
-        );
-        myOrders = [...myOrders, ...legacy];
-      }
-    }
-
-    myOrders = myOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    setCustomerOrders(enrichItems(myOrders));
   };
 
   const loadCustomerData = () => {
@@ -430,30 +412,8 @@ const Account: React.FC = () => {
                   </div>
                 )}
 
-                {activeTab === 'orders' && (() => {
-                  // DEBUG: inspect what's in localStorage
-                  const rawOrders = localStorage.getItem('versiory_orders');
-                  const parsedOrders = rawOrders ? JSON.parse(rawOrders) : [];
-                  const rawCustomers = localStorage.getItem('versiory_customers');
-                  const parsedCustomers = rawCustomers ? JSON.parse(rawCustomers) : [];
-                  const myCustomer = parsedCustomers.find((c: any) => c.email === customer.email);
-                  const ordersInGlobal = parsedOrders.filter((o: any) => o.customerEmail === customer.email);
-                  const ordersInHistory = myCustomer?.orderHistory || [];
-
-                  return (
-                    <div className="animate-in fade-in duration-500">
-                      {/* PAINEL DE DEBUG - REMOVER DEPOIS */}
-                      <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-2xl text-xs font-mono">
-                        <p className="font-black text-yellow-800 mb-2">🔍 DEBUG - Dados no localStorage</p>
-                        <p>Email do usuário: <strong>{customer.email}</strong></p>
-                        <p>Pedidos em versiory_orders total: <strong>{parsedOrders.length}</strong></p>
-                        <p>Pedidos DESTE email em versiory_orders: <strong>{ordersInGlobal.length}</strong></p>
-                        <p>Emails únicos em versiory_orders: <strong>{[...new Set(parsedOrders.map((o: any) => o.customerEmail))].join(', ') || 'nenhum'}</strong></p>
-                        <p>Pedidos em customer.orderHistory: <strong>{ordersInHistory.length}</strong></p>
-                        <p>Estado customerOrders: <strong>{customerOrders.length}</strong></p>
-                      </div>
-
-                      <div className="flex items-center justify-between mb-8">
+                {activeTab === 'orders' && (
+                  <div className="animate-in fade-in duration-500">
                         <h3 className="text-2xl font-black text-slate-900">Histórico de Pedidos</h3>
                         <button
                           onClick={() => setIsOrdersOverlayOpen(true)}
@@ -536,9 +496,8 @@ const Account: React.FC = () => {
                           })}
                         </div>
                       )}
-                    </div>
-                  );
-                })()}
+                  </div>
+                )}
               </div>
             </div>
           </div>

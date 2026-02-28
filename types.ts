@@ -53,6 +53,7 @@ export interface Order {
   carrier?: string;
   notes?: string;
   salesChannel?: 'online' | 'physical';
+  paymentMethod?: string;
   emitNF?: boolean;
   nfeXml?: string;
 }

@@ -20,6 +20,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   isSubmitting
 }) => {
   const [customerForm, setCustomerForm] = useState({ name: '', phone: '', cpf: '' });
+  const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'debito' | 'credito'>('dinheiro');
   const [emitNF, setEmitNF] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [showDanfe, setShowDanfe] = useState(false);
@@ -69,6 +70,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       date: new Date().toISOString(),
       total,
       status: 'delivered',
+      paymentMethod,
       items: cart.map(item => ({
         productId: item.product.id,
         name: item.product.name,
@@ -178,6 +180,32 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
               placeholder="(11) 98765-4321"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-black text-gray-700 mb-2">Forma de Pagamento *</label>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { value: 'dinheiro', label: 'Dinheiro', icon: '💵' },
+                { value: 'pix', label: 'PIX', icon: '📱' },
+                { value: 'debito', label: 'Débito', icon: '💳' },
+                { value: 'credito', label: 'Crédito', icon: '💳' }
+              ].map(method => (
+                <button
+                  key={method.value}
+                  type="button"
+                  onClick={() => setPaymentMethod(method.value as any)}
+                  className={`p-3 rounded-xl border-2 transition-all ${
+                    paymentMethod === method.value
+                      ? 'border-versiory-coral bg-versiory-coral/10 text-versiory-coral'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-2xl mb-1 block">{method.icon}</span>
+                  <span className="text-sm font-bold">{method.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
