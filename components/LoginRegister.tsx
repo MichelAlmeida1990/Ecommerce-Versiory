@@ -64,6 +64,14 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
     const savedCustomers = localStorage.getItem('versiory_customers');
     let customers: Customer[] = savedCustomers ? JSON.parse(savedCustomers) : [];
 
+    // Usuário de teste padrão
+    const testUser = {
+      email: 'teste@versiory.com',
+      password: '123456',
+      name: 'Usuário Teste',
+      address: 'Rua Teste, 123 - São Paulo/SP'
+    };
+
     if (isRegister) {
       if (!form.name || !address.zipCode || !address.street || !address.number) {
         setError('Preencha todos os campos obrigatórios.');
@@ -147,7 +155,17 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
         onLoginSuccess?.(legacyUser.email, legacyUser.address || '');
         onClose?.();
         
-        // Redirecionar para home se não houver callback
+        if (!onLoginSuccess) {
+          navigate('/');
+          window.location.reload();
+        }
+      } else if (form.email === testUser.email && form.password === testUser.password) {
+        // Login com usuário de teste
+        const userSession = { email: testUser.email, name: testUser.name, address: testUser.address };
+        localStorage.setItem('versiory_user', JSON.stringify(userSession));
+        onLoginSuccess?.(testUser.email, testUser.address);
+        onClose?.();
+        
         if (!onLoginSuccess) {
           navigate('/');
           window.location.reload();
@@ -173,6 +191,13 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
           </button>
         )}
         <h2 className="text-2xl font-bold mb-4">{isRegister ? 'Cadastro' : 'Login'}</h2>
+        {!isRegister && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+            <p className="font-bold text-blue-900 mb-1">👤 Usuário de Teste:</p>
+            <p className="text-blue-700">Email: <code className="bg-blue-100 px-2 py-0.5 rounded">teste@versiory.com</code></p>
+            <p className="text-blue-700">Senha: <code className="bg-blue-100 px-2 py-0.5 rounded">123456</code></p>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {isRegister && (
             <input
