@@ -25,7 +25,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
           </svg>
         </button>
 
-        <div className="lg:w-1/2 h-64 sm:h-80 lg:h-auto">
+        <div className="lg:w-1/2 h-48 sm:h-64 md:h-80 lg:h-auto">
           <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
         </div>
 
