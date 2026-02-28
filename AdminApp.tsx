@@ -8,10 +8,21 @@ import {
   InventoryMovement,
   Expense
 } from './types';
+import { PRODUCTS } from './constants';
 import AdminLogin from './components/AdminLogin';
 import AdminDashboard from './components/AdminDashboard';
+import {
+  getProducts,
+  getCategories,
+  getOrders,
+  getCustomers,
+  getTracking,
+  getInventoryMovements,
+  getExpenses,
+  saveProduct,
+  saveCategory
+} from './services/firebase';
 
-// Senha admin simples - em produção, usar sistema mais seguro
 const ADMIN_PASSWORD = 'versiory2024';
 const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes'];
 
@@ -26,128 +37,53 @@ const AdminApp: React.FC = () => {
   const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
 
-  // Carregar dados do localStorage ou usar valores padrão
+  // Carregar dados do Firebase
   useEffect(() => {
-    const savedProducts = localStorage.getItem('versiory_products');
+    const loadData = async () => {
+      try {
+        const [productsData, categoriesData, ordersData, customersData, trackingData, inventoryData, expensesData] = await Promise.all([
+          getProducts(),
+          getCategories(),
+          getOrders(),
+          getCustomers(),
+          getTracking(),
+          getInventoryMovements(),
+          getExpenses()
+        ]);
 
-    const loadDefaults = async () => {
-      const { PRODUCTS } = await import('./constants');
-      const defaultProducts = PRODUCTS.map(product => ({
-        ...product,
-        stock: product.stock ?? 20,
-        sizes: product.sizes ?? ''
-      }));
-      setProducts(defaultProducts);
-      localStorage.setItem('versiory_products', JSON.stringify(defaultProducts));
-      return defaultProducts;
-    };
+        // Se não houver produtos, inicializar com dados padrão
+        if (productsData.length === 0) {
+          const defaultProducts = PRODUCTS.map(p => ({ ...p, stock: p.stock ?? 20, sizes: p.sizes ?? '' }));
+          await Promise.all(defaultProducts.map(p => saveProduct(p)));
+          setProducts(defaultProducts);
+        } else {
+          setProducts(productsData);
+        }
 
-    const normalizeProducts = (list: Product[]) =>
-      list.map(product => ({
-        ...product,
-        stock: product.stock ?? 0,
-        sizes: product.sizes ?? ''
-      }));
-
-    const initProducts = savedProducts ? normalizeProducts(JSON.parse(savedProducts)) : null;
-
-    const loadAll = async () => {
-      const productList = initProducts ?? await loadDefaults();
-
-      const savedCategories = localStorage.getItem('versiory_categories');
-      const categoryList = savedCategories
-        ? (JSON.parse(savedCategories) as CategoryItem[])
-        : BASE_CATEGORIES.map(category => ({
-            id: category.toLowerCase().replace(/\s+/g, '_'),
-            name: category,
-            description: `Produtos de ${category.toLowerCase()}`
+        // Se não houver categorias, inicializar com categorias base
+        if (categoriesData.length === 0) {
+          const defaultCategories = BASE_CATEGORIES.map(cat => ({
+            id: cat.toLowerCase().replace(/\s+/g, '_'),
+            name: cat,
+            description: `Produtos de ${cat.toLowerCase()}`
           }));
-      if (!savedCategories) {
-        localStorage.setItem('versiory_categories', JSON.stringify(categoryList));
-      }
+          await Promise.all(defaultCategories.map(c => saveCategory(c)));
+          setCategories(defaultCategories);
+        } else {
+          setCategories(categoriesData);
+        }
 
-      const savedOrders = localStorage.getItem('versiory_orders');
-      const orderList = savedOrders
-        ? (JSON.parse(savedOrders) as Order[])
-        : [
-            {
-              id: 'ORD-001',
-              customerId: 1,
-              customerName: 'Joao Silva',
-              date: new Date('2024-01-15').toISOString(),
-              total: 899.90,
-              status: 'paid',
-              items: [{ productId: productList[0]?.id || 1, name: 'Headphone Wireless Pro', quantity: 1, price: 899.90 }],
-              notes: ''
-            },
-            {
-              id: 'ORD-002',
-              customerId: 2,
-              customerName: 'Maria Santos',
-              date: new Date('2024-01-16').toISOString(),
-              total: 1249.00,
-              status: 'processing',
-              items: [{ productId: productList[1]?.id || 2, name: 'Relogio Inteligente S3', quantity: 1, price: 1249.00 }],
-              notes: ''
-            }
-          ];
-      if (!savedOrders) {
-        localStorage.setItem('versiory_orders', JSON.stringify(orderList));
+        setOrders(ordersData);
+        setCustomers(customersData);
+        setTracking(trackingData);
+        setInventoryMovements(inventoryData);
+        setExpenses(expensesData);
+      } catch (error) {
+        console.error('Erro ao carregar dados do Firebase:', error);
       }
-
-      const savedCustomers = localStorage.getItem('versiory_customers');
-      const customerList = savedCustomers
-        ? (JSON.parse(savedCustomers) as Customer[])
-        : [
-            {
-              id: 1,
-              name: 'Joao Silva',
-              email: 'joao@email.com',
-              phone: '(11) 98765-4321',
-              totalOrders: 1,
-              totalSpent: 899.90
-            },
-            {
-              id: 2,
-              name: 'Maria Santos',
-              email: 'maria@email.com',
-              phone: '(11) 91234-5678',
-              totalOrders: 1,
-              totalSpent: 1249.00
-            }
-          ];
-      if (!savedCustomers) {
-        localStorage.setItem('versiory_customers', JSON.stringify(customerList));
-      }
-
-      const savedTracking = localStorage.getItem('versiory_tracking');
-      const trackingList = savedTracking ? (JSON.parse(savedTracking) as TrackingItem[]) : [];
-      if (!savedTracking) {
-        localStorage.setItem('versiory_tracking', JSON.stringify(trackingList));
-      }
-
-      const savedInventory = localStorage.getItem('versiory_inventory_movements');
-      const inventoryList = savedInventory ? (JSON.parse(savedInventory) as InventoryMovement[]) : [];
-      if (!savedInventory) {
-        localStorage.setItem('versiory_inventory_movements', JSON.stringify(inventoryList));
-      }
-
-      const savedExpenses = localStorage.getItem('versiory_expenses');
-      const expenseList = savedExpenses ? (JSON.parse(savedExpenses) as Expense[]) : [];
-      if (!savedExpenses) {
-        localStorage.setItem('versiory_expenses', JSON.stringify(expenseList));
-      }
-
-      setProducts(productList);
-      setCategories(categoryList);
-      setOrders(orderList);
-      setCustomers(customerList);
-      setTracking(trackingList);
-      setInventoryMovements(inventoryList);
-      setExpenses(expenseList);
     };
 
-    loadAll();
+    loadData();
   }, []);
 
   const handleLogin = (password: string) => {
@@ -166,37 +102,30 @@ const AdminApp: React.FC = () => {
 
   const handleUpdateProducts = (updatedProducts: Product[]) => {
     setProducts(updatedProducts);
-    localStorage.setItem('versiory_products', JSON.stringify(updatedProducts));
   };
 
   const handleUpdateCategories = (updatedCategories: CategoryItem[]) => {
     setCategories(updatedCategories);
-    localStorage.setItem('versiory_categories', JSON.stringify(updatedCategories));
   };
 
   const handleUpdateOrders = (updatedOrders: Order[]) => {
     setOrders(updatedOrders);
-    localStorage.setItem('versiory_orders', JSON.stringify(updatedOrders));
   };
 
   const handleUpdateCustomers = (updatedCustomers: Customer[]) => {
     setCustomers(updatedCustomers);
-    localStorage.setItem('versiory_customers', JSON.stringify(updatedCustomers));
   };
 
   const handleUpdateTracking = (updatedTracking: TrackingItem[]) => {
     setTracking(updatedTracking);
-    localStorage.setItem('versiory_tracking', JSON.stringify(updatedTracking));
   };
 
   const handleUpdateInventoryMovements = (updatedMovements: InventoryMovement[]) => {
     setInventoryMovements(updatedMovements);
-    localStorage.setItem('versiory_inventory_movements', JSON.stringify(updatedMovements));
   };
 
   const handleUpdateExpenses = (updatedExpenses: Expense[]) => {
     setExpenses(updatedExpenses);
-    localStorage.setItem('versiory_expenses', JSON.stringify(updatedExpenses));
   };
 
   if (!isAuthenticated) {

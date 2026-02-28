@@ -35,7 +35,6 @@ const Checkout: React.FC<CheckoutProps> = ({
 
   const handleCheckout = async () => {
     if (!customerEmail || !customerAddress) {
-      // Apenas fecha o modal, pois o Cart já cuida de abrir o login/cadastro
       if (onClose) onClose();
       return;
     }
@@ -43,8 +42,9 @@ const Checkout: React.FC<CheckoutProps> = ({
     setIsProcessing(true);
 
     try {
+      const { saveOrder, getCustomers, saveCustomer } = await import('../services/firebase');
+
       const orderId = generateOrderId();
-      // Buscar nome completo do localStorage (versiory_user)
       let fullName = '';
       try {
         const savedUser = localStorage.getItem('versiory_user');
@@ -65,7 +65,7 @@ const Checkout: React.FC<CheckoutProps> = ({
 
       const orderData: Order = {
         id: orderId,
-        customerId: 0, // Will be updated below
+        customerId: 0,
         customerEmail: customerEmail,
         customerName: fullName,
         date: new Date().toISOString(),
@@ -82,26 +82,22 @@ const Checkout: React.FC<CheckoutProps> = ({
         notes: orderNotes
       };
 
-      // Salvar pedido no localStorage (compatível com admin e CustomerOrders)
-      const existingOrders = JSON.parse(localStorage.getItem('versiory_orders') || '[]');
-      existingOrders.push({ ...orderData, emitNF });
-      localStorage.setItem('versiory_orders', JSON.stringify(existingOrders));
-
-      // Atualizar informações do cliente e seu histórico pessoal
-      const savedCustomers = localStorage.getItem('versiory_customers');
-      let customers: Customer[] = savedCustomers ? JSON.parse(savedCustomers) : [];
+      // Atualizar no Firebase
+      const customers = await getCustomers();
       const customerIndex = customers.findIndex((c) => c.email === customerEmail);
 
+      let targetCustomer: Customer;
+
       if (customerIndex >= 0) {
-        customers[customerIndex].totalOrders = (customers[customerIndex].totalOrders || 0) + 1;
-        customers[customerIndex].totalSpent = (customers[customerIndex].totalSpent || 0) + total;
-        if (fullName) customers[customerIndex].name = fullName;
-        // Sincronizar histórico pessoal
-        if (!customers[customerIndex].orderHistory) customers[customerIndex].orderHistory = [];
-        customers[customerIndex].orderHistory.push({ ...orderData, emitNF } as any);
-        orderData.customerId = customers[customerIndex].id;
+        targetCustomer = customers[customerIndex];
+        targetCustomer.totalOrders = (targetCustomer.totalOrders || 0) + 1;
+        targetCustomer.totalSpent = (targetCustomer.totalSpent || 0) + total;
+        if (fullName) targetCustomer.name = fullName;
+        if (!targetCustomer.orderHistory) targetCustomer.orderHistory = [];
+        targetCustomer.orderHistory.push({ ...orderData, emitNF } as any);
+        orderData.customerId = targetCustomer.id;
       } else {
-        const newCustomer: Customer = {
+        targetCustomer = {
           id: Date.now(),
           name: fullName,
           email: customerEmail,
@@ -112,21 +108,19 @@ const Checkout: React.FC<CheckoutProps> = ({
           createdAt: new Date().toISOString(),
           orderHistory: [{ ...orderData, emitNF } as any]
         };
-        customers.push(newCustomer);
-        orderData.customerId = newCustomer.id;
+        orderData.customerId = targetCustomer.id;
       }
-      localStorage.setItem('versiory_customers', JSON.stringify(customers));
 
-      // A emissão de NF-e agora é processada após a confirmação do pagamento pelo administrador.
-      // Removemos a chamada automática de generateInvoice deste ponto.
+      await Promise.all([
+        saveOrder(orderData),
+        saveCustomer(targetCustomer)
+      ]);
+
       if (emitNF) {
         setInvoiceStatus('generating');
-        // Apenas para efeito visual no frontend imediato, simulamos o registro da solicitação
         setTimeout(() => setInvoiceStatus('none'), 2000);
       }
 
-      // Se emitir NF, o redirecionamento para o WhatsApp se torna manual no painel de sucesso
-      // para garantir que o usuário veja e possa baixar a nota fiscal primeiro.
       if (paymentMethod === 'whatsapp' && !emitNF) {
         const message = buildWhatsAppMessage(orderId, fullName);
         const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;

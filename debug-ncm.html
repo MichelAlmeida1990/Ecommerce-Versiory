@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug NCM - Versiory Store</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .product-card {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .product-name {
+            font-weight: bold;
+            font-size: 18px;
+            color: #2c3e50;
+        }
+        .ncm-ok {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .ncm-missing {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .field {
+            margin: 5px 0;
+            padding: 5px;
+            background: #f8f9fa;
+            border-left: 3px solid #3498db;
+            padding-left: 10px;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        .stats {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug NCM - Produtos Cadastrados</h1>
+    <div>
+        <button onclick="loadProducts()">🔄 Carregar Produtos do Firebase</button>
+        <button onclick="checkLocalStorage()">💾 Ver LocalStorage</button>
+    </div>
+    
+    <div class="stats" id="stats"></div>
+    <div id="products"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCS6qCKhiBQoc5ZGkWzAEZOdycXMnwMzgY",
+            authDomain: "versiory-store.firebaseapp.com",
+            projectId: "versiory-store",
+            storageBucket: "versiory-store.firebasestorage.app",
+            messagingSenderId: "453657944560",
+            appId: "1:453657944560:web:a45e08446b7c21ee88bd35"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.loadProducts = async function() {
+            const productsDiv = document.getElementById('products');
+            const statsDiv = document.getElementById('stats');
+            productsDiv.innerHTML = '<p>Carregando produtos...</p>';
+            
+            try {
+                const querySnapshot = await getDocs(collection(db, "products"));
+                const products = [];
+                
+                querySnapshot.forEach((doc) => {
+                    products.push({ id: doc.id, ...doc.data() });
+                });
+
+                if (products.length === 0) {
+                    productsDiv.innerHTML = '<p>Nenhum produto encontrado no Firebase.</p>';
+                    return;
+                }
+
+                let withNCM = 0;
+                let withoutNCM = 0;
+                let html = '';
+
+                products.forEach(product => {
+                    const hasNCM = product.ncm && product.ncm.trim() !== '';
+                    if (hasNCM) withNCM++;
+                    else withoutNCM++;
+
+                    html += `
+                        <div class="product-card">
+                            <div class="product-name">${product.name || 'Sem nome'}</div>
+                            <div class="field">ID: ${product.id}</div>
+                            <div class="field">Categoria: ${product.category || 'N/A'}</div>
+                            <div class="field">
+                                NCM: ${hasNCM ? 
+                                    `<span class="ncm-ok">✓ ${product.ncm}</span>` : 
+                                    `<span class="ncm-missing">✗ NÃO CADASTRADO</span>`
+                                }
+                            </div>
+                            <div class="field">CFOP: ${product.cfop || 'N/A'}</div>
+                            <div class="field">CST: ${product.cst || 'N/A'}</div>
+                            <div class="field">Origem: ${product.origem ?? 'N/A'}</div>
+                            <div class="field">Unidade: ${product.unidade || 'N/A'}</div>
+                            <div class="field">Peso: ${product.peso || 'N/A'} kg</div>
+                        </div>
+                    `;
+                });
+
+                statsDiv.innerHTML = `
+                    <h3>📊 Estatísticas</h3>
+                    <p><strong>Total de produtos:</strong> ${products.length}</p>
+                    <p><strong class="ncm-ok">Com NCM:</strong> ${withNCM}</p>
+                    <p><strong class="ncm-missing">Sem NCM:</strong> ${withoutNCM}</p>
+                `;
+
+                productsDiv.innerHTML = html;
+            } catch (error) {
+                console.error('Erro ao carregar produtos:', error);
+                productsDiv.innerHTML = `<p style="color: red;">Erro: ${error.message}</p>`;
+            }
+        };
+
+        window.checkLocalStorage = function() {
+            const productsDiv = document.getElementById('products');
+            const adminProducts = localStorage.getItem('versiory_admin_products');
+            
+            if (!adminProducts) {
+                productsDiv.innerHTML = '<p>Nenhum produto encontrado no LocalStorage.</p>';
+                return;
+            }
+
+            try {
+                const products = JSON.parse(adminProducts);
+                let html = '<h3>💾 Produtos no LocalStorage:</h3>';
+                
+                products.forEach(product => {
+                    const hasNCM = product.ncm && product.ncm.trim() !== '';
+                    html += `
+                        <div class="product-card">
+                            <div class="product-name">${product.name}</div>
+                            <div class="field">
+                                NCM: ${hasNCM ? 
+                                    `<span class="ncm-ok">✓ ${product.ncm}</span>` : 
+                                    `<span class="ncm-missing">✗ NÃO CADASTRADO</span>`
+                                }
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                productsDiv.innerHTML = html;
+            } catch (error) {
+                productsDiv.innerHTML = `<p style="color: red;">Erro ao ler LocalStorage: ${error.message}</p>`;
+            }
+        };
+
+        // Carregar automaticamente ao abrir a página
+        window.loadProducts();
+    </script>
+</body>
+</html>

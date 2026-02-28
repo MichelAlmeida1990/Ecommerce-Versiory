@@ -52,6 +52,9 @@ export interface Order {
   trackingCode?: string;
   carrier?: string;
   notes?: string;
+  salesChannel?: 'online' | 'physical';
+  emitNF?: boolean;
+  nfeXml?: string;
 }
 
 export interface Address {
@@ -122,5 +125,20 @@ export interface NfeSettings {
   apiToken: string;
   ambiente: 'homologacao' | 'producao';
   serie: string;
-  certificadoA1?: string; // Base64 do certificado
+  certificadoA1?: string;
+}
+
+export interface FiscalConfig {
+  cnpj: string;
+  razaoSocial: string;
+  nomeFantasia: string;
+  inscricaoEstadual: string;
+  endereco: string;
+  cidade: string;
+  estado: string;
+  cep: string;
+  codigoIbgeMunicipio: string;
+  ambiente: 'homologacao' | 'producao';
+  serie: string;
+  numeroAtual: number;
 }

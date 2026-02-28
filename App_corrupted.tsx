@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Product, CartItem, Category } from './types';
 import Header from './components/Header';
 import ProductCard from './components/ProductCard';
@@ -10,13 +10,13 @@ import CustomerOrders from './components/CustomerOrders';
 import Account from './components/Account';
 import LoginRegister from './components/LoginRegister';
 import ProductDetail from './components/ProductDetail';
-import { getProducts } from './services/firebase';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode; isAuthenticated: boolean }> = ({ children, isAuthenticated }) => {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -30,28 +30,23 @@ const App: React.FC = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        const productsData = await getProducts();
-        if (productsData.length > 0) {
-          setProducts(productsData);
-        } else {
-          // Fallback para constants se Firebase estiver vazio
-          import('./constants').then(({ PRODUCTS }) => {
-            setProducts(PRODUCTS);
-          });
-        }
-      } catch (error) {
-        console.error('Erro ao carregar produtos:', error);
-        // Fallback para constants em caso de erro
-        import('./constants').then(({ PRODUCTS }) => {
-          setProducts(PRODUCTS);
-        });
-      }
-    };
+  const handleLoginSuccess = (email: string, address: string) => {
+    setCurrentUserEmail(email);
+    setCurrentUserAddress(address);
+    setIsAuthenticated(true);
+    navigate('/');
+  };
 
-    loadProducts();
+  useEffect(() => {
+    const saved = localStorage.getItem('versiory_products');
+    if (saved) {
+      setProducts(JSON.parse(saved));
+    } else {
+      import('./constants').then(({ PRODUCTS }) => {
+        setProducts(PRODUCTS);
+        localStorage.setItem('versiory_products', JSON.stringify(PRODUCTS));
+      });
+    }
 
     const savedUser = localStorage.getItem('versiory_user');
     if (savedUser) {
@@ -67,7 +62,7 @@ const App: React.FC = () => {
     const onAddToCartEvent = (e: Event) => {
       const evt = e as CustomEvent<{ product: Product }>;
       if (evt.detail?.product) {
-        addToCart(evt.detail.product);
+        handleAddToCart(evt.detail.product);
         setIsCartOpen(true);
       }
     };
@@ -84,120 +79,150 @@ const App: React.FC = () => {
     };
   }, []);
 
-  const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
-      const q = searchQuery.trim().toLowerCase();
-      const matchesSearch = !q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
-      return matchesCategory && matchesSearch;
-    });
-  }, [products, activeCategory, searchQuery]);
-
-  const addToCart = (product: Product) => {
-    setCartItems(prev => {
-      const found = prev.find(i => i.id === product.id);
-      if (found) return prev.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
-      return [...prev, { ...product, quantity: 1 }];
-    });
-    setToastMessage(`${product.name} adicionado ao carrinho`);
-    setTimeout(() => setToastMessage(''), 2200);
-  };
-
-  const updateQuantity = (id: number, delta: number) => {
-    setCartItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i));
-  };
-
-  const removeFromCart = (id: number) => setCartItems(prev => prev.filter(i => i.id !== id));
-
-  const handleOrderComplete = () => {
-    setCartItems([]);
-    setToastMessage('Pedido realizado com sucesso!');
+  const handleAddToCart = (product: Product) => {
+    const existingItem = cartItems.find(item => item.id === product.id);
+    if (existingItem) {
+      setCartItems(cartItems.map(item => 
+        item.id === product.id 
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
+      ));
+    } else {
+      setCartItems([...cartItems, { 
+        id: product.id, 
+        name: product.name, 
+        price: product.price, 
+        quantity: 1,
+        image: product.image,
+        category: product.category
+      }]);
+    }
+    setToastMessage(`${product.name} adicionado ao carrinho!`);
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  const categories: Category[] = ['Todos', 'Eletrônicos', 'Moda', 'Casa', 'Esportes'];
+  const handleUpdateQuantity = (id: number, delta: number) => {
+    setCartItems(cartItems.map(item => {
+      if (item.id === id) {
+        const newQuantity = item.quantity + delta;
+        return newQuantity > 0 ? { ...item, quantity: newQuantity } : item;
+      }
+      return item;
+    }).filter(item => item.quantity > 0));
+  };
+
+  const handleRemoveFromCart = (id: number) => {
+    setCartItems(cartItems.filter(item => item.id !== id));
+  };
+
+  const handleOpenCustomerOrders = () => {
+    setIsCustomerOrdersOpen(true);
+  };
+
+  const handleCloseCustomerOrders = () => {
+    setIsCustomerOrdersOpen(false);
+  };
+
+  const handleOrderComplete = () => {
+    setCartItems([]);
+    setToastMessage('Pedido realizado com sucesso! Você receberá atualizações por email.');
+    setTimeout(() => setToastMessage(''), 3000);
+  };
+
+  const filteredProducts = useMemo(() => {
+    let filtered = products;
+    
+    if (searchQuery) {
+      filtered = filtered.filter(product => 
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.description.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    if (activeCategory !== 'Todos') {
+      filtered = filtered.filter(product => product.category === activeCategory);
+    }
+    
+    return filtered;
+  }, [products, searchQuery, activeCategory]);
+
+  const categories = useMemo(() => {
+    const cats = new Set(products.map(p => p.category));
+    return ['Todos', ...Array.from(cats)];
+  }, [products]);
 
   return (
     <Router>
-      <div className="min-h-screen flex flex-col selection:bg-[#ffd7c8]">
-        <Header
-          cartCount={cartItems.reduce((s, i) => s + i.quantity, 0)}
-          onCartClick={() => setIsCartOpen(true)}
-          onProfileClick={() => window.dispatchEvent(new CustomEvent('openProfileModal'))}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+      <div className="min-h-screen bg-versiory-sand">
+        <Header 
+          cartItems={cartItems}
+          onCartOpen={() => setIsCartOpen(true)}
+          onProfileOpen={() => setIsProfileOpen(true)}
           isAuthenticated={isAuthenticated}
-          userEmail={currentUserEmail}
-          onLogout={() => {
-            setIsAuthenticated(false);
-            setCurrentUserEmail('');
-            setCurrentUserAddress('');
-            localStorage.removeItem('versiory_user');
-            setToastMessage('Logout realizado com sucesso!');
-            setTimeout(() => setToastMessage(''), 3000);
-          }}
+          currentUserEmail={currentUserEmail}
         />
-
-        <main className="flex-1 max-w-7xl mx-auto w-full px-4 md:px-8 pt-28">
+        
+        <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
           <Routes>
-            <Route
-              path="/"
-              element={
-                <>
-                  {/* Hero Banner com Imagem */}
-                  <section className="mb-12 relative rounded-3xl overflow-hidden shadow-2xl h-[400px]">
-                    <img
-                      src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&h=400&fit=crop"
-                      alt="Banner"
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent"></div>
-                    <div className="relative h-full flex items-center px-8 md:px-12">
-                      <div className="max-w-2xl">
-                        <h1 className="text-4xl md:text-6xl font-black mb-4 text-white drop-shadow-lg">Versiory Store</h1>
-                        <p className="text-xl md:text-2xl font-medium mb-6 text-white drop-shadow-md">Transformando ideias em sucesso.</p>
-                        <div className="flex gap-4 flex-wrap">
-                          <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                            🚀 Frete Grátis Brasil
-                          </div>
-                          <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                            🔒 Pagamento Seguro
-                          </div>
-                          <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                            ⚡ Entrega Rápida
-                          </div>
-                        </div>
-                      </div>
+            <Route path="/" element={
+              <div>
+                <div className="mb-8">
+                  <h1 className="text-4xl font-bold text-gray-900 mb-4">
+                    Bem-vindo à <span className="text-versiory-coral">Versiory Store</span>
+                  </h1>
+                  <p className="text-gray-600 text-lg">Transformando ideias em sucesso</p>
+                </div>
+
+                <div className="mb-8">
+                  <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                    <div className="flex-1 max-w-md">
+                      <input
+                        type="text"
+                        placeholder="Buscar produtos..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                      />
                     </div>
-                  </section>
-
-                  <section className="mb-8">
-                    <h2 className="text-2xl font-black text-slate-900 mb-2">Categorias</h2>
-                    <p className="text-slate-600">Explore nossos produtos por categoria</p>
-                  </section>
-
-                  <div id="category-scroll" className="flex gap-3 overflow-x-auto pb-6 mb-8 scrollbar-hide">
-                    {categories.map(cat => (
-                      <button
-                        key={cat}
-                        onClick={() => setActiveCategory(cat)}
-                        className={`px-6 py-3 rounded-xl font-bold whitespace-nowrap transition-all ${activeCategory === cat
-                          ? 'bg-versiory-ink text-white shadow-lg scale-105'
-                          : 'bg-blue-50 text-slate-700 hover:bg-blue-100 hover:scale-105'
+                    <div className="flex gap-2 flex-wrap">
+                      {categories.map(category => (
+                        <button
+                          key={category}
+                          onClick={() => setActiveCategory(category as Category)}
+                          className={`px-4 py-2 rounded-xl font-medium transition-all ${
+                            activeCategory === category
+                              ? 'bg-versiory-coral text-white'
+                              : 'bg-white text-gray-700 hover:bg-gray-100'
                           }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
+                        >
+                          {category}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                </div>
 
-                  <section className="mb-6">
-                    <h2 className="text-2xl font-black text-slate-900 mb-2">Produtos em Destaque</h2>
-                    <p className="text-slate-600">{filteredProducts.length} produtos encontrados</p>
-                  </section>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {filteredProducts.map(product => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onAddToCart={handleAddToCart}
+                      onViewDetails={setSelectedProduct}
+                    />
+                  ))}
+                </div>
+              </div>
+            } />
 
-                  <div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {filteredProducts.map(p => (
+            <Route
+              path="/product/:id"
+              element={
+                <ProductDetail
+                  products={products}
+                  onAddToCart={handleAddToCart}
+                  onBack={() => navigate('/')}
+                />
                       <ProductCard key={p.id} product={p} onAddToCart={addToCart} onViewDetails={setSelectedProduct} />
                     ))}
                   </div>
@@ -216,7 +241,7 @@ const App: React.FC = () => {
               }
             />
 
-            <Route path="/login" element={<LoginRegister />} />
+            <Route path="/login" element={<LoginRegister onClose={() => {}} onLoginSuccess={handleLoginSuccess} />} />
           </Routes>
         </main>
 
@@ -299,18 +324,10 @@ const App: React.FC = () => {
               onClick={() => setIsProfileOpen(false)}
             />
             <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6">
-              <LoginRegister 
-                onClose={() => setIsProfileOpen(false)}
-                onLoginSuccess={(email, address) => {
-                  setIsAuthenticated(true);
-                  setCurrentUserEmail(email);
-                  setCurrentUserAddress(address);
-                  localStorage.setItem('versiory_user', JSON.stringify({ email, address }));
-                  setIsProfileOpen(false);
-                  setToastMessage('Login realizado com sucesso!');
-                  setTimeout(() => setToastMessage(''), 3000);
-                }}
-              />
+              <LoginRegister onClose={() => setIsProfileOpen(false)} onLoginSuccess={(email, address) => {
+              handleLoginSuccess(email, address);
+              setIsProfileOpen(false);
+            }} />
             </div>
           </div>
         )}
@@ -319,4 +336,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
+export default AppContent;

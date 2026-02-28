@@ -4,8 +4,8 @@ import { Customer, Address } from '../types';
 import { fetchAddressByCep } from '../services/cep';
 
 interface LoginRegisterProps {
-  onClose: () => void;
-  onLoginSuccess: (email: string, address: string) => void;
+  onClose?: () => void;
+  onLoginSuccess?: (email: string, address: string) => void;
 }
 
 const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }) => {
@@ -114,8 +114,14 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
       };
       localStorage.setItem('versiory_user', JSON.stringify(userSession));
 
-      onLoginSuccess(userSession.email, userSession.address);
-      onClose();
+      onLoginSuccess?.(userSession.email, userSession.address);
+      onClose?.();
+      
+      // Redirecionar para home se não houver callback
+      if (!onLoginSuccess) {
+        navigate('/');
+        window.location.reload();
+      }
     } else {
       const customer = customers.find(c => c.email === form.email);
 
@@ -129,11 +135,23 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
         const userSession = { email: customer.email, name: customer.name, address: formattedAddr };
 
         localStorage.setItem('versiory_user', JSON.stringify(userSession));
-        onLoginSuccess(userSession.email, userSession.address);
-        onClose();
+        onLoginSuccess?.(userSession.email, userSession.address);
+        onClose?.();
+        
+        // Redirecionar para home se não houver callback
+        if (!onLoginSuccess) {
+          navigate('/');
+          window.location.reload();
+        }
       } else if (legacyUser && legacyUser.email === form.email && legacyUser.password === form.password) {
-        onLoginSuccess(legacyUser.email, legacyUser.address || '');
-        onClose();
+        onLoginSuccess?.(legacyUser.email, legacyUser.address || '');
+        onClose?.();
+        
+        // Redirecionar para home se não houver callback
+        if (!onLoginSuccess) {
+          navigate('/');
+          window.location.reload();
+        }
       } else {
         setError('E-mail ou senha inválidos.');
       }
@@ -142,7 +160,18 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-md">
-      <div className="bg-white rounded-xl shadow p-6">
+      <div className="bg-white rounded-xl shadow p-6 relative">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            type="button"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
         <h2 className="text-2xl font-bold mb-4">{isRegister ? 'Cadastro' : 'Login'}</h2>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {isRegister && (

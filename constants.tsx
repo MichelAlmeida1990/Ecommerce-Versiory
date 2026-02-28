@@ -11,7 +11,13 @@ export const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80",
     description: "Cancelamento de ruído ativo e som de alta fidelidade para uma experiência imersiva.",
     rating: 4.8,
-    reviews: 124
+    reviews: 124,
+    ncm: '8518.30.00',
+    cfop: '5102',
+    cst: '00',
+    origem: 0,
+    unidade: 'UN',
+    peso: 0.25
   },
   {
     id: 2,
@@ -21,7 +27,13 @@ export const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&q=80",
     description: "Monitore sua saúde e receba notificações direto no seu pulso com elegância.",
     rating: 4.6,
-    reviews: 89
+    reviews: 89,
+    ncm: '9102.11.00',
+    cfop: '5102',
+    cst: '00',
+    origem: 0,
+    unidade: 'UN',
+    peso: 0.05
   },
   {
     id: 3,
@@ -31,7 +43,13 @@ export const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&q=80",
     description: "Leveza e amortecimento superior para suas corridas diárias.",
     rating: 4.9,
-    reviews: 256
+    reviews: 256,
+    ncm: '6404.11.00',
+    cfop: '5102',
+    cst: '00',
+    origem: 0,
+    unidade: 'PAR',
+    peso: 0.35
   },
   {
     id: 4,
@@ -41,7 +59,13 @@ export const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800&q=80",
     description: "Estilo e conforto para os dias mais frios na cidade.",
     rating: 4.5,
-    reviews: 42
+    reviews: 42,
+    ncm: '6201.93.00',
+    cfop: '5102',
+    cst: '00',
+    origem: 0,
+    unidade: 'UN',
+    peso: 0.6
   },
   {
     id: 5,
@@ -51,7 +75,13 @@ export const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=800&q=80",
     description: "Design minimalista que transforma qualquer ambiente de trabalho.",
     rating: 4.7,
-    reviews: 67
+    reviews: 67,
+    ncm: '9405.20.00',
+    cfop: '5102',
+    cst: '00',
+    origem: 0,
+    unidade: 'UN',
+    peso: 1.2
   },
   {
     id: 6,
@@ -61,7 +91,13 @@ export const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&q=80",
     description: "Capture momentos com qualidade profissional em um corpo compacto.",
     rating: 4.9,
-    reviews: 31
+    reviews: 31,
+    ncm: '8525.80.29',
+    cfop: '5102',
+    cst: '00',
+    origem: 0,
+    unidade: 'UN',
+    peso: 0.45
   },
   {
     id: 7,
@@ -71,7 +107,13 @@ export const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=800&q=80",
     description: "Compartimentos inteligentes para todo o seu setup tecnológico.",
     rating: 4.4,
-    reviews: 112
+    reviews: 112,
+    ncm: '4202.92.00',
+    cfop: '5102',
+    cst: '00',
+    origem: 0,
+    unidade: 'UN',
+    peso: 0.8
   },
   {
     id: 8,
@@ -81,6 +123,12 @@ export const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1602143307185-83e33a695b21?w=800&q=80",
     description: "Mantém sua bebida gelada por até 24 horas em qualquer aventura.",
     rating: 4.8,
-    reviews: 534
+    reviews: 534,
+    ncm: '9617.00.00',
+    cfop: '5102',
+    cst: '00',
+    origem: 0,
+    unidade: 'UN',
+    peso: 0.4
   }
 ];

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Fiscal - Versiory Store</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 20px auto; padding: 20px; background: #f5f5f5; }
+        .section { background: white; padding: 20px; margin: 15px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        .ok { color: #27ae60; font-weight: bold; }
+        .error { color: #e74c3c; font-weight: bold; }
+        .warning { color: #f39c12; font-weight: bold; }
+        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #2980b9; }
+        pre { background: #ecf0f1; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        .field { margin: 8px 0; padding: 8px; background: #f8f9fa; border-left: 3px solid #3498db; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Teste de Configuração Fiscal</h1>
+    
+    <div class="section">
+        <h2>1. Configuração Fiscal da Empresa</h2>
+        <div id="fiscalConfig"></div>
+        <button onclick="testFiscalConfig()">🔄 Verificar Configuração</button>
+    </div>
+
+    <div class="section">
+        <h2>2. Produtos com Dados Fiscais</h2>
+        <div id="products"></div>
+        <button onclick="testProducts()">🔄 Verificar Produtos</button>
+    </div>
+
+    <div class="section">
+        <h2>3. Teste de Validação NF-e</h2>
+        <div id="validation"></div>
+        <button onclick="testValidation()">🔄 Simular Validação</button>
+    </div>
+
+    <script>
+        function testFiscalConfig() {
+            const config = localStorage.getItem('versiory_fiscal_config');
+            const div = document.getElementById('fiscalConfig');
+            
+            if (!config) {
+                div.innerHTML = '<p class="error">❌ Configuração fiscal não encontrada!</p><p>Configure em: Painel Admin → Configurações Fiscais</p>';
+                return;
+            }
+
+            const parsed = JSON.parse(config);
+            let html = '<div class="field"><strong>Status:</strong> <span class="ok">✓ Configurado</span></div>';
+            
+            const fields = [
+                { key: 'cnpj', label: 'CNPJ' },
+                { key: 'razaoSocial', label: 'Razão Social' },
+                { key: 'inscricaoEstadual', label: 'Inscrição Estadual' },
+                { key: 'ambiente', label: 'Ambiente' },
+                { key: 'serie', label: 'Série' },
+                { key: 'numeroAtual', label: 'Número Atual' }
+            ];
+
+            fields.forEach(field => {
+                const value = parsed[field.key];
+                const status = value ? '<span class="ok">✓</span>' : '<span class="error">✗</span>';
+                html += `<div class="field">${status} <strong>${field.label}:</strong> ${value || '<span class="warning">NÃO CONFIGURADO</span>'}</div>`;
+            });
+
+            div.innerHTML = html;
+        }
+
+        function testProducts() {
+            const products = JSON.parse(localStorage.getItem('versiory_admin_products') || '[]');
+            const div = document.getElementById('products');
+            
+            if (products.length === 0) {
+                div.innerHTML = '<p class="warning">⚠️ Nenhum produto encontrado no localStorage</p>';
+                return;
+            }
+
+            let withNCM = 0;
+            let withOrigem = 0;
+            let html = `<p><strong>Total de produtos:</strong> ${products.length}</p>`;
+
+            products.forEach(p => {
+                const hasNCM = p.ncm && p.ncm.trim() !== '';
+                const hasOrigem = p.origem !== undefined && p.origem !== null;
+                
+                if (hasNCM) withNCM++;
+                if (hasOrigem) withOrigem++;
+
+                html += `
+                    <div class="field">
+                        <strong>${p.name}</strong><br>
+                        ${hasNCM ? '<span class="ok">✓</span>' : '<span class="error">✗</span>'} NCM: ${p.ncm || 'NÃO CADASTRADO'}<br>
+                        ${hasOrigem ? '<span class="ok">✓</span>' : '<span class="error">✗</span>'} Origem: ${p.origem ?? 'NÃO CADASTRADO'}<br>
+                        CFOP: ${p.cfop || 'N/A'} | CST: ${p.cst || 'N/A'} | Unidade: ${p.unidade || 'N/A'}
+                    </div>
+                `;
+            });
+
+            html = `<p class="ok">✓ Com NCM: ${withNCM}/${products.length}</p>
+                    <p class="ok">✓ Com Origem: ${withOrigem}/${products.length}</p>` + html;
+
+            div.innerHTML = html;
+        }
+
+        function testValidation() {
+            const config = localStorage.getItem('versiory_fiscal_config');
+            const products = JSON.parse(localStorage.getItem('versiory_admin_products') || '[]');
+            const div = document.getElementById('validation');
+            
+            const errors = [];
+            
+            if (!config) {
+                errors.push('CNPJ da empresa não configurado');
+            } else {
+                const parsed = JSON.parse(config);
+                if (!parsed.cnpj || parsed.cnpj.trim() === '') {
+                    errors.push('CNPJ da empresa não configurado');
+                }
+            }
+
+            products.forEach(p => {
+                if (!p.ncm || p.ncm.trim() === '') {
+                    errors.push(`NCM não informado para o item: ${p.name}`);
+                }
+                if (p.origem === undefined || p.origem === null) {
+                    errors.push(`Origem da mercadoria não informada para o item: ${p.name}`);
+                }
+            });
+
+            if (errors.length === 0) {
+                div.innerHTML = '<p class="ok">✅ TUDO OK! Sistema pronto para emitir NF-e</p>';
+            } else {
+                let html = '<p class="error">❌ Problemas encontrados:</p><ul>';
+                errors.forEach(err => {
+                    html += `<li class="error">${err}</li>`;
+                });
+                html += '</ul>';
+                div.innerHTML = html;
+            }
+        }
+
+        // Executar testes automaticamente
+        window.onload = function() {
+            testFiscalConfig();
+            testProducts();
+            testValidation();
+        };
+    </script>
+</body>
+</html>
