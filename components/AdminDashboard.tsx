@@ -20,6 +20,7 @@ interface AdminDashboardProps {
   tracking: TrackingItem[];
   inventoryMovements: InventoryMovement[];
   expenses: Expense[];
+  userRole: 'admin' | 'seller';
   onLogout: () => void;
   onUpdateProducts: (products: Product[]) => void;
   onUpdateCategories: (categories: CategoryItem[]) => void;
@@ -98,6 +99,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   tracking,
   inventoryMovements,
   expenses,
+  userRole,
   onLogout,
   onUpdateProducts,
   onUpdateCategories,
@@ -107,7 +109,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateInventoryMovements,
   onUpdateExpenses
 }) => {
-  const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabKey>(userRole === 'seller' ? 'pdv' : 'dashboard');
   const [orderFilter, setOrderFilter] = useState<OrderStatus | 'all'>('all');
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
   
@@ -910,7 +912,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </svg>
               </div>
               <div>
-                <h1 className="text-2xl font-black">Painel Administrativo</h1>
+                <h1 className="text-2xl font-black">{userRole === 'admin' ? 'Painel Administrativo' : 'Painel do Vendedor'}</h1>
                 <p className="text-gray-400 text-sm">Versiory Store</p>
               </div>
             </div>
@@ -928,18 +930,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 mb-6">
           <div className="flex flex-wrap gap-1 p-2">
             {(
-              [
-                ['dashboard', 'Dashboard'],
-                ['pdv', 'PDV Loja'],
-                ['products', 'Produtos'],
-                ['categories', 'Categorias'],
-                ['orders', 'Pedidos'],
-                ['customers', 'Clientes'],
-                ['tracking', 'Rastreamento'],
-                ['inventory', 'Estoque'],
-                ['financial', 'Financeiro'],
-                ['fiscal', 'Fiscal/NF-e']
-              ] as const
+              userRole === 'admin'
+                ? [
+                    ['dashboard', 'Dashboard'],
+                    ['pdv', 'PDV Loja'],
+                    ['products', 'Produtos'],
+                    ['categories', 'Categorias'],
+                    ['orders', 'Pedidos'],
+                    ['customers', 'Clientes'],
+                    ['tracking', 'Rastreamento'],
+                    ['inventory', 'Estoque'],
+                    ['financial', 'Financeiro'],
+                    ['fiscal', 'Fiscal/NF-e']
+                  ]
+                : [
+                    ['pdv', 'PDV Loja'],
+                    ['products', 'Produtos'],
+                    ['customers', 'Clientes'],
+                    ['orders', 'Pedidos'],
+                    ['fiscal', 'Fiscal/NF-e']
+                  ]
             ).map(([key, label]) => (
               <button
                 key={key}
@@ -1003,7 +1013,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {activeTab === 'pdv' && (
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col md:flex-row gap-6">
           {/* Left Column: Product Search & List */}
           <div className="flex-1 space-y-4">
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
@@ -1059,7 +1069,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
 
           {/* Right Column: Pos Cart */}
-          <div className="w-full lg:w-[400px] bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6 flex flex-col h-[calc(100vh-200px)] sticky top-6">
+          <div className="w-full md:w-[380px] lg:w-[400px] bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6 flex flex-col md:h-[calc(100vh-200px)] md:sticky md:top-6">
             <h2 className="text-xl font-black text-white mb-6 pb-4 border-b border-white/10 flex items-center justify-between">
               <span>Carrinho (PDV)</span>
               <span className="text-sm font-medium bg-white/10 px-3 py-1 rounded-full text-slate-200">
@@ -1140,12 +1150,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-black text-white">Gerenciar Produtos</h2>
-            <button
-              onClick={() => openProductModal()}
-              className="bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
-            >
-              + Novo Produto
-            </button>
+            {userRole === 'admin' && (
+              <button
+                onClick={() => openProductModal()}
+                className="bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
+              >
+                + Novo Produto
+              </button>
+            )}
           </div>
 
           <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
@@ -1203,20 +1215,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <button
-                            onClick={() => openProductModal(product)}
-                            className="bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleProductDelete(product.id)}
-                            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
-                          >
-                            Excluir
-                          </button>
-                        </div>
+                        {userRole === 'admin' ? (
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <button
+                              onClick={() => openProductModal(product)}
+                              className="bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleProductDelete(product.id)}
+                              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 text-sm">Somente consulta</span>
+                        )}
                       </td>
                     </tr>
                   ))}

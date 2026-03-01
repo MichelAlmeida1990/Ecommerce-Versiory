@@ -29,10 +29,12 @@ import {
 } from './services/firebase';
 
 const ADMIN_PASSWORD = 'versiory2024';
+const SELLER_PASSWORD = 'vendedor2024';
 const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes'];
 
 const AdminApp: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'seller'>('seller');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
@@ -47,22 +49,11 @@ const AdminApp: React.FC = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const session = await getAdminSession();
-        if (session?.isAuthenticated) {
-          const now = Date.now();
-          const twentyFourHours = 24 * 60 * 60 * 1000;
-          
-          if (now - session.lastActivity < twentyFourHours) {
-            setIsAuthenticated(true);
-            // Atualizar atividade ao carregar (sem await para não bloquear)
-            updateAdminActivity().catch(console.error);
-          } else {
-            // Sessão expirada
-            await clearAdminSession();
-          }
-        }
+        // Sempre limpar a sessão ao acessar a página admin
+        await clearAdminSession();
+        setIsAuthenticated(false);
       } catch (error) {
-        console.error('Erro ao verificar autenticação:', error);
+        console.error('Erro ao limpar autenticação:', error);
       } finally {
         setIsLoading(false);
       }
@@ -136,8 +127,8 @@ const AdminApp: React.FC = () => {
       }
     };
 
-    // Listener para salvar sessão periodicamente
-    const saveSessionPeriodically = async () => {
+    // Salvar sessão periodicamente a cada 30 segundos
+    const saveInterval = setInterval(async () => {
       if (isAuthenticated) {
         try {
           await updateAdminActivity();
@@ -145,87 +136,38 @@ const AdminApp: React.FC = () => {
           console.error('Erro ao salvar sessão periodicamente:', error);
         }
       }
-    };
-
-    const checkAuthValidity = async () => {
-      try {
-        const session = await getAdminSession();
-        if (!session || !session.isAuthenticated) {
-          setIsAuthenticated(false);
-          return;
-        }
-
-        const now = Date.now();
-        const twentyFourHours = 24 * 60 * 60 * 1000;
-        
-        if (now - session.lastActivity >= twentyFourHours) {
-          await handleLogout();
-        }
-      } catch (error) {
-        console.error('Erro ao verificar validade da sessão:', error);
-      }
-    };
-
-    // Verificar a cada 5 minutos
-    const validityInterval = setInterval(checkAuthValidity, 5 * 60 * 1000);
-    // Salvar sessão a cada 30 segundos
-    const saveInterval = setInterval(saveSessionPeriodically, 30 * 1000);
-    
-    // Listener para detectar atividade do usuário
-    const handleActivity = async () => {
-      if (isAuthenticated) {
-        try {
-          await updateAdminActivity();
-        } catch (error) {
-          console.error('Erro ao atualizar atividade:', error);
-        }
-      }
-    };
-
-    // Eventos que indicam atividade do usuário
-    const activityEvents = ['click', 'keydown', 'scroll', 'mousemove'];
-    
-    // Throttle para evitar muitas atualizações
-    let lastUpdate = 0;
-    const throttledUpdate = () => {
-      const now = Date.now();
-      if (now - lastUpdate > 60000) { // Atualizar no máximo a cada minuto
-        handleActivity();
-        lastUpdate = now;
-      }
-    };
+    }, 30 * 1000);
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    activityEvents.forEach(event => {
-      document.addEventListener(event, throttledUpdate, { passive: true });
-    });
     
     return () => {
-      clearInterval(validityInterval);
       clearInterval(saveInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      activityEvents.forEach(event => {
-        document.removeEventListener(event, throttledUpdate);
-      });
     };
   }, [isAuthenticated]);
 
-  const handleLogin = async (password: string) => {
-    if (password === ADMIN_PASSWORD) {
+  const handleLogin = async (password: string, role: 'admin' | 'seller') => {
+    const isValidPassword = 
+      (role === 'admin' && password === ADMIN_PASSWORD) ||
+      (role === 'seller' && password === SELLER_PASSWORD);
+
+    if (isValidPassword) {
       try {
         await saveAdminSession({
           isAuthenticated: true,
+          role,
           loginTime: Date.now(),
           lastActivity: Date.now()
         });
         setIsAuthenticated(true);
+        setUserRole(role);
         setError('');
       } catch (error) {
         console.error('Erro ao salvar sessão:', error);
         setError('Erro ao fazer login.');
       }
     } else {
-      setError('Senha incorreta.');
+      setError('Senha incorreta para o perfil selecionado.');
     }
   };
 
@@ -291,6 +233,7 @@ const AdminApp: React.FC = () => {
       tracking={tracking}
       inventoryMovements={inventoryMovements}
       expenses={expenses}
+      userRole={userRole}
       onLogout={handleLogout}
       onUpdateProducts={handleUpdateProducts}
       onUpdateCategories={handleUpdateCategories}
