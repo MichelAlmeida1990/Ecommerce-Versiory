@@ -702,15 +702,20 @@ const Account: React.FC = () => {
                                       const name = item.name || 'Produto Versiory';
 
                                       return (
-                                        <div key={idx} className="flex-shrink-0 flex items-center gap-3 bg-white/50 p-2 rounded-2xl border border-slate-100">
-                                          <div className="w-12 h-12 rounded-xl overflow-hidden border border-slate-100 bg-white">
+                                        <button
+                                          key={idx}
+                                          onClick={() => navigate(`/product/${item.productId}`)}
+                                          className="flex-shrink-0 flex items-center gap-4 bg-white/50 p-3 rounded-3xl border border-slate-100 hover:bg-white hover:shadow-xl hover:scale-105 transition-all group"
+                                        >
+                                          <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-slate-100 bg-white group-hover:scale-110 transition-transform shadow-md">
                                             <img src={img} alt={name} className="w-full h-full object-cover" />
                                           </div>
-                                          <div className="max-w-[120px]">
-                                            <p className="text-[10px] font-black text-slate-900 truncate">{name}</p>
-                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Qtd: {item.quantity}</p>
+                                          <div className="max-w-[160px] pr-2">
+                                            <p className="text-sm font-black text-slate-900 line-clamp-2 mb-1 group-hover:text-versiory-coral transition-colors leading-tight">{name}</p>
+                                            <p className="text-xs text-slate-500 font-bold">Qtd: {item.quantity}</p>
+                                            <p className="text-xs text-versiory-ink font-black mt-1">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                           </div>
-                                        </div>
+                                        </button>
                                       );
                                     })}
                                   </div>

@@ -13,6 +13,95 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
   const [selectedOrder, setSelectedOrder] = useState<(Order & { emitNF?: boolean }) | null>(null);
   const [isPreviewingDanfe, setIsPreviewingDanfe] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
+
+  const canCancelOrder = (order: Order) => {
+    if (order.status === 'cancelled' || order.status === 'delivered') return false;
+    const orderDate = new Date(order.date);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays <= 7;
+  };
+
+  const openCancelModal = (order: Order) => {
+    setOrderToCancel(order);
+    setCancelReason('');
+    setShowCancelModal(true);
+  };
+
+  const handleCancelOrder = async () => {
+    if (!orderToCancel) return;
+    
+    if (!cancelReason.trim()) {
+      alert('⚠️ Por favor, informe o motivo do cancelamento.');
+      return;
+    }
+
+    if (cancelReason.trim().length < 10) {
+      alert('⚠️ O motivo deve ter pelo menos 10 caracteres.');
+      return;
+    }
+
+    setIsCancelling(true);
+    try {
+      const { saveOrder, getProducts, saveProduct, saveInventoryMovement } = await import('../services/firebase');
+      
+      // Atualizar status do pedido com motivo do cancelamento
+      const updatedOrder = { 
+        ...orderToCancel, 
+        status: 'cancelled' as const,
+        notes: `CANCELADO PELO CLIENTE: ${cancelReason.trim()}${orderToCancel.notes ? '\n\n' + orderToCancel.notes : ''}`,
+        cancelledAt: new Date().toISOString(),
+        cancelReason: cancelReason.trim()
+      };
+      await saveOrder(updatedOrder);
+      
+      // Devolver estoque e registrar movimentação
+      const products = await getProducts();
+      for (const item of orderToCancel.items) {
+        const product = products.find(p => p.id === item.productId);
+        if (product) {
+          const previousStock = product.stock || 0;
+          const newStock = previousStock + item.quantity;
+          
+          // Atualizar estoque
+          await saveProduct({ ...product, stock: newStock });
+          
+          // Registrar movimentação de estoque
+          const movement = {
+            id: Date.now() + item.productId,
+            productId: item.productId,
+            productName: item.name || product.name,
+            type: 'in' as const,
+            quantity: item.quantity,
+            previousStock,
+            newStock,
+            reason: `Devolução - Pedido ${orderToCancel.id} cancelado pelo cliente`,
+            date: new Date().toISOString(),
+            user: customerEmail
+          };
+          await saveInventoryMovement(movement);
+        }
+      }
+      
+      // Atualizar lista local
+      setOrders(orders.map(o => o.id === orderToCancel.id ? updatedOrder : o));
+      setSelectedOrder(null);
+      setShowCancelModal(false);
+      setOrderToCancel(null);
+      setCancelReason('');
+      
+      alert('✅ Pedido cancelado com sucesso!\n\nO estoque foi devolvido e o valor será estornado conforme política da loja.');
+    } catch (error) {
+      console.error('Erro ao cancelar pedido:', error);
+      alert('❌ Erro ao cancelar pedido. Tente novamente.');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && customerEmail) {
@@ -130,16 +219,23 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                         {/* Order Items Preview - More expressive like big stores */}
                         <div className="space-y-4 mb-6">
                           {order.items.slice(0, 3).map((item, iidx) => (
-                            <div key={iidx} className="flex items-center gap-4">
-                              <div className="w-16 h-16 bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 flex-shrink-0">
+                            <button
+                              key={iidx}
+                              onClick={() => window.location.href = `/product/${item.productId}`}
+                              className="flex items-center gap-4 w-full text-left hover:bg-slate-50 p-2 rounded-2xl transition-all group"
+                            >
+                              <div className="w-16 h-16 bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 flex-shrink-0 group-hover:scale-105 transition-transform">
                                 <img src={item.image || 'https://images.unsplash.com/photo-1560393464-5c69a73c5770?w=200&h=200&fit=crop'} alt={item.name} className="w-full h-full object-cover" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-black text-slate-900 truncate">{item.name || 'Produto Versiory'}</p>
+                                <p className="text-sm font-black text-slate-900 truncate group-hover:text-versiory-coral transition-colors">{item.name || 'Produto Versiory'}</p>
                                 <p className="text-[10px] text-slate-400 font-medium line-clamp-1 mb-1">{item.description || 'Nenhuma descrição disponível'}</p>
                                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{item.quantity} unidade(s) • R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                               </div>
-                            </div>
+                              <svg className="w-5 h-5 text-slate-300 group-hover:text-versiory-coral transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
                           ))}
                           {order.items.length > 3 && (
                             <p className="text-xs font-black text-versiory-coral mt-2">+ {order.items.length - 3} outros itens neste pedido</p>
@@ -160,6 +256,15 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                           >
                             Detalhes do Pedido
                           </button>
+                          {canCancelOrder(order) && (
+                            <button
+                              onClick={() => openCancelModal(order)}
+                              disabled={isCancelling}
+                              className="w-full flex items-center justify-center gap-2 bg-red-50 text-red-600 p-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              ❌ Cancelar Pedido
+                            </button>
+                          )}
                           {order.trackingCode && (
                             <button
                               onClick={() => trackOrder(order.trackingCode!)}
@@ -311,19 +416,26 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                 <h4 className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-4">Produtos Adquiridos</h4>
                 <div className="space-y-4">
                   {selectedOrder.items.map((item, idx) => (
-                    <div key={idx} className="flex gap-6 group">
-                      <div className="w-24 h-24 rounded-3xl overflow-hidden bg-slate-50 border border-slate-100 flex-shrink-0">
+                    <button
+                      key={idx}
+                      onClick={() => window.location.href = `/product/${item.productId}`}
+                      className="flex gap-6 group w-full text-left hover:bg-slate-50 p-4 rounded-3xl transition-all"
+                    >
+                      <div className="w-24 h-24 rounded-3xl overflow-hidden bg-slate-50 border border-slate-100 flex-shrink-0 group-hover:scale-105 transition-transform">
                         <img src={item.image || 'https://images.unsplash.com/photo-1560393464-5c69a73c5770?w=200&h=200&fit=crop'} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                       </div>
                       <div className="flex-1 flex flex-col justify-center">
-                        <h5 className="font-black text-slate-900 text-lg leading-tight mb-1">{item.name || 'Produto Versiory'}</h5>
+                        <h5 className="font-black text-slate-900 text-lg leading-tight mb-1 group-hover:text-versiory-coral transition-colors">{item.name || 'Produto Versiory'}</h5>
                         <p className="text-xs text-slate-500 font-medium line-clamp-2 mb-3 leading-relaxed">{item.description || 'Este item foi selecionado em nossa coleção premium.'}</p>
                         <div className="flex items-center gap-4">
                           <span className="text-xs font-black bg-slate-100 px-4 py-1.5 rounded-full text-slate-600 uppercase tracking-widest">Qtd: {item.quantity}</span>
                           <span className="font-black text-2xl text-versiory-ink">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
                       </div>
-                    </div>
+                      <svg className="w-6 h-6 text-slate-300 group-hover:text-versiory-coral transition-colors self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -332,7 +444,16 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
             {/* Modal Footer */}
             <div className="p-8 bg-slate-50 border-t border-slate-100">
               <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                <div className="flex gap-3 w-full md:w-auto">
+                <div className="flex gap-3 w-full md:w-auto flex-wrap">
+                  {canCancelOrder(selectedOrder) && (
+                    <button
+                      onClick={() => openCancelModal(selectedOrder)}
+                      disabled={isCancelling}
+                      className="flex-1 md:flex-none bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      ❌ Cancelar Pedido
+                    </button>
+                  )}
                   {selectedOrder.emitNF && selectedOrder.status === 'paid' && (
                     <button
                       onClick={() => setIsPreviewingDanfe(true)}
@@ -381,6 +502,91 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
           }}
           onClose={() => setIsPreviewingDanfe(false)}
         />
+      )}
+
+      {/* Modal de Cancelamento */}
+      {showCancelModal && orderToCancel && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => !isCancelling && setShowCancelModal(false)} />
+          <div className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="p-8">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-16 h-16 bg-red-50 rounded-3xl flex items-center justify-center text-3xl">
+                  ⚠️
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-black text-slate-900">Cancelar Pedido</h3>
+                  <p className="text-sm text-slate-500 font-medium">Pedido #{orderToCancel.id.slice(0, 8)}</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-6 rounded-3xl mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-bold text-slate-600">Valor do Pedido:</span>
+                  <span className="text-xl font-black text-slate-900">R$ {orderToCancel.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-600">Prazo para cancelamento:</span>
+                  <span className="text-sm font-black text-green-600">
+                    {7 - Math.floor((new Date().getTime() - new Date(orderToCancel.date).getTime()) / (1000 * 60 * 60 * 24))} dias restantes
+                  </span>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-black text-slate-700 mb-2">
+                  Motivo do Cancelamento *
+                </label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Por favor, informe o motivo do cancelamento (mínimo 10 caracteres)...\n\nExemplos:\n- Encontrei um preço melhor\n- Não preciso mais do produto\n- Comprei por engano\n- Prazo de entrega muito longo"
+                  className="w-full h-32 px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-versiory-coral focus:bg-white outline-none transition-all resize-none font-medium text-slate-900"
+                  disabled={isCancelling}
+                  maxLength={500}
+                />
+                <div className="flex justify-between items-center mt-2">
+                  <p className="text-xs text-slate-400 font-medium">
+                    {cancelReason.length < 10 ? `Faltam ${10 - cancelReason.length} caracteres` : '✅ Motivo válido'}
+                  </p>
+                  <p className="text-xs text-slate-400 font-medium">
+                    {cancelReason.length}/500
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl mb-6">
+                <p className="text-xs text-amber-800 font-bold leading-relaxed">
+                  📌 Ao cancelar, o estoque será devolvido automaticamente e o valor será estornado conforme política da loja.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => !isCancelling && setShowCancelModal(false)}
+                  disabled={isCancelling}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-2xl font-black transition-all disabled:opacity-50"
+                >
+                  Voltar
+                </button>
+                <button
+                  onClick={handleCancelOrder}
+                  disabled={isCancelling || cancelReason.trim().length < 10}
+                  className="flex-1 bg-red-500 hover:bg-red-600 text-white py-4 rounded-2xl font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isCancelling ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Cancelando...
+                    </>
+                  ) : (
+                    'Confirmar Cancelamento'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
