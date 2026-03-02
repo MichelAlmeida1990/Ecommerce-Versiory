@@ -8,7 +8,7 @@ interface CartProps {
   onClose: () => void;
   items: CartItem[];
   onUpdateQuantity: (id: number, delta: number) => void;
-  onRemove: (id: number) => void;
+  onRemove: (id: number, selectedSize?: string, selectedColor?: string) => void;
   customerEmail: string;
   customerAddress: string;
   onOrderComplete: () => void;
@@ -131,12 +131,26 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
               </div>
             ) : (
               items.map((item) => (
-                <div key={item.id} className="flex gap-4">
+                <div key={`${item.id}-${item.selectedSize || 'no-size'}-${item.selectedColor || 'no-color'}`} className="flex gap-4">
                   <img src={item.image} className="w-20 h-20 object-cover rounded-xl border border-slate-100" alt={item.name} />
                   <div className="flex-1">
                     <div className="flex justify-between">
-                      <h4 className="font-bold text-slate-800">{item.name}</h4>
-                      <button onClick={() => onRemove(item.id)} className="text-slate-400 hover:text-red-500 transition-colors">
+                      <div>
+                        <h4 className="font-bold text-slate-800">{item.name}</h4>
+                        <div className="flex gap-1 mt-1">
+                          {item.selectedSize && (
+                            <span className="inline-block px-2 py-1 bg-versiory-coral/20 text-versiory-coral text-xs font-bold rounded">
+                              {item.selectedSize}
+                            </span>
+                          )}
+                          {item.selectedColor && (
+                            <span className="inline-block px-2 py-1 bg-blue-500/20 text-blue-600 text-xs font-bold rounded">
+                              {item.selectedColor}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button onClick={() => onRemove(item.id, item.selectedSize, item.selectedColor)} className="text-slate-400 hover:text-red-500 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>

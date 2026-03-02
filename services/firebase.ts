@@ -143,26 +143,36 @@ export const saveExpense = (expense: Expense) => setDocument("expenses", expense
 export const deleteExpense = (id: number) => deleteDocument("expenses", id);
 
 // ---- User Session ----
-const USER_SESSION_KEY = "versiory_user_session";
+// Cada usuário tem sua própria sessão baseada no email
 
 export interface UserSession {
     email: string;
     name?: string;
     address?: string;
+    loginTime: number;
 }
 
 export const saveUserSession = async (session: UserSession) => {
-    await setDocument("userSessions", USER_SESSION_KEY, session);
+    const sessionData = {
+        ...session,
+        loginTime: session.loginTime || Date.now()
+    };
+    // Usar email como chave única para cada usuário
+    localStorage.setItem(`versiory_user_${session.email}`, JSON.stringify(sessionData));
+    // Salvar também qual é o último usuário logado
+    localStorage.setItem('versiory_last_user', session.email);
 };
 
 export const getUserSession = async (): Promise<UserSession | null> => {
     try {
-        const docRef = doc(db, "userSessions", USER_SESSION_KEY);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            return docSnap.data() as UserSession;
-        }
-        return null;
+        // Buscar o último usuário logado
+        const lastUser = localStorage.getItem('versiory_last_user');
+        if (!lastUser) return null;
+        
+        const sessionData = localStorage.getItem(`versiory_user_${lastUser}`);
+        if (!sessionData) return null;
+        
+        return JSON.parse(sessionData) as UserSession;
     } catch (error) {
         console.error('Erro ao buscar sessão:', error);
         return null;
@@ -170,7 +180,11 @@ export const getUserSession = async (): Promise<UserSession | null> => {
 };
 
 export const clearUserSession = async () => {
-    await deleteDocument("userSessions", USER_SESSION_KEY);
+    const lastUser = localStorage.getItem('versiory_last_user');
+    if (lastUser) {
+        localStorage.removeItem(`versiory_user_${lastUser}`);
+    }
+    localStorage.removeItem('versiory_last_user');
 };
 
 // ---- Admin Session ----

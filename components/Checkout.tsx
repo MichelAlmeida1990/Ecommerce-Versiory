@@ -155,9 +155,13 @@ const Checkout: React.FC<CheckoutProps> = ({
       `📍 Endereço: ${customerAddress}`,
       '',
       '*ITENS DO PEDIDO:*',
-      ...items.map(item =>
-        `• ${item.name} x${item.quantity} - R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-      ),
+      ...items.map(item => {
+        const details = [];
+        if (item.selectedSize) details.push(`Tamanho: ${item.selectedSize}`);
+        if (item.selectedColor) details.push(`Cor: ${item.selectedColor}`);
+        const detailsStr = details.length > 0 ? ` (${details.join(', ')})` : '';
+        return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      }),
       '',
       `*TOTAL: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*`,
       '',
@@ -197,15 +201,28 @@ const Checkout: React.FC<CheckoutProps> = ({
             <h4 className="font-bold text-slate-900 mb-4">Resumo do Pedido</h4>
             <div className="bg-slate-50 rounded-xl p-4 space-y-3">
               {items.map((item) => (
-                <div key={item.id} className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <img src={item.image} alt={item.name} className="w-12 h-12 object-cover rounded-lg" />
-                    <div>
-                      <p className="font-medium text-slate-900">{item.name}</p>
-                      <p className="text-sm text-slate-600">Qtd: {item.quantity}</p>
+                <div key={`${item.id}-${item.selectedSize || 'no-size'}-${item.selectedColor || 'no-color'}`} className="flex justify-between items-start gap-3">
+                  <div className="flex items-start gap-3 flex-1">
+                    <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded-lg shadow-md" />
+                    <div className="flex-1">
+                      <p className="font-bold text-slate-900">{item.name}</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {item.selectedSize && (
+                          <span className="inline-block px-2 py-1 bg-versiory-coral/20 text-versiory-coral text-xs font-bold rounded">
+                            Tamanho: {item.selectedSize}
+                          </span>
+                        )}
+                        {item.selectedColor && (
+                          <span className="inline-block px-2 py-1 bg-blue-500/20 text-blue-600 text-xs font-bold rounded">
+                            Cor: {item.selectedColor}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1">Qtd: {item.quantity}</p>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">{item.description}</p>
                     </div>
                   </div>
-                  <p className="font-bold text-slate-900">
+                  <p className="font-bold text-slate-900 whitespace-nowrap">
                     R$ {(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </p>
                 </div>

@@ -1,4 +1,5 @@
 @import './versiory-admin-login.css';
+@import './tablet-layout.css';
 
 @tailwind base;
 @tailwind components;

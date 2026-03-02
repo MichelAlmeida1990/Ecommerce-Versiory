@@ -15,6 +15,30 @@ const Account: React.FC = () => {
   const [isOrdersOverlayOpen, setIsOrdersOverlayOpen] = useState(false);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
+  const [passwordError, setPasswordError] = useState('');
+  const [showPasswords, setShowPasswords] = useState({ current: false, new: false, confirm: false });
+
+  const getPasswordStrength = (password: string) => {
+    if (!password) return { strength: 0, label: '', color: '' };
+    let strength = 0;
+    if (password.length >= 6) strength++;
+    if (password.length >= 10) strength++;
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength++;
+    if (/\d/.test(password)) strength++;
+    if (/[^a-zA-Z\d]/.test(password)) strength++;
+    
+    const levels = [
+      { strength: 0, label: '', color: '' },
+      { strength: 1, label: 'Muito Fraca', color: 'bg-red-500' },
+      { strength: 2, label: 'Fraca', color: 'bg-orange-500' },
+      { strength: 3, label: 'Média', color: 'bg-yellow-500' },
+      { strength: 4, label: 'Forte', color: 'bg-green-500' },
+      { strength: 5, label: 'Muito Forte', color: 'bg-emerald-500' },
+    ];
+    return levels[strength];
+  };
 
   // Form States
   const [profileForm, setProfileForm] = useState({
@@ -154,6 +178,58 @@ const Account: React.FC = () => {
       setEditProfile(false);
     } catch (error) {
       console.error('Erro ao salvar perfil:', error);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    if (!customer) return;
+    setPasswordError('');
+
+    if (!passwordForm.current || !passwordForm.new || !passwordForm.confirm) {
+      setPasswordError('⚠️ Preencha todos os campos');
+      return;
+    }
+
+    if (passwordForm.new !== passwordForm.confirm) {
+      setPasswordError('❌ As senhas não coincidem');
+      return;
+    }
+
+    if (passwordForm.new.length < 6) {
+      setPasswordError('❌ A senha deve ter no mínimo 6 caracteres');
+      return;
+    }
+
+    try {
+      const { verifyPassword, hashPassword } = await import('../utils/crypto');
+      const { saveCustomer, getCustomers } = await import('../services/firebase');
+      
+      const customers = await getCustomers();
+      const currentCustomer = customers.find(c => c.email === customer.email);
+      
+      if (!currentCustomer || !currentCustomer.password) {
+        setPasswordError('❌ Erro ao verificar senha atual');
+        return;
+      }
+
+      const isValid = await verifyPassword(passwordForm.current, currentCustomer.password) || 
+                      currentCustomer.password === passwordForm.current;
+
+      if (!isValid) {
+        setPasswordError('❌ Senha atual incorreta');
+        return;
+      }
+
+      const newHashedPassword = await hashPassword(passwordForm.new);
+      const updated = { ...customer, password: newHashedPassword };
+      await saveCustomer(updated);
+      setCustomer(updated);
+      setShowChangePassword(false);
+      setPasswordForm({ current: '', new: '', confirm: '' });
+      alert('✅ Senha alterada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao alterar senha:', error);
+      setPasswordError('❌ Erro ao alterar senha. Tente novamente.');
     }
   };
 
@@ -302,28 +378,172 @@ const Account: React.FC = () => {
                     </div>
 
                     {!editProfile ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-6">
-                          <div>
-                            <p className="text-xs font-black text-slate-400 uppercase mb-1">Nome Completo</p>
-                            <p className="text-lg font-bold text-slate-900">{customer.name}</p>
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                          <div className="space-y-6">
+                            <div>
+                              <p className="text-xs font-black text-slate-400 uppercase mb-1">Nome Completo</p>
+                              <p className="text-lg font-bold text-slate-900">{customer.name}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-black text-slate-400 uppercase mb-1">E-mail de Contato</p>
+                              <p className="text-lg font-bold text-slate-900">{customer.email}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs font-black text-slate-400 uppercase mb-1">E-mail de Contato</p>
-                            <p className="text-lg font-bold text-slate-900">{customer.email}</p>
+                          <div className="space-y-6">
+                            <div>
+                              <p className="text-xs font-black text-slate-400 uppercase mb-1">Telefone / WhatsApp</p>
+                              <p className="text-lg font-bold text-slate-900">{customer.phone}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-black text-slate-400 uppercase mb-1">CPF / CNPJ</p>
+                              <p className="text-lg font-bold text-slate-900">{customer.cpfCnpj || 'Não informado'}</p>
+                            </div>
                           </div>
                         </div>
-                        <div className="space-y-6">
-                          <div>
-                            <p className="text-xs font-black text-slate-400 uppercase mb-1">Telefone / WhatsApp</p>
-                            <p className="text-lg font-bold text-slate-900">{customer.phone}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs font-black text-slate-400 uppercase mb-1">CPF / CNPJ</p>
-                            <p className="text-lg font-bold text-slate-900">{customer.cpfCnpj || 'Não informado'}</p>
-                          </div>
+
+                        <div className="border-t border-slate-100 pt-8">
+                          <button
+                            onClick={() => setShowChangePassword(!showChangePassword)}
+                            className="flex items-center gap-2 bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-lg"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                            </svg>
+                            {showChangePassword ? 'Cancelar' : 'Alterar Senha'}
+                          </button>
+
+                          {showChangePassword && (
+                            <div className="mt-6 space-y-4 animate-in slide-in-from-top-4 duration-300">
+                              <div>
+                                <label className="text-xs font-black text-slate-500 ml-2">SENHA ATUAL</label>
+                                <div className="relative">
+                                  <input
+                                    type={showPasswords.current ? 'text' : 'password'}
+                                    value={passwordForm.current}
+                                    onChange={e => setPasswordForm({ ...passwordForm, current: e.target.value })}
+                                    className="w-full bg-slate-50 border-none rounded-2xl p-4 pr-12 focus:ring-2 ring-versiory-coral/20 outline-none transition-all font-bold"
+                                    placeholder="••••••••"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowPasswords({ ...showPasswords, current: !showPasswords.current })}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                  >
+                                    {showPasswords.current ? (
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-xs font-black text-slate-500 ml-2">NOVA SENHA</label>
+                                <div className="relative">
+                                  <input
+                                    type={showPasswords.new ? 'text' : 'password'}
+                                    value={passwordForm.new}
+                                    onChange={e => setPasswordForm({ ...passwordForm, new: e.target.value })}
+                                    className="w-full bg-slate-50 border-none rounded-2xl p-4 pr-12 focus:ring-2 ring-versiory-coral/20 outline-none transition-all font-bold"
+                                    placeholder="••••••••"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                  >
+                                    {showPasswords.new ? (
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                </div>
+                                {passwordForm.new && (
+                                  <div className="mt-2">
+                                    <div className="flex gap-1 mb-1">
+                                      {[1, 2, 3, 4, 5].map(level => {
+                                        const strength = getPasswordStrength(passwordForm.new);
+                                        return (
+                                          <div
+                                            key={level}
+                                            className={`h-1 flex-1 rounded-full transition-all ${
+                                              level <= strength.strength ? strength.color : 'bg-slate-200'
+                                            }`}
+                                          />
+                                        );
+                                      })}
+                                    </div>
+                                    <p className={`text-xs font-bold ${
+                                      getPasswordStrength(passwordForm.new).strength >= 4 ? 'text-green-600' :
+                                      getPasswordStrength(passwordForm.new).strength >= 3 ? 'text-yellow-600' :
+                                      'text-red-600'
+                                    }`}>
+                                      {getPasswordStrength(passwordForm.new).label}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <label className="text-xs font-black text-slate-500 ml-2">CONFIRMAR NOVA SENHA</label>
+                                <div className="relative">
+                                  <input
+                                    type={showPasswords.confirm ? 'text' : 'password'}
+                                    value={passwordForm.confirm}
+                                    onChange={e => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
+                                    className="w-full bg-slate-50 border-none rounded-2xl p-4 pr-12 focus:ring-2 ring-versiory-coral/20 outline-none transition-all font-bold"
+                                    placeholder="••••••••"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                  >
+                                    {showPasswords.confirm ? (
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                </div>
+                                {passwordForm.confirm && passwordForm.new !== passwordForm.confirm && (
+                                  <p className="text-xs font-bold text-red-600 mt-1">❌ As senhas não coincidem</p>
+                                )}
+                                {passwordForm.confirm && passwordForm.new === passwordForm.confirm && (
+                                  <p className="text-xs font-bold text-green-600 mt-1">✅ As senhas coincidem</p>
+                                )}
+                              </div>
+                              {passwordError && (
+                                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-2xl text-sm font-bold">
+                                  {passwordError}
+                                </div>
+                              )}
+                              <button
+                                onClick={handlePasswordChange}
+                                className="bg-versiory-ink text-white px-8 py-4 rounded-2xl font-black hover:scale-105 transition-all shadow-lg"
+                              >
+                                Confirmar Alteração
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      </div>
+                      </>
                     ) : (
                       <div className="space-y-6 animate-in slide-in-from-top-4 duration-300">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

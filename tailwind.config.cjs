@@ -7,6 +7,11 @@ module.exports = {
   ],
   theme: {
     extend: {
+      screens: {
+        'tablet': '768px',
+        'tablet-max': {'max': '1024px'},
+        'tablet-only': {'min': '768px', 'max': '1024px'},
+      },
       colors: {
         'versiory-ink': '#0f172a',
         'versiory-sand': '#f6efe6',

@@ -1,0 +1,70 @@
+/* Layout específico para tablets - força layout desktop */
+
+/* Media query para tablets e dispositivos com resolução similar ao seu */
+@media screen and (min-width: 768px) {
+  
+  /* Força layout desktop no PDV - carrinho ao lado */
+  .tablet-desktop-flex {
+    flex-direction: row !important;
+    align-items: flex-start !important;
+  }
+  
+  /* Grid de produtos em 3 colunas para tablets */
+  .tablet-desktop-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+  
+  /* Container com largura máxima desktop */
+  .tablet-desktop-container {
+    max-width: 1280px !important;
+    margin: 0 auto !important;
+  }
+  
+  /* Padding desktop */
+  .tablet-desktop-padding {
+    padding: 1.5rem !important;
+  }
+  
+  /* Tamanho de texto desktop */
+  .tablet-desktop-text {
+    font-size: 1.25rem !important;
+  }
+}
+
+/* Grid de 4 colunas para telas maiores */
+@media screen and (min-width: 1280px) {
+  .tablet-desktop-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+}
+
+/* Força viewport para tablets e desktop */
+@media screen and (min-width: 768px) {
+  html {
+    font-size: 16px !important;
+  }
+  
+  body {
+    zoom: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* Scrollbar customizada */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}

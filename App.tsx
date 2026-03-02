@@ -81,24 +81,6 @@ const App: React.FC = () => {
     loadProducts();
     loadUserSession();
 
-    // Listener para detectar quando a página está sendo recarregada
-    const handleBeforeUnload = async () => {
-      // Manter sessão ativa ao recarregar
-      if (isAuthenticated && currentUserEmail) {
-        try {
-          const { saveUserSession } = await import('./services/firebase');
-          await saveUserSession({
-            email: currentUserEmail,
-            address: currentUserAddress
-          });
-        } catch (error) {
-          console.error('Erro ao salvar sessão:', error);
-        }
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
     // Listen for addToCart custom events from ProductDetail
     const onAddToCartEvent = (e: Event) => {
       const evt = e as CustomEvent<{ product: Product }>;
@@ -117,7 +99,6 @@ const App: React.FC = () => {
       window.removeEventListener('addToCart', onAddToCartEvent as EventListener);
       window.removeEventListener('openProfileModal', openHandler);
       window.removeEventListener('closeProfileModal', closeHandler as EventListener);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
 
@@ -129,7 +110,8 @@ const App: React.FC = () => {
           const { saveUserSession } = await import('./services/firebase');
           await saveUserSession({
             email: currentUserEmail,
-            address: currentUserAddress
+            address: currentUserAddress,
+            loginTime: Date.now()
           });
         } catch (error) {
           console.error('Erro ao salvar sessão:', error);
@@ -149,13 +131,29 @@ const App: React.FC = () => {
     });
   }, [products, activeCategory, searchQuery]);
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, selectedSize?: string, selectedColor?: string) => {
     setCartItems(prev => {
-      const found = prev.find(i => i.id === product.id);
-      if (found) return prev.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
-      return [...prev, { ...product, quantity: 1 }];
+      const found = prev.find(i => 
+        i.id === product.id && 
+        i.selectedSize === selectedSize && 
+        i.selectedColor === selectedColor
+      );
+      if (found) {
+        return prev.map(i => 
+          (i.id === product.id && i.selectedSize === selectedSize && i.selectedColor === selectedColor) 
+            ? { ...i, quantity: i.quantity + 1 } 
+            : i
+        );
+      }
+      return [...prev, { ...product, quantity: 1, selectedSize, selectedColor }];
     });
-    setToastMessage(`${product.name} adicionado ao carrinho`);
+    
+    const details = [
+      selectedSize,
+      selectedColor
+    ].filter(Boolean).join(' - ');
+    
+    setToastMessage(`${product.name}${details ? ` (${details})` : ''} adicionado ao carrinho`);
     setTimeout(() => setToastMessage(''), 2200);
   };
 
@@ -163,7 +161,11 @@ const App: React.FC = () => {
     setCartItems(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i));
   };
 
-  const removeFromCart = (id: number) => setCartItems(prev => prev.filter(i => i.id !== id));
+  const removeFromCart = (id: number, selectedSize?: string, selectedColor?: string) => {
+    setCartItems(prev => prev.filter(i => 
+      !(i.id === id && i.selectedSize === selectedSize && i.selectedColor === selectedColor)
+    ));
+  };
 
   const handleOrderComplete = () => {
     setCartItems([]);
@@ -171,7 +173,7 @@ const App: React.FC = () => {
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  const categories: Category[] = ['Todos', 'Eletrônicos', 'Moda', 'Casa', 'Esportes'];
+  const categories: Category[] = ['Todos', 'Eletrônicos', 'Moda', 'Casa', 'Esportes', 'Cama, Mesa e Banho'];
 
   return (
     <Router>

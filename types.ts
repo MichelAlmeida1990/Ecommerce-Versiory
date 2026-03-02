@@ -5,11 +5,16 @@ export interface Product {
   price: number;
   category: string;
   image: string;
+  images?: string[]; // Múltiplas imagens
   description: string;
   rating: number;
   reviews: number;
   stock?: number;
+  stockBySize?: { [size: string]: number }; // Estoque por tamanho
   sizes?: string;
+  colors?: string; // Cores disponíveis (ex: "Preto, Branco, Vermelho")
+  stockBySizeColor?: { [key: string]: number }; // Estoque por tamanho+cor (ex: "M-Preto": 5)
+  sizeChart?: SizeChart; // Régua de medição
   ncm?: string; // Nomenclatura Comum do Mercosul
   cfop?: string; // Código Fiscal de Operações e Prestações
   cst?: string; // Código de Situação Tributária
@@ -19,16 +24,28 @@ export interface Product {
   peso?: number; // Peso em kg
 }
 
-export interface CartItem extends Product {
-  quantity: number;
+export interface SizeChart {
+  P?: { chest?: number; waist?: number; hip?: number; length?: number };
+  M?: { chest?: number; waist?: number; hip?: number; length?: number };
+  G?: { chest?: number; waist?: number; hip?: number; length?: number };
+  GG?: { chest?: number; waist?: number; hip?: number; length?: number };
+  XG?: { chest?: number; waist?: number; hip?: number; length?: number };
 }
 
-export type Category = 'Todos' | 'Eletrônicos' | 'Moda' | 'Casa' | 'Esportes';
+export interface CartItem extends Product {
+  quantity: number;
+  selectedSize?: string;
+  selectedColor?: string;
+}
+
+export type Category = 'Todos' | 'Eletrônicos' | 'Moda' | 'Casa' | 'Esportes' | 'Cama, Mesa e Banho';
 
 export interface CategoryItem {
   id: string;
   name: string;
   description: string;
+  availableSizes?: string[]; // Tamanhos disponíveis para a categoria
+  sizeType?: 'clothing' | 'shoes' | 'accessories' | 'none'; // Tipo de tamanho
 }
 
 export interface OrderItem {

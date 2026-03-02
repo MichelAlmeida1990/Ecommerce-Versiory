@@ -14,3 +14,32 @@
 .admin-login-gradient {
   background: linear-gradient(135deg, #776EF6 0%, #f6efe6 60%, #ff6b4a 100%);
 }
+
+/* Forçar layout desktop em tablets */
+@media screen and (min-width: 768px) and (max-width: 1024px) {
+  /* Forçar grid de produtos em 4 colunas como desktop */
+  .tablet-desktop-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+  
+  /* Forçar layout horizontal para seções */
+  .tablet-desktop-flex {
+    flex-direction: row !important;
+  }
+  
+  /* Ajustar tamanhos de texto para desktop */
+  .tablet-desktop-text {
+    font-size: 1rem !important;
+  }
+  
+  /* Forçar largura máxima como desktop */
+  .tablet-desktop-container {
+    max-width: 1280px !important;
+    margin: 0 auto !important;
+  }
+  
+  /* Ajustar padding para desktop */
+  .tablet-desktop-padding {
+    padding: 1.5rem !important;
+  }
+}

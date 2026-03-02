@@ -1,15 +1,47 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Product } from '../types';
 
 interface ProductModalProps {
   product: Product | null;
   onClose: () => void;
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product, selectedSize?: string, selectedColor?: string) => void;
 }
 
 const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCart }) => {
+  const [selectedSize, setSelectedSize] = useState<string>('');
+  const [selectedColor, setSelectedColor] = useState<string>('');
+  const [sizeError, setSizeError] = useState(false);
+  const [colorError, setColorError] = useState(false);
+
   if (!product) return null;
+
+  const handleAddToCart = () => {
+    let hasError = false;
+    
+    if (product.sizes && !selectedSize) {
+      setSizeError(true);
+      setTimeout(() => setSizeError(false), 2000);
+      hasError = true;
+    }
+    
+    if (product.colors && !selectedColor) {
+      setColorError(true);
+      setTimeout(() => setColorError(false), 2000);
+      hasError = true;
+    }
+    
+    if (hasError) return;
+    
+    onAddToCart(product, selectedSize, selectedColor);
+    onClose();
+  };
+
+  const getStockForSizeColor = (size: string, color: string) => {
+    if (!product.stockBySizeColor) return 0;
+    const key = `${size}-${color}`;
+    return product.stockBySizeColor[key] || 0;
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -54,9 +86,98 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
             </p>
           </div>
 
+          {product.sizes && (
+            <div className="mb-6">
+              <h3 className="text-lg font-bold text-slate-800 mb-3">📏 Selecione o Tamanho</h3>
+              <div className="flex flex-wrap gap-2">
+                {product.sizes.split(',').map(size => {
+                  const trimmedSize = size.trim();
+                  let sizeStock = 0;
+                  
+                  if (product.colors && product.stockBySizeColor) {
+                    // Se tem cores, soma estoque de todas as cores para este tamanho
+                    product.colors.split(',').forEach(color => {
+                      sizeStock += getStockForSizeColor(trimmedSize, color.trim());
+                    });
+                  } else {
+                    sizeStock = product.stockBySize?.[trimmedSize] || 0;
+                  }
+                  
+                  const isAvailable = sizeStock > 0;
+                  const isSelected = selectedSize === trimmedSize;
+
+                  return (
+                    <button
+                      key={trimmedSize}
+                      onClick={() => isAvailable && setSelectedSize(trimmedSize)}
+                      disabled={!isAvailable}
+                      className={`px-6 py-3 rounded-xl font-bold transition-all ${
+                        isSelected
+                          ? 'bg-versiory-coral text-white shadow-lg scale-105'
+                          : isAvailable
+                          ? 'bg-white border-2 border-slate-200 text-slate-700 hover:border-versiory-coral'
+                          : 'bg-slate-100 text-slate-400 line-through cursor-not-allowed'
+                      }`}
+                    >
+                      {trimmedSize}
+                    </button>
+                  );
+                })}
+              </div>
+              {sizeError && (
+                <p className="text-red-500 font-bold mt-2 animate-pulse">⚠️ Selecione um tamanho</p>
+              )}
+            </div>
+          )}
+
+          {product.colors && (
+            <div className="mb-6">
+              <h3 className="text-lg font-bold text-slate-800 mb-3">🎨 Selecione a Cor</h3>
+              <div className="flex flex-wrap gap-2">
+                {product.colors.split(',').map(color => {
+                  const trimmedColor = color.trim();
+                  let colorStock = 0;
+                  
+                  if (selectedSize && product.stockBySizeColor) {
+                    colorStock = getStockForSizeColor(selectedSize, trimmedColor);
+                  } else if (product.sizes && product.stockBySizeColor) {
+                    // Soma estoque de todos os tamanhos para esta cor
+                    product.sizes.split(',').forEach(size => {
+                      colorStock += getStockForSizeColor(size.trim(), trimmedColor);
+                    });
+                  }
+                  
+                  const isAvailable = colorStock > 0;
+                  const isSelected = selectedColor === trimmedColor;
+
+                  return (
+                    <button
+                      key={trimmedColor}
+                      onClick={() => isAvailable && setSelectedColor(trimmedColor)}
+                      disabled={!isAvailable}
+                      className={`px-6 py-3 rounded-xl font-bold transition-all ${
+                        isSelected
+                          ? 'bg-versiory-coral text-white shadow-lg scale-105'
+                          : isAvailable
+                          ? 'bg-white border-2 border-slate-200 text-slate-700 hover:border-versiory-coral'
+                          : 'bg-slate-100 text-slate-400 line-through cursor-not-allowed'
+                      }`}
+                    >
+                      {trimmedColor}
+                      {isAvailable && selectedSize && <span className="text-xs ml-1">({colorStock})</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {colorError && (
+                <p className="text-red-500 font-bold mt-2 animate-pulse">⚠️ Selecione uma cor</p>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-4 sticky bottom-0 bg-blue-50 pt-4">
             <button 
-              onClick={() => onAddToCart(product)}
+              onClick={handleAddToCart}
               className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-bold py-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-[0.98] text-base"
             >
               Adicionar ao Carrinho
