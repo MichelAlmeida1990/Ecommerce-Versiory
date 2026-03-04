@@ -10,15 +10,20 @@ interface FiscalFieldsProps {
 const FiscalFields: React.FC<FiscalFieldsProps> = ({ productForm, onChange }) => {
   const [ncmSuggestions, setNcmSuggestions] = useState<NCMOption[]>([]);
   const [showNCMHelper, setShowNCMHelper] = useState(false);
+  const [isManualNcm, setIsManualNcm] = useState(false);
 
   useEffect(() => {
     if (productForm.category) {
       const suggestions = getNCMsByCategory(productForm.category);
       setNcmSuggestions(suggestions);
-      
-      // Auto-preencher NCM se estiver vazio
+
+      // Se houver sugestões e o NCM estiver vazio, marcamos como não manual inicialmente
       if (!productForm.ncm && suggestions.length > 0) {
         onChange('ncm', suggestions[0].code);
+        setIsManualNcm(false);
+      } else if (!suggestions.length || (productForm.ncm && !suggestions.some(s => s.code === productForm.ncm))) {
+        // Se o NCM atual não está nas sugestões ou não há sugestões, ativa manual
+        setIsManualNcm(true);
       }
     }
   }, [productForm.category]);
@@ -53,14 +58,26 @@ const FiscalFields: React.FC<FiscalFieldsProps> = ({ productForm, onChange }) =>
 
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-bold text-slate-700 mb-2">
-            NCM * <span className="text-xs font-normal text-slate-500">(8 dígitos)</span>
-          </label>
-          {ncmSuggestions.length > 0 && (
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-bold text-slate-700">
+              NCM * <span className="text-xs font-normal text-slate-500">(8 dígitos)</span>
+            </label>
+            {ncmSuggestions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsManualNcm(!isManualNcm)}
+                className="text-xs font-bold text-versiory-coral hover:underline"
+              >
+                {isManualNcm ? '🔄 Usar sugestões' : '✏️ Digitar manualmente'}
+              </button>
+            )}
+          </div>
+
+          {!isManualNcm && ncmSuggestions.length > 0 ? (
             <select
               value={productForm.ncm || ''}
               onChange={e => onChange('ncm', e.target.value)}
-              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900 mb-2"
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900 animate-in fade-in duration-200"
             >
               <option value="">Selecione um NCM sugerido</option>
               {ncmSuggestions.map(ncm => (
@@ -69,17 +86,19 @@ const FiscalFields: React.FC<FiscalFieldsProps> = ({ productForm, onChange }) =>
                 </option>
               ))}
             </select>
+          ) : (
+            <input
+              type="text"
+              value={productForm.ncm || ''}
+              onChange={e => onChange('ncm', e.target.value)}
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900 animate-in fade-in duration-200"
+              placeholder="Ex: 61102000"
+              maxLength={10}
+            />
           )}
-          <input
-            type="text"
-            value={productForm.ncm || ''}
-            onChange={e => onChange('ncm', e.target.value)}
-            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900"
-            placeholder="Ex: 6110.20.00"
-            maxLength={10}
-          />
-          {productForm.ncm && productForm.ncm.length !== 8 && productForm.ncm.length !== 10 && (
-            <p className="text-xs text-red-600 mt-1">⚠️ NCM deve ter 8 dígitos (ex: 6110.20.00)</p>
+
+          {productForm.ncm && productForm.ncm.replace(/\D/g, '').length !== 8 && (
+            <p className="text-xs text-red-600 mt-1">⚠️ NCM deve ter 8 dígitos numéricos</p>
           )}
         </div>
 
@@ -147,7 +166,7 @@ const FiscalFields: React.FC<FiscalFieldsProps> = ({ productForm, onChange }) =>
 
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">
-              Peso (kg) <span className="text-xs font-normal text-slate-500">(opcional)</span>
+              Peso (kg) *
             </label>
             <input
               type="number"
@@ -157,17 +176,170 @@ const FiscalFields: React.FC<FiscalFieldsProps> = ({ productForm, onChange }) =>
               onChange={e => onChange('peso', parseFloat(e.target.value) || 0)}
               className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900"
               placeholder="0.000"
+              required
             />
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              CEST <span className="text-xs font-normal text-slate-500">(Subst. Tributária)</span>
+            </label>
+            <input
+              type="text"
+              value={productForm.cest || ''}
+              onChange={e => onChange('cest', e.target.value)}
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900"
+              placeholder="Ex: 28.040.00"
+              maxLength={10}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              Cód. Benefício <span className="text-xs font-normal text-slate-500">(Opcional)</span>
+            </label>
+            <input
+              type="text"
+              value={productForm.codigoBeneficio || ''}
+              onChange={e => onChange('codigoBeneficio', e.target.value)}
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900"
+              placeholder="Ex: PR800001"
+            />
+          </div>
+        </div>
+
+        <div className="bg-white/50 p-4 rounded-xl border border-amber-100">
+          <h5 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+            📊 Alíquotas de Impostos (%)
+          </h5>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">ICMS</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={productForm.aliquotaIcms ?? ''}
+                onChange={e => onChange('aliquotaIcms', parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">PIS</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={productForm.aliquotaPis ?? ''}
+                onChange={e => onChange('aliquotaPis', parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">COFINS</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={productForm.aliquotaCofins ?? ''}
+                onChange={e => onChange('aliquotaCofins', parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">IPI</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={productForm.aliquotaIpi ?? ''}
+                onChange={e => onChange('aliquotaIpi', parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+        </div>
+
+
+        <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onChange('usoReformaTributaria', !productForm.usoReformaTributaria);
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 outline-none focus:ring-2 focus:ring-versiory-coral focus:ring-offset-2 ${productForm.usoReformaTributaria ? 'bg-versiory-coral ring-2 ring-versiory-coral/20' : 'bg-slate-300'}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-all duration-300 ease-in-out ${productForm.usoReformaTributaria ? 'translate-x-6' : 'translate-x-1'}`}
+                />
+              </button>
+              <div>
+                <span className="text-sm font-bold text-slate-800">Novo Modelo de Tributação (IBS/CBS)</span>
+                <p className="text-xs text-slate-500">
+                  Conforme Reforma Tributária (Emenda Constitucional nº 132/2023).
+                  <a href="https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2025/dezembro/comunicado-conjunto" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline ml-1 font-bold">Ler Comunicado Oficial</a>
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onChange('usoReformaTributaria', !productForm.usoReformaTributaria)}
+              className={`text-[10px] font-black px-3 py-1 rounded-full transition-all duration-300 ${productForm.usoReformaTributaria ? 'bg-green-100 text-green-700 shadow-sm border border-green-200' : 'bg-slate-200 text-slate-500 border border-slate-300'}`}
+            >
+              {productForm.usoReformaTributaria ? 'ATIVO' : 'INATIVO'}
+            </button>
+          </div>
+
+          {productForm.usoReformaTributaria && (
+            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-blue-100 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  CBS (%) <span className="text-[10px] font-normal text-slate-400">(Contribuição Federal)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={productForm.aliquotaCbs ?? ''}
+                  onChange={e => onChange('aliquotaCbs', parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  IBS (%) <span className="text-[10px] font-normal text-slate-400">(Imposto Est./Mun.)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={productForm.aliquotaIbs ?? ''}
+                  onChange={e => onChange('aliquotaIbs', parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
           <p className="text-xs text-blue-800">
-            <strong>💡 Dica:</strong> Estes dados são obrigatórios para emissão de NF-e. 
-            O NCM foi sugerido automaticamente baseado na categoria "{productForm.category}". 
+            <strong>💡 Dica:</strong> Estes dados são obrigatórios para emissão de NF-e.
+            O NCM foi sugerido automaticamente baseado na categoria "{productForm.category}".
             Consulte sempre seu contador para confirmar os códigos corretos.
           </p>
         </div>
+
       </div>
     </div>
   );

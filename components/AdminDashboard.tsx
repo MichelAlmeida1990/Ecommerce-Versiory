@@ -16,6 +16,8 @@ import ImageGallery from './ImageGallery';
 import SizeChartEditor from './SizeChartEditor';
 import SizeStockManager from './SizeStockManager';
 import ProductSizeSelector from './ProductSizeSelector';
+import ProductMediaShowcase from './ProductMediaShowcase';
+import { saveProduct } from '../services/firebase';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -127,7 +129,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<TabKey>(userRole === 'seller' ? 'pdv' : 'dashboard');
   const [orderFilter, setOrderFilter] = useState<OrderStatus | 'all'>('all');
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
-  
+
   const handleDownloadNFXml = (orderId?: string) => {
     const key = orderId ? `versiory_nf_xml_${orderId}` : 'versiory_nf_xml';
     const xml = localStorage.getItem(key);
@@ -170,15 +172,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     cst: '00',
     origem: 0,
     unidade: 'UN',
-    peso: 0
+    peso: 0,
+    usoReformaTributaria: false,
+    aliquotaCbs: 0,
+    aliquotaIbs: 0
   });
 
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  const [categoryForm, setCategoryForm] = useState({ 
-    name: '', 
-    description: '', 
-    availableSizes: [] as string[], 
-    sizeType: 'none' as 'clothing' | 'shoes' | 'accessories' | 'none' 
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [categoryForm, setCategoryForm] = useState({
+    name: '',
+    description: '',
+    availableSizes: [] as string[],
+    sizeType: 'none' as 'clothing' | 'shoes' | 'accessories' | 'none'
   });
 
   // PDV State
@@ -361,7 +367,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       cst: '00',
       origem: 0,
       unidade: 'UN',
-      peso: 0
+      peso: 0,
+      usoReformaTributaria: false,
+      aliquotaCbs: 0,
+      aliquotaIbs: 0
     });
     setEditingProductId(null);
     setIsCustomCategory(false);
@@ -410,7 +419,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       let stockBySize = productForm.stockBySize || {};
       if (productForm.sizes && productForm.sizes.trim()) {
         const sizeArray = productForm.sizes.split(',').map(s => s.trim()).filter(s => s);
-        
+
         // Se não tem stockBySize ou está vazio, distribuir o estoque igualmente
         if (!productForm.stockBySize || Object.keys(productForm.stockBySize).length === 0) {
           const stockPerSize = Math.floor((productForm.stock || 0) / sizeArray.length);
@@ -442,8 +451,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         origem: productForm.origem ?? 0,
         cest: productForm.cest || '',
         unidade: productForm.unidade || 'UN',
-        peso: productForm.peso || 0
+        peso: productForm.peso || 0,
+        aliquotaIcms: productForm.aliquotaIcms || 0,
+        aliquotaPis: productForm.aliquotaPis || 0,
+        aliquotaCofins: productForm.aliquotaCofins || 0,
+        aliquotaIpi: productForm.aliquotaIpi || 0,
+        codigoBeneficio: productForm.codigoBeneficio || '',
+        usoReformaTributaria: productForm.usoReformaTributaria || false,
+        aliquotaCbs: productForm.aliquotaCbs || 0,
+        aliquotaIbs: productForm.aliquotaIbs || 0
       };
+
+
 
       if (!editingProductId) {
         payload.id = Math.max(0, ...products.map(product => product.id)) + 1;
@@ -535,13 +554,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const openCategoryModal = () => {
-    setCategoryForm({ 
-      name: '', 
-      description: '', 
-      availableSizes: [], 
-      sizeType: 'none' 
-    });
+  const openCategoryModal = (category?: CategoryItem) => {
+    if (category) {
+      setEditingCategoryId(category.id);
+      setCategoryForm({
+        name: category.name,
+        description: category.description || '',
+        availableSizes: category.availableSizes || [],
+        sizeType: category.sizeType || 'none'
+      });
+    } else {
+      setEditingCategoryId(null);
+      setCategoryForm({
+        name: '',
+        description: '',
+        availableSizes: [],
+        sizeType: 'none'
+      });
+    }
     setIsCategoryModalOpen(true);
   };
 
@@ -555,21 +585,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     try {
       const { saveCategory } = await import('../services/firebase');
-      
+
       const categoryData: any = {
-        id: name.toLowerCase().replace(/\s+/g, '_'),
+        id: editingCategoryId || name.toLowerCase().replace(/\s+/g, '_'),
         name,
         description: categoryForm.description.trim(),
         sizeType: categoryForm.sizeType
       };
-      
+
       if (categoryForm.sizeType !== 'none' && categoryForm.availableSizes) {
         categoryData.availableSizes = categoryForm.availableSizes;
       }
-      
+
       await saveCategory(categoryData);
-      onUpdateCategories([...categories, categoryData as CategoryItem]);
+
+      if (editingCategoryId) {
+        onUpdateCategories(categories.map(c => c.id === editingCategoryId ? categoryData : c));
+      } else {
+        onUpdateCategories([...categories, categoryData as CategoryItem]);
+      }
+
       setIsCategoryModalOpen(false);
+      setEditingCategoryId(null);
+
     } catch (error) {
       console.error(error);
       window.alert("Erro ao salvar categoria.");
@@ -786,7 +824,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         window.alert('Selecione um tamanho antes de adicionar ao carrinho.');
         return;
       }
-      
+
       const sizeStock = product.stockBySize[selectedSize] || 0;
       if (sizeStock <= 0) {
         window.alert('Tamanho selecionado sem estoque!');
@@ -802,34 +840,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     setPdvCart(prev => {
       const selectedSize = selectedSizes[product.id];
-      const existing = prev.find(item => 
-        item.product.id === product.id && 
+      const existing = prev.find(item =>
+        item.product.id === product.id &&
         item.selectedSize === selectedSize
       );
-      
+
       if (existing) {
-        const maxStock = product.stockBySize && selectedSize 
-          ? product.stockBySize[selectedSize] 
+        const maxStock = product.stockBySize && selectedSize
+          ? product.stockBySize[selectedSize]
           : product.stock || 0;
-          
+
         if (existing.quantity >= maxStock) {
           window.alert('Quantidade máxima em estoque atingida.');
           return prev;
         }
-        
+
         return prev.map(item =>
           item.product.id === product.id && item.selectedSize === selectedSize
             ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       }
-      
+
       return [...prev, { product, quantity: 1, selectedSize }];
     });
   };
 
   const removeFromPdvCart = (productId: number, selectedSize?: string) => {
-    setPdvCart(prev => prev.filter(item => 
+    setPdvCart(prev => prev.filter(item =>
       !(item.product.id === productId && item.selectedSize === selectedSize)
     ));
   };
@@ -841,15 +879,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     // Check against stock
-    const productItem = pdvCart.find(item => 
+    const productItem = pdvCart.find(item =>
       item.product.id === productId && item.selectedSize === selectedSize
     );
-    
+
     if (productItem) {
-      const maxStock = productItem.product.stockBySize && selectedSize 
-        ? productItem.product.stockBySize[selectedSize] 
+      const maxStock = productItem.product.stockBySize && selectedSize
+        ? productItem.product.stockBySize[selectedSize]
         : productItem.product.stock || 0;
-        
+
       if (newQuantity > maxStock) {
         window.alert('Quantidade máxima em estoque atingida.');
         return;
@@ -877,7 +915,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const { saveOrder, saveProduct, saveCustomer, getCustomers } = await import('../services/firebase');
       const customers = await getCustomers();
       let customer = customers.find(c => c.phone === customerData.phone && customerData.phone);
-      
+
       if (customer) {
         customer.totalOrders = (customer.totalOrders || 0) + 1;
         customer.totalSpent = (customer.totalSpent || 0) + order.total;
@@ -909,19 +947,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (productIndex !== -1) {
           const p = updatedProducts[productIndex];
           const newStock = Math.max(0, (p.stock || 0) - item.quantity);
-          
+
           // CORREÇÃO CRÍTICA: Atualizar stockBySize quando produto tem tamanhos
           let newStockBySize = { ...(p.stockBySize || {}) };
           if (item.selectedSize && p.sizes) {
             const currentSizeStock = newStockBySize[item.selectedSize] || 0;
             newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
           }
-          
+
           const productToSave = { ...p, stock: newStock };
           if (p.sizes && Object.keys(newStockBySize).length > 0) {
             productToSave.stockBySize = newStockBySize;
           }
-          
+
           const saved = await saveProduct(productToSave);
           updatedProducts[productIndex] = saved;
         }
@@ -985,7 +1023,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       };
 
       await saveExpense(expense);
-      
+
       if (editingExpenseId) {
         const updated = expenses.map(e => e.id === editingExpenseId ? expense : e);
         onUpdateExpenses(updated);
@@ -993,7 +1031,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const updated = [...expenses, expense];
         onUpdateExpenses(updated);
       }
-      
+
       setIsExpenseModalOpen(false);
       setEditingExpenseId(null);
     } catch (error) {
@@ -1094,24 +1132,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {(
               userRole === 'admin'
                 ? [
-                    ['dashboard', 'Dashboard'],
-                    ['pdv', 'PDV Loja'],
-                    ['products', 'Produtos'],
-                    ['categories', 'Categorias'],
-                    ['orders', 'Pedidos'],
-                    ['customers', 'Clientes'],
-                    ['tracking', 'Rastreamento'],
-                    ['inventory', 'Estoque'],
-                    ['financial', 'Financeiro'],
-                    ['fiscal', 'Fiscal/NF-e']
-                  ]
+                  ['dashboard', 'Dashboard'],
+                  ['pdv', 'PDV Loja'],
+                  ['products', 'Produtos'],
+                  ['categories', 'Categorias'],
+                  ['orders', 'Pedidos'],
+                  ['customers', 'Clientes'],
+                  ['tracking', 'Rastreamento'],
+                  ['inventory', 'Estoque'],
+                  ['financial', 'Financeiro'],
+                  ['fiscal', 'Fiscal/NF-e']
+                ]
                 : [
-                    ['pdv', 'PDV Loja'],
-                    ['products', 'Produtos'],
-                    ['customers', 'Clientes'],
-                    ['orders', 'Pedidos'],
-                    ['fiscal', 'Fiscal/NF-e']
-                  ]
+                  ['pdv', 'PDV Loja'],
+                  ['products', 'Produtos'],
+                  ['customers', 'Clientes'],
+                  ['orders', 'Pedidos'],
+                  ['fiscal', 'Fiscal/NF-e']
+                ]
             ).map(([key, label]) => (
               <button
                 key={key}
@@ -1175,623 +1213,239 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {activeTab === 'pdv' && (
-        <div className="flex flex-col tablet-desktop-flex gap-6">
-          {/* Left Column: Product Search & List */}
-          <div className="flex-1 space-y-4">
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 tablet-desktop-padding">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-black text-white tablet-desktop-text">Adicionar Produtos</h2>
-                <input
-                  type="text"
-                  value={pdvSearch}
-                  onChange={e => setPdvSearch(e.target.value)}
-                  placeholder="Buscar por nome ou categoria..."
-                  className="px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none w-64"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 tablet-desktop-grid gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                {products
-                  .filter(p => p.name.toLowerCase().includes(pdvSearch.toLowerCase()) || p.category.toLowerCase().includes(pdvSearch.toLowerCase()))
-                  .map(product => (
-                    <div key={product.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col justify-between hover:bg-white/10 transition-colors">
-                      <div className="flex items-start gap-3 mb-3">
-                        <img src={product.image} alt={product.name} className="w-16 h-16 rounded-lg object-cover bg-white" />
-                        <div className="flex-1">
-                          <h4 className="font-bold text-white text-sm line-clamp-2">{product.name}</h4>
-                          <span className="text-slate-300 text-xs">{product.category}</span>
-                          {(product.sizes || product.colors) && (
-                            <div className="text-xs text-blue-300 mt-1">
-                              {product.sizes && `Tamanhos disponíveis`}
-                              {product.sizes && product.colors && ' • '}
-                              {product.colors && `Cores disponíveis`}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="flex justify-between items-end mt-2">
-                        <div>
-                          <p className="font-black text-white text-lg">{formatCurrency(product.price)}</p>
-                          <p className="text-xs text-green-400">
-                            {product.stock || 0} em estoque
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (product.sizes || product.colors) {
-                              setPdvProductModal({ isOpen: true, product });
-                              setPdvModalSelection({ size: '', color: '' });
-                            } else {
-                              addToPdvCart(product);
-                            }
-                          }}
-                          disabled={(product.stock || 0) <= 0}
-                          className="bg-versiory-coral hover:bg-[#ff8368] disabled:bg-slate-600 disabled:cursor-not-allowed text-white p-2 rounded-lg transition-transform active:scale-95"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                {products.length === 0 && (
-                  <div className="col-span-full text-center text-slate-300 py-8">
-                    Nenhum produto cadastrado.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Pos Cart */}
-          <div className="w-full md:w-[380px] lg:w-[400px] bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 tablet-desktop-padding flex flex-col md:h-[calc(100vh-200px)] md:sticky md:top-6">
-            <h2 className="text-xl font-black text-white mb-6 pb-4 border-b border-white/10 flex items-center justify-between">
-              <span>Carrinho (PDV)</span>
-              <span className="text-sm font-medium bg-white/10 px-3 py-1 rounded-full text-slate-200">
-                {pdvCart.reduce((sum, item) => sum + item.quantity, 0)} itens
-              </span>
-            </h2>
-
-            <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar mb-6">
-              {pdvCart.map((item, index) => (
-                <div key={`${item.product.id}-${item.selectedSize || 'no-size'}-${index}`} className="bg-white/5 rounded-xl p-3 border border-white/10">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex-1 pr-2">
-                      <p className="text-sm font-bold text-white line-clamp-1">{item.product.name}</p>
-                      {item.selectedSize && (
-                        <p className="text-xs text-blue-300">Tamanho: {item.selectedSize}</p>
-                      )}
-                      <p className="text-xs text-slate-400">{formatCurrency(item.product.price)} / un</p>
-                    </div>
-                    <button onClick={() => removeFromPdvCart(item.product.id, item.selectedSize)} className="text-slate-400 hover:text-red-400 transition-colors">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="flex justify-between items-center mt-2">
-                    <div className="flex items-center gap-2 bg-white/10 rounded-lg p-1">
-                      <button
-                        onClick={() => updatePdvItemQuantity(item.product.id, item.quantity - 1, item.selectedSize)}
-                        className="w-6 h-6 flex items-center justify-center text-white hover:bg-white/20 rounded-md transition-colors"
-                      >-</button>
-                      <span className="text-sm font-bold text-white w-6 text-center">{item.quantity}</span>
-                      <button
-                        onClick={() => updatePdvItemQuantity(item.product.id, item.quantity + 1, item.selectedSize)}
-                        className="w-6 h-6 flex items-center justify-center text-white hover:bg-white/20 rounded-md transition-colors"
-                      >+</button>
-                    </div>
-                    <p className="font-bold text-white">
-                      {formatCurrency(item.product.price * item.quantity)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-
-              {pdvCart.length === 0 && (
-                <div className="text-center text-slate-400 py-10 flex flex-col items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mb-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                  <p>Adicione produtos<br />para iniciar uma venda</p>
-                </div>
-              )}
-            </div>
-
-            <div className="pt-4 border-t border-white/10 mt-auto">
-              <div className="flex justify-between items-center mb-6">
-                <span className="text-slate-300">Total a pagar:</span>
-                <span className="text-2xl font-black text-white">
-                  {formatCurrency(pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0))}
-                </span>
-              </div>
-              <button
-                onClick={handlePdvCheckout}
-                disabled={pdvCart.length === 0 || isSubmitting}
-                className="w-full bg-versiory-coral hover:bg-[#ff8368] disabled:bg-slate-600 disabled:cursor-not-allowed text-white py-4 rounded-xl font-black text-lg shadow-xl shadow-versiory-coral/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Finalizando...
-                  </>
-                ) : (
-                  'Finalizar Venda (PDV)'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'products' && (
-        <div>
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-black text-white">Gerenciar Produtos</h2>
-            <div className="flex gap-3">
-              {userRole === 'admin' && (
-                <>
-                  <button
-                    onClick={async () => {
-                      if (!window.confirm('Sincronizar estoque por tamanho com estoque geral?\n\nIsso vai distribuir o estoque geral igualmente entre os tamanhos.')) return;
-                      try {
-                        const { saveProduct } = await import('../services/firebase');
-                        let updated = 0;
-                        for (const product of products) {
-                          if (product.sizes) {
-                            const sizeArray = product.sizes.split(',').map(s => s.trim());
-                            const stockBySize: { [key: string]: number } = {};
-                            const stockPerSize = Math.floor((product.stock || 0) / sizeArray.length);
-                            
-                            sizeArray.forEach(size => {
-                              stockBySize[size] = stockPerSize;
-                            });
-
-                            const updatedProduct = {
-                              ...product,
-                              stockBySize
-                            };
-
-                            await saveProduct(updatedProduct);
-                            updated++;
-                          }
-                        }
-                        window.alert(`${updated} produtos sincronizados!`);
-                        window.location.reload();
-                      } catch (error) {
-                        console.error(error);
-                        window.alert('Erro ao sincronizar produtos');
-                      }
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
-                  >
-                    🔄 Sincronizar Estoque por Tamanho
-                  </button>
-                  <button
-                    onClick={() => openProductModal()}
-                    className="bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
-                  >
-                    + Novo Produto
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {products.map(product => (
-              <div key={product.id} className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden hover:scale-[1.02] transition-transform">
-                <div className="relative h-48 bg-white">
-                  <img
-                    src={product.image}
-                    alt={product.name}
-                    className="w-full h-full object-cover"
+          <div className="flex flex-col tablet-desktop-flex gap-6">
+            {/* Left Column: Product Search & List */}
+            <div className="flex-1 space-y-4">
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 tablet-desktop-padding">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-black text-white tablet-desktop-text">Adicionar Produtos</h2>
+                  <input
+                    type="text"
+                    value={pdvSearch}
+                    onChange={e => setPdvSearch(e.target.value)}
+                    placeholder="Buscar por nome ou categoria..."
+                    className="px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none w-64"
                   />
-                  <div className="absolute top-3 right-3 bg-versiory-coral text-white px-3 py-1 rounded-full text-sm font-bold">
-                    #{product.id}
-                  </div>
-                  {(product.stock || 0) === 0 && (
-                    <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold">
-                      SEM ESTOQUE
-                    </div>
-                  )}
-                  {(product.stock || 0) > 0 && (product.stock || 0) < 10 && (
-                    <div className="absolute top-3 left-3 bg-yellow-500 text-white px-3 py-1 rounded-full text-xs font-bold">
-                      ESTOQUE BAIXO
-                    </div>
-                  )}
                 </div>
-                
-                <div className="p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-white line-clamp-2 mb-1">{product.name}</h3>
-                      <span className="inline-block px-2 py-1 bg-white/10 text-slate-200 text-xs rounded-lg">
-                        {product.category}
-                      </span>
-                    </div>
-                  </div>
 
-                  <p className="text-sm text-slate-300 line-clamp-2 mb-4">{product.description}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 tablet-desktop-grid gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                  {products
+                    .filter(p => p.name.toLowerCase().includes(pdvSearch.toLowerCase()) || p.category.toLowerCase().includes(pdvSearch.toLowerCase()))
+                    .map(product => (
+                      <div key={product.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col justify-between hover:bg-white/10 transition-colors">
+                        <div className="flex items-start gap-3 mb-3">
+                          <img src={product.image} alt={product.name} className="w-16 h-16 rounded-lg object-cover bg-white" />
+                          <div className="flex-1">
+                            <h4 className="font-bold text-white text-sm line-clamp-2">{product.name}</h4>
+                            <span className="text-slate-300 text-xs">{product.category}</span>
+                            {(product.sizes || product.colors) && (
+                              <div className="text-xs text-blue-300 mt-1">
+                                {product.sizes && `Tamanhos disponíveis`}
+                                {product.sizes && product.colors && ' • '}
+                                {product.colors && `Cores disponíveis`}
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <div className="text-xs text-slate-400 mb-1">Preço</div>
-                      <div className="text-lg font-bold text-white">{formatCurrency(product.price)}</div>
-                    </div>
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <div className="text-xs text-slate-400 mb-1">Estoque</div>
-                      <div className="text-lg font-bold text-white">{product.stock || 0} un</div>
-                    </div>
-                  </div>
-
-                  {product.sizes && (
-                    <div className="mb-4">
-                      <div className="text-xs text-slate-400 mb-2">Tamanhos disponíveis:</div>
-                      <div className="flex flex-wrap gap-1">
-                        {product.sizes.split(',').map(size => {
-                          const trimmedSize = size.trim();
-                          const sizeStock = product.stockBySize?.[trimmedSize] || 0;
-                          return (
-                            <span key={trimmedSize} className={`px-2 py-1 text-xs rounded ${
-                              sizeStock > 0 ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
-                            }`}>
-                              {trimmedSize} ({sizeStock})
-                            </span>
-                          );
-                        })}
+                        <div className="flex justify-between items-end mt-2">
+                          <div>
+                            <p className="font-black text-white text-lg">{formatCurrency(product.price)}</p>
+                            <p className="text-xs text-green-400">
+                              {product.stock || 0} em estoque
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (product.sizes || product.colors) {
+                                setPdvProductModal({ isOpen: true, product });
+                                setPdvModalSelection({ size: '', color: '' });
+                              } else {
+                                addToPdvCart(product);
+                              }
+                            }}
+                            disabled={(product.stock || 0) <= 0}
+                            className="bg-versiory-coral hover:bg-[#ff8368] disabled:bg-slate-600 disabled:cursor-not-allowed text-white p-2 rounded-lg transition-transform active:scale-95"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="flex items-center">
-                      <span className="text-yellow-400 text-lg">★</span>
-                      <span className="text-sm font-medium text-white ml-1">{product.rating}</span>
-                    </div>
-                    <span className="text-xs text-slate-400">({product.reviews} avaliações)</span>
-                  </div>
-
-                  {userRole === 'admin' && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => openProductModal(product)}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
-                      >
-                        ✏️ Editar
-                      </button>
-                      {product.sizes && (
-                        <button
-                          onClick={() => {
-                            setSizeManagerProductId(product.id);
-                            setIsSizeManagerModalOpen(true);
-                          }}
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
-                        >
-                          📏 Tamanhos
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleProductDelete(product.id)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  )}
-                  {userRole === 'seller' && (
-                    <div className="text-center text-slate-400 text-sm py-2">
-                      Somente consulta
+                    ))}
+                  {products.length === 0 && (
+                    <div className="col-span-full text-center text-slate-300 py-8">
+                      Nenhum produto cadastrado.
                     </div>
                   )}
                 </div>
               </div>
-            ))}
-          </div>
-
-          {products.length === 0 && (
-            <div className="text-center py-20">
-              <div className="text-6xl mb-4">📦</div>
-              <h3 className="text-xl font-bold text-white mb-2">Nenhum produto cadastrado</h3>
-              <p className="text-slate-300 mb-6">Comece adicionando seu primeiro produto</p>
-              {userRole === 'admin' && (
-                <button
-                  onClick={() => openProductModal()}
-                  className="bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
-                >
-                  + Adicionar Primeiro Produto
-                </button>
-              )}
             </div>
-          )}
-        </div>
-      )}
 
-      {activeTab === 'categories' && (
-        <div>
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-black text-white">Gerenciar Categorias</h2>
-            <button
-              onClick={openCategoryModal}
-              className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
-            >
-              + Nova Categoria
-            </button>
-          </div>
+            {/* Right Column: Pos Cart */}
+            <div className="w-full md:w-[380px] lg:w-[400px] bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 tablet-desktop-padding flex flex-col md:h-[calc(100vh-200px)] md:sticky md:top-6">
+              <h2 className="text-xl font-black text-white mb-6 pb-4 border-b border-white/10 flex items-center justify-between">
+                <span>Carrinho (PDV)</span>
+                <span className="text-sm font-medium bg-white/10 px-3 py-1 rounded-full text-slate-200">
+                  {pdvCart.reduce((sum, item) => sum + item.quantity, 0)} itens
+                </span>
+              </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {categories.map(category => (
-              <div key={category.id} className="bg-slate-800/40 backdrop-blur-md rounded-xl p-6 shadow-lg border border-slate-700/50 hover:bg-slate-800/60 hover:border-slate-600/50 transition-all">
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-lg font-bold text-white">{category.name}</h3>
-                  <button
-                    onClick={() => handleCategoryDelete(category.id)}
-                    className="text-slate-1000 hover:text-red-700"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                  </button>
-                </div>
-                <p className="text-slate-300 text-sm mb-4">{category.description}</p>
-                <div className="text-sm text-slate-400">
-                  <span className="font-semibold">
-                    {products.filter(product => product.category === category.name).length}
-                  </span>{' '}
-                  produtos
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'orders' && (
-        <div>
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-black text-white">Gerenciar Pedidos</h2>
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleDownloadNFXml()}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
-              >
-                📄 Baixar XML NF-e
-              </button>
-              <select
-                value={orderFilter}
-                onChange={event => setOrderFilter(event.target.value as OrderStatus | 'all')}
-                className="px-3 py-2 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
-              >
-                <option value="all">Todos os Status</option>
-                <option value="pending">Aguardando Pagamento</option>
-                <option value="paid">Pagamento Efetuado</option>
-                <option value="processing">Em Processamento</option>
-                <option value="shipped">Enviado</option>
-                <option value="delivered">Entregue</option>
-                <option value="cancelled">Cancelado</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-white/15 backdrop-blur-md border-b border-white/25">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Pedido</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Cliente</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Data</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Total</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Acoes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/10">
-                  {filteredOrders.map(order => (
-                    <tr key={order.id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">{order.id}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{order.customerName}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{formatDate(order.date)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">
-                        {formatCurrency(order.total)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${STATUS_COLORS[order.status]}`}>
-                          {STATUS_LABELS[order.status]}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => openOrderStatusModal(order)}
-                          className="bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
-                        >
-                          Atualizar Status
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'customers' && (
-        <div>
-          <h2 className="text-xl font-black text-white mb-6">Gerenciar Clientes</h2>
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-white/15 backdrop-blur-md border-b border-white/25">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">ID</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Cliente</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Telefone</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Pedidos</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Total Gasto</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/10">
-                  {customers.map(customer => (
-                    <tr key={customer.id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">#{customer.id}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.email}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.phone}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.totalOrders}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">
-                        {formatCurrency(customer.totalSpent)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'tracking' && (
-        <div>
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-black text-white">Rastreamento</h2>
-            <button
-              onClick={() => openTrackingModal()}
-              className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
-            >
-              + Novo Rastreamento
-            </button>
-          </div>
-
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-white/15 backdrop-blur-md border-b border-white/25">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Pedido</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Transportadora</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Codigo</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Atualizacao</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Acoes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/10">
-                  {tracking.map(track => (
-                    <tr key={track.orderId} className="hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">{track.orderId}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{track.carrier}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{track.code}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${TRACKING_COLORS[track.status]}`}>
-                          {TRACKING_LABELS[track.status]}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{formatDate(track.lastUpdate)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => openTrackingModal(track)}
-                          className="bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
-                        >
-                          Atualizar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'inventory' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-slate-100">{formatCurrency(inventoryStats.totalStockValue)}</div>
-              <div className="text-slate-100 font-medium text-sm">Valor em Estoque</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-slate-100">{inventoryStats.lowStockItems}</div>
-              <div className="text-slate-100 font-medium text-sm">Estoque Baixo</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-slate-100">{inventoryStats.outOfStockItems}</div>
-              <div className="text-slate-100 font-medium text-sm">Esgotados</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-slate-100">{inventoryStats.totalItemsInStock}</div>
-              <div className="text-slate-100 font-medium text-sm">Itens em Estoque</div>
-            </div>
-          </div>
-
-          {lowStockProducts.length > 0 && (
-            <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/20 p-4">
-              <h3 className="text-lg font-bold text-slate-100 mb-3">Alertas de Estoque Baixo</h3>
-              <div className="space-y-2">
-                {lowStockProducts.map(product => (
-                  <div key={product.id} className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/20">
-                    <div>
-                      <span className="font-medium text-slate-100">{product.name}</span>
-                      <span className="text-sm text-slate-200 ml-2">({product.stock || 0} unidades)</span>
+              <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar mb-6">
+                {pdvCart.map((item, index) => (
+                  <div key={`${item.product.id}-${item.selectedSize || 'no-size'}-${index}`} className="bg-white/5 rounded-xl p-3 border border-white/10">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1 pr-2">
+                        <p className="text-sm font-bold text-white line-clamp-1">{item.product.name}</p>
+                        {item.selectedSize && (
+                          <p className="text-xs text-blue-300">Tamanho: {item.selectedSize}</p>
+                        )}
+                        <p className="text-xs text-slate-400">{formatCurrency(item.product.price)} / un</p>
+                      </div>
+                      <button onClick={() => removeFromPdvCart(item.product.id, item.selectedSize)} className="text-slate-400 hover:text-red-400 transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                      </button>
                     </div>
-                    <button
-                      onClick={() => openInventoryModal(product.id)}
-                      className="bg-versiory-coral hover:bg-[#ff8368] text-white px-3 py-1 rounded-lg text-sm font-medium"
-                    >
-                      Reabastecer
-                    </button>
+                    <div className="flex justify-between items-center mt-2">
+                      <div className="flex items-center gap-2 bg-white/10 rounded-lg p-1">
+                        <button
+                          onClick={() => updatePdvItemQuantity(item.product.id, item.quantity - 1, item.selectedSize)}
+                          className="w-6 h-6 flex items-center justify-center text-white hover:bg-white/20 rounded-md transition-colors"
+                        >-</button>
+                        <span className="text-sm font-bold text-white w-6 text-center">{item.quantity}</span>
+                        <button
+                          onClick={() => updatePdvItemQuantity(item.product.id, item.quantity + 1, item.selectedSize)}
+                          className="w-6 h-6 flex items-center justify-center text-white hover:bg-white/20 rounded-md transition-colors"
+                        >+</button>
+                      </div>
+                      <p className="font-bold text-white">
+                        {formatCurrency(item.product.price * item.quantity)}
+                      </p>
+                    </div>
                   </div>
                 ))}
+
+                {pdvCart.length === 0 && (
+                  <div className="text-center text-slate-400 py-10 flex flex-col items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mb-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <p>Adicione produtos<br />para iniciar uma venda</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-white/10 mt-auto">
+                <div className="flex justify-between items-center mb-6">
+                  <span className="text-slate-300">Total a pagar:</span>
+                  <span className="text-2xl font-black text-white">
+                    {formatCurrency(pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0))}
+                  </span>
+                </div>
+                <button
+                  onClick={handlePdvCheckout}
+                  disabled={pdvCart.length === 0 || isSubmitting}
+                  className="w-full bg-versiory-coral hover:bg-[#ff8368] disabled:bg-slate-600 disabled:cursor-not-allowed text-white py-4 rounded-xl font-black text-lg shadow-xl shadow-versiory-coral/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Finalizando...
+                    </>
+                  ) : (
+                    'Finalizar Venda (PDV)'
+                  )}
+                </button>
               </div>
             </div>
-          )}
-
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
-            <input
-              value={inventorySearch}
-              onChange={event => setInventorySearch(event.target.value)}
-              placeholder="Buscar por produto ou categoria"
-              className="flex-1 px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none"
-            />
-            <select
-              value={stockFilter}
-              onChange={event => setStockFilter(event.target.value as StockFilter)}
-              className="px-4 py-2 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none"
-            >
-              <option value="all">Todos</option>
-              <option value="low">Estoque Baixo</option>
-              <option value="out">Esgotados</option>
-              <option value="normal">Normal</option>
-            </select>
-            <button
-              onClick={generateInventoryReport}
-              className="bg-versiory-ink hover:bg-[#1b2a3a] text-white px-4 py-2 rounded-lg"
-            >
-              Exportar CSV
-            </button>
           </div>
+        )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredInventoryProducts.map(product => {
-              const stock = product.stock || 0;
-              const totalValue = stock * product.price;
-              let statusLabel = 'Normal';
-              let statusClass = 'bg-green-100 text-green-800';
-              if (stock === 0) {
-                statusLabel = 'Esgotado';
-                statusClass = 'bg-red-100 text-red-800';
-              } else if (stock < 10) {
-                statusLabel = 'Estoque Baixo';
-                statusClass = 'bg-yellow-100 text-yellow-800';
-              }
+        {activeTab === 'products' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black text-white">Gerenciar Produtos</h2>
+              <div className="flex gap-3">
+                {userRole === 'admin' && (
+                  <>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm('Sincronizar estoque por tamanho com estoque geral?\n\nIsso vai distribuir o estoque geral igualmente entre as variações (tamanhos/cores).')) return;
+                        try {
+                          const { saveProduct } = await import('../services/firebase');
+                          const updatedProductsList = [...products];
+                          let updatedCount = 0;
 
-              return (
+                          for (let i = 0; i < updatedProductsList.length; i++) {
+                            const product = updatedProductsList[i];
+                            if (product.sizes) {
+                              const sizeArray = product.sizes.split(',').map(s => s.trim()).filter(s => s);
+                              const colorArray = product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : [];
+                              const totalStock = product.stock || 0;
+
+                              if (colorArray.length > 0) {
+                                // Sincronizar por Tamanho + Cor
+                                const combinations: string[] = [];
+                                sizeArray.forEach(s => colorArray.forEach(c => combinations.push(`${s}-${c}`)));
+
+                                const stockPerComb = Math.floor(totalStock / combinations.length);
+                                let remainder = totalStock % combinations.length;
+
+                                const stockBySizeColor: { [key: string]: number } = {};
+                                combinations.forEach((key, index) => {
+                                  stockBySizeColor[key] = stockPerComb + (index < remainder ? 1 : 0);
+                                });
+
+                                const updatedProduct = { ...product, stockBySizeColor, stockBySize: {} };
+                                await saveProduct(updatedProduct);
+                                updatedProductsList[i] = updatedProduct;
+                                updatedCount++;
+                              } else {
+                                // Sincronizar apenas por Tamanho
+                                const stockPerSize = Math.floor(totalStock / sizeArray.length);
+                                let remainder = totalStock % sizeArray.length;
+
+                                const stockBySize: { [key: string]: number } = {};
+                                sizeArray.forEach((size, index) => {
+                                  stockBySize[size] = stockPerSize + (index < remainder ? 1 : 0);
+                                });
+
+                                const updatedProduct = { ...product, stockBySize, stockBySizeColor: {} };
+                                await saveProduct(updatedProduct);
+                                updatedProductsList[i] = updatedProduct;
+                                updatedCount++;
+                              }
+                            }
+                          }
+
+                          onUpdateProducts(updatedProductsList);
+                          window.alert(`${updatedCount} produtos sincronizados com sucesso!`);
+                        } catch (error) {
+                          console.error(error);
+                          window.alert('Erro ao sincronizar produtos.');
+                        }
+                      }}
+
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                    >
+                      🔄 Sincronizar Estoque por Tamanho
+                    </button>
+                    <button
+                      onClick={() => openProductModal()}
+                      className="bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
+                    >
+                      + Novo Produto
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {products.map(product => (
                 <div key={product.id} className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden hover:scale-[1.02] transition-transform">
                   <div className="relative h-48 bg-white">
                     <img
@@ -1802,13 +1456,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="absolute top-3 right-3 bg-versiory-coral text-white px-3 py-1 rounded-full text-sm font-bold">
                       #{product.id}
                     </div>
-                    <div className="absolute top-3 left-3">
-                      <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full ${statusClass}`}>
-                        {statusLabel}
-                      </span>
-                    </div>
+                    {(product.stock || 0) === 0 && (
+                      <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+                        SEM ESTOQUE
+                      </div>
+                    )}
+                    {(product.stock || 0) > 0 && (product.stock || 0) < 10 && (
+                      <div className="absolute top-3 left-3 bg-yellow-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+                        ESTOQUE BAIXO
+                      </div>
+                    )}
                   </div>
-                  
+
                   <div className="p-5">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
@@ -1819,1098 +1478,1547 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
 
+                    <p className="text-sm text-slate-300 line-clamp-2 mb-4">{product.description}</p>
+
                     <div className="grid grid-cols-2 gap-3 mb-4">
                       <div className="bg-white/5 rounded-lg p-3">
-                        <div className="text-xs text-slate-400 mb-1">Estoque Atual</div>
-                        <div className="text-2xl font-black text-white">{stock}</div>
-                        <div className="text-xs text-slate-400">Mín: 10 un</div>
+                        <div className="text-xs text-slate-400 mb-1">Preço</div>
+                        <div className="text-lg font-bold text-white">{formatCurrency(product.price)}</div>
                       </div>
                       <div className="bg-white/5 rounded-lg p-3">
-                        <div className="text-xs text-slate-400 mb-1">Valor Unit.</div>
-                        <div className="text-lg font-bold text-white">{formatCurrency(product.price)}</div>
-                        <div className="text-xs text-green-400 font-medium">Total: {formatCurrency(totalValue)}</div>
+                        <div className="text-xs text-slate-400 mb-1">Estoque</div>
+                        <div className="text-lg font-bold text-white">{product.stock || 0} un</div>
                       </div>
                     </div>
 
                     {product.sizes && (
                       <div className="mb-4">
-                        <div className="text-xs text-slate-400 mb-2">Estoque por tamanho:</div>
+                        <div className="text-xs text-slate-400 mb-2">Tamanhos disponíveis:</div>
                         <div className="flex flex-wrap gap-1">
                           {product.sizes.split(',').map(size => {
                             const trimmedSize = size.trim();
-                            const sizeStock = product.stockBySize?.[trimmedSize] || 0;
+                            let sizeStock = product.stockBySize?.[trimmedSize] || 0;
+
+                            // Se tiver cores, somar o estoque de todas as cores para este tamanho
+                            if (product.colors && product.stockBySizeColor) {
+                              const colors = product.colors.split(',').map(c => c.trim());
+                              sizeStock = colors.reduce((sum, color) => {
+                                const key = `${trimmedSize}-${color}`;
+                                return sum + (product.stockBySizeColor?.[key] || 0);
+                              }, 0);
+                            }
+
                             return (
-                              <span key={trimmedSize} className={`px-2 py-1 text-xs rounded font-medium ${
-                                sizeStock > 0 ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
-                              }`}>
-                                {trimmedSize}: {sizeStock}
+                              <span key={trimmedSize} className={`px-2 py-1 text-xs rounded ${sizeStock > 0 ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
+                                }`}>
+                                {trimmedSize} ({sizeStock})
                               </span>
                             );
                           })}
+
                         </div>
                       </div>
                     )}
 
-                    <button
-                      onClick={() => openInventoryModal(product.id)}
-                      className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-3 rounded-xl font-bold transition-all shadow-lg"
-                    >
-                      📦 Movimentar Estoque
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {filteredInventoryProducts.length === 0 && (
-            <div className="text-center py-20">
-              <div className="text-6xl mb-4">📦</div>
-              <h3 className="text-xl font-bold text-white mb-2">Nenhum produto encontrado</h3>
-              <p className="text-slate-300">Ajuste os filtros para ver mais produtos</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'financial' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalRevenue)}</div>
-              <div className="text-slate-100 font-medium text-sm">Receita Total</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
-              <div className="text-slate-100 font-medium text-sm">Vendas PDV</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-blue-400">{formatCurrency(financialStats.onlineRevenue)}</div>
-              <div className="text-slate-100 font-medium text-sm">Vendas Online</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalExpenses)}</div>
-              <div className="text-slate-100 font-medium text-sm">Despesas</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.netProfit)}</div>
-              <div className="text-slate-100 font-medium text-sm">Lucro Liquido</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-              <div className="text-2xl font-bold text-slate-100">{financialStats.profitMargin.toFixed(1)}%</div>
-              <div className="text-slate-100 font-medium text-sm">Margem de Lucro</div>
-            </div>
-          </div>
-
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
-            <button
-              onClick={() => openExpenseModal()}
-              className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
-            >
-              + Lancar Despesa
-            </button>
-            <button
-              onClick={generateFinancialReport}
-              className="bg-versiory-ink hover:bg-[#1b2a3a] text-white px-4 py-2 rounded-lg"
-            >
-              Exportar CSV
-            </button>
-          </div>
-
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-4">
-            <h3 className="text-lg font-bold text-white mb-4">Transacoes Recentes</h3>
-            <div className="space-y-3">
-              {recentTransactions.map(transaction => (
-                <div key={`${transaction.type}-${transaction.id}`} className="flex justify-between items-center p-4 bg-white/5 border border-white/15 rounded-xl">
-                  <div className="flex-1">
-                    <div className="font-medium text-slate-100">{transaction.description}</div>
-                    <div className="text-sm text-slate-200">
-                      {formatDate(transaction.date)} - {transaction.category}
-                    </div>
-                  </div>
-                  <div className="text-right flex items-center gap-3">
-                    <div>
-                      <div className={`font-bold ${transaction.type === 'revenue' ? 'text-green-600' : 'text-red-600'}`}>
-                        {transaction.type === 'revenue' ? '+' : '-'}{formatCurrency(Math.abs(transaction.amount))}
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="flex items-center">
+                        <span className="text-yellow-400 text-lg">★</span>
+                        <span className="text-sm font-medium text-white ml-1">{product.rating}</span>
                       </div>
-                      <div className="text-xs text-slate-200">
-                        {transaction.type === 'revenue' ? 'Receita' : 'Despesa'}
-                      </div>
+                      <span className="text-xs text-slate-400">({product.reviews} avaliações)</span>
                     </div>
-                    {transaction.type === 'expense' && 'expenseId' in transaction && (
+
+                    {userRole === 'admin' && (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => openExpenseModal(expenses.find(e => e.id === transaction.expenseId))}
-                          className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-all"
-                          title="Editar"
+                          onClick={() => openProductModal(product)}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
+                          ✏️ Editar
                         </button>
+                        {product.sizes && (
+                          <button
+                            onClick={() => {
+                              setSizeManagerProductId(product.id);
+                              setIsSizeManagerModalOpen(true);
+                            }}
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                          >
+                            📏 Tamanhos
+                          </button>
+                        )}
                         <button
-                          onClick={() => handleExpenseDelete(transaction.expenseId!)}
-                          className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-all"
-                          title="Excluir"
+                          onClick={() => handleProductDelete(product.id)}
+                          className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
+                          🗑️
                         </button>
+                      </div>
+                    )}
+                    {userRole === 'seller' && (
+                      <div className="text-center text-slate-400 text-sm py-2">
+                        Somente consulta
                       </div>
                     )}
                   </div>
                 </div>
               ))}
-              {recentTransactions.length === 0 && (
-                <p className="text-sm text-slate-200">Nenhuma transacao recente.</p>
-              )}
+            </div>
+
+            {products.length === 0 && (
+              <div className="text-center py-20">
+                <div className="text-6xl mb-4">📦</div>
+                <h3 className="text-xl font-bold text-white mb-2">Nenhum produto cadastrado</h3>
+                <p className="text-slate-300 mb-6">Comece adicionando seu primeiro produto</p>
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => openProductModal()}
+                    className="bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
+                  >
+                    + Adicionar Primeiro Produto
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'categories' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black text-white">Gerenciar Categorias</h2>
+              <button
+                onClick={openCategoryModal}
+                className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+              >
+                + Nova Categoria
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {categories.map(category => (
+                <div key={category.id} className="bg-slate-800/40 backdrop-blur-md rounded-xl p-6 shadow-lg border border-slate-700/50 hover:bg-slate-800/60 hover:border-slate-600/50 transition-all">
+                  <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-lg font-bold text-white">{category.name}</h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => openCategoryModal(category)}
+                        className="text-blue-400 hover:text-blue-300 transition-colors"
+                        title="Editar Categoria"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleCategoryDelete(category.id)}
+                        className="text-red-400 hover:text-red-300 transition-colors"
+                        title="Excluir Categoria"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-slate-300 text-sm mb-4">{category.description}</p>
+                  <div className="text-sm text-slate-400">
+                    <span className="font-semibold">
+                      {products.filter(product => product.category === category.name).length}
+                    </span>{' '}
+                    produtos
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {activeTab === 'fiscal' && (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-black text-white">Configurações Fiscais e NF-e</h2>
-            <button
-              onClick={() => setIsFiscalConfigOpen(true)}
-              className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all"
-            >
-              ⚙️ Configurar Dados Fiscais
-            </button>
-          </div>
+        {activeTab === 'orders' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black text-white">Gerenciar Pedidos</h2>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleDownloadNFXml()}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                >
+                  📄 Baixar XML NF-e
+                </button>
+                <select
+                  value={orderFilter}
+                  onChange={event => setOrderFilter(event.target.value as OrderStatus | 'all')}
+                  className="px-3 py-2 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                >
+                  <option value="all">Todos os Status</option>
+                  <option value="pending">Aguardando Pagamento</option>
+                  <option value="paid">Pagamento Efetuado</option>
+                  <option value="processing">Em Processamento</option>
+                  <option value="shipped">Enviado</option>
+                  <option value="delivered">Entregue</option>
+                  <option value="cancelled">Cancelado</option>
+                </select>
+              </div>
+            </div>
 
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
-            <h3 className="text-lg font-bold text-white mb-4">Notas Fiscais Emitidas</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-white/15 border-b border-white/25">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Pedido</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Cliente</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Data</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Valor</th>
-                    <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/10">
-                  {orders.filter(o => o.emitNF).map(order => (
-                    <tr key={order.id} className="hover:bg-white/5">
-                      <td className="px-6 py-4 text-sm font-medium text-slate-100">{order.id}</td>
-                      <td className="px-6 py-4 text-sm text-slate-100">{order.customerName}</td>
-                      <td className="px-6 py-4 text-sm text-slate-100">{formatDate(order.date)}</td>
-                      <td className="px-6 py-4 text-sm font-medium text-slate-100">{formatCurrency(order.total)}</td>
-                      <td className="px-6 py-4 text-sm">
-                        <button
-                          onClick={() => handleDownloadNFXml(order.id)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium"
-                        >
-                          📄 Baixar XML
-                        </button>
-                      </td>
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-white/15 backdrop-blur-md border-b border-white/25">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Pedido</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Cliente</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Data</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Total</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Acoes</th>
                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10">
+                    {filteredOrders.map(order => (
+                      <tr key={order.id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">{order.id}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{order.customerName}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{formatDate(order.date)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">
+                          {formatCurrency(order.total)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${STATUS_COLORS[order.status]}`}>
+                            {STATUS_LABELS[order.status]}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <button
+                            onClick={() => openOrderStatusModal(order)}
+                            className="bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
+                          >
+                            Atualizar Status
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        {activeTab === 'customers' && (
+          <div>
+            <h2 className="text-xl font-black text-white mb-6">Gerenciar Clientes</h2>
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-white/15 backdrop-blur-md border-b border-white/25">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">ID</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Cliente</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Email</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Telefone</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Pedidos</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Total Gasto</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10">
+                    {customers.map(customer => (
+                      <tr key={customer.id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">#{customer.id}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.email}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.phone}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.totalOrders}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">
+                          {formatCurrency(customer.totalSpent)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'tracking' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black text-white">Rastreamento</h2>
+              <button
+                onClick={() => openTrackingModal()}
+                className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+              >
+                + Novo Rastreamento
+              </button>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-white/15 backdrop-blur-md border-b border-white/25">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Pedido</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Transportadora</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Codigo</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Atualizacao</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10">
+                    {tracking.map(track => (
+                      <tr key={track.orderId} className="hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">{track.orderId}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{track.carrier}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{track.code}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${TRACKING_COLORS[track.status]}`}>
+                            {TRACKING_LABELS[track.status]}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{formatDate(track.lastUpdate)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <button
+                            onClick={() => openTrackingModal(track)}
+                            className="bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
+                          >
+                            Atualizar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'inventory' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-slate-100">{formatCurrency(inventoryStats.totalStockValue)}</div>
+                <div className="text-slate-100 font-medium text-sm">Valor em Estoque</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-slate-100">{inventoryStats.lowStockItems}</div>
+                <div className="text-slate-100 font-medium text-sm">Estoque Baixo</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-slate-100">{inventoryStats.outOfStockItems}</div>
+                <div className="text-slate-100 font-medium text-sm">Esgotados</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-slate-100">{inventoryStats.totalItemsInStock}</div>
+                <div className="text-slate-100 font-medium text-sm">Itens em Estoque</div>
+              </div>
+            </div>
+
+            {lowStockProducts.length > 0 && (
+              <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/20 p-4">
+                <h3 className="text-lg font-bold text-slate-100 mb-3">Alertas de Estoque Baixo</h3>
+                <div className="space-y-2">
+                  {lowStockProducts.map(product => (
+                    <div key={product.id} className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/20">
+                      <div>
+                        <span className="font-medium text-slate-100">{product.name}</span>
+                        <span className="text-sm text-slate-200 ml-2">({product.stock || 0} unidades)</span>
+                      </div>
+                      <button
+                        onClick={() => openInventoryModal(product.id)}
+                        className="bg-versiory-coral hover:bg-[#ff8368] text-white px-3 py-1 rounded-lg text-sm font-medium"
+                      >
+                        Reabastecer
+                      </button>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-              {orders.filter(o => o.emitNF).length === 0 && (
-                <p className="text-center text-slate-300 py-8">Nenhuma NF-e emitida ainda.</p>
-              )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
+              <input
+                value={inventorySearch}
+                onChange={event => setInventorySearch(event.target.value)}
+                placeholder="Buscar por produto ou categoria"
+                className="flex-1 px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none"
+              />
+              <select
+                value={stockFilter}
+                onChange={event => setStockFilter(event.target.value as StockFilter)}
+                className="px-4 py-2 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none"
+              >
+                <option value="all">Todos</option>
+                <option value="low">Estoque Baixo</option>
+                <option value="out">Esgotados</option>
+                <option value="normal">Normal</option>
+              </select>
+              <button
+                onClick={generateInventoryReport}
+                className="bg-versiory-ink hover:bg-[#1b2a3a] text-white px-4 py-2 rounded-lg"
+              >
+                Exportar CSV
+              </button>
             </div>
-          </div>
-        </div>
-      )}
-    </div>
 
-      {
-    isProductModalOpen && (
-      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-        <div className="bg-white border-0 shadow-2xl rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-          <div className="p-6 md:p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
-            <div>
-              <h3 className="text-2xl font-black text-slate-900">
-                {editingProductId ? 'Editar Produto' : 'Novo Produto'}
-              </h3>
-              <p className="text-slate-500 mt-1 text-sm">
-                Preencha as informacoes detalhadas para a vitrine da loja.
-              </p>
-            </div>
-            <button
-              onClick={closeProductModal}
-              className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-100 transition-colors text-slate-500"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredInventoryProducts.map(product => {
+                const stock = product.stock || 0;
+                const totalValue = stock * product.price;
+                let statusLabel = 'Normal';
+                let statusClass = 'bg-green-100 text-green-800';
+                if (stock === 0) {
+                  statusLabel = 'Esgotado';
+                  statusClass = 'bg-red-100 text-red-800';
+                } else if (stock < 10) {
+                  statusLabel = 'Estoque Baixo';
+                  statusClass = 'bg-yellow-100 text-yellow-800';
+                }
 
-          <form onSubmit={handleProductSubmit} className="flex-1 overflow-y-auto p-6 md:p-8">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
-
-              {/* Left Column: Basic Info */}
-              <div className="space-y-6">
-                <div>
-                  <h4 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm">1</span>
-                    Informacoes Basicas
-                  </h4>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Nome do Produto *</label>
-                      <input
-                        type="text"
-                        value={productForm.name || ''}
-                        onChange={event => setProductForm(prev => ({ ...prev, name: event.target.value }))}
-                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
-                        placeholder="Ex: Tenis Esportivo Nike Air"
-                        required
+                return (
+                  <div key={product.id} className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden hover:scale-[1.02] transition-transform">
+                    <div className="relative h-48 bg-white">
+                      <img
+                        src={product.image}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
                       />
+                      <div className="absolute top-3 right-3 bg-versiory-coral text-white px-3 py-1 rounded-full text-sm font-bold">
+                        #{product.id}
+                      </div>
+                      <div className="absolute top-3 left-3">
+                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full ${statusClass}`}>
+                          {statusLabel}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Categoria *</label>
-                        <select
-                          value={isCustomCategory ? '__new__' : productForm.category}
-                          onChange={event => {
-                            const value = event.target.value;
-                            if (value === '__new__') {
-                              setIsCustomCategory(true);
-                              setProductForm(prev => ({ ...prev, category: '' }));
-                            } else {
-                              setIsCustomCategory(false);
-                              setCustomCategory('');
-                              setProductForm(prev => ({ ...prev, category: value }));
-                            }
-                          }}
-                          className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
-                        >
-                          {categoryOptions.map(category => (
-                            <option key={category} value={category}>{category}</option>
-                          ))}
-                          <option value="__new__">+ Nova categoria...</option>
-                        </select>
+                    <div className="p-5">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-bold text-white line-clamp-2 mb-1">{product.name}</h3>
+                          <span className="inline-block px-2 py-1 bg-white/10 text-slate-200 text-xs rounded-lg">
+                            {product.category}
+                          </span>
+                        </div>
                       </div>
-                      {isCustomCategory && (
+
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className="bg-white/5 rounded-lg p-3">
+                          <div className="text-xs text-slate-400 mb-1">Estoque Atual</div>
+                          <div className="text-2xl font-black text-white">{stock}</div>
+                          <div className="text-xs text-slate-400">Mín: 10 un</div>
+                        </div>
+                        <div className="bg-white/5 rounded-lg p-3">
+                          <div className="text-xs text-slate-400 mb-1">Valor Unit.</div>
+                          <div className="text-lg font-bold text-white">{formatCurrency(product.price)}</div>
+                          <div className="text-xs text-green-400 font-medium">Total: {formatCurrency(totalValue)}</div>
+                        </div>
+                      </div>
+
+                      {product.sizes && (
+                        <div className="mb-4">
+                          <div className="text-xs text-slate-400 mb-2">Estoque por tamanho:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {product.sizes.split(',').map(size => {
+                              const trimmedSize = size.trim();
+                              const sizeStock = product.stockBySize?.[trimmedSize] || 0;
+                              return (
+                                <span key={trimmedSize} className={`px-2 py-1 text-xs rounded font-medium ${sizeStock > 0 ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
+                                  }`}>
+                                  {trimmedSize}: {sizeStock}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => openInventoryModal(product.id)}
+                        className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-3 rounded-xl font-bold transition-all shadow-lg"
+                      >
+                        📦 Movimentar Estoque
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {filteredInventoryProducts.length === 0 && (
+              <div className="text-center py-20">
+                <div className="text-6xl mb-4">📦</div>
+                <h3 className="text-xl font-bold text-white mb-2">Nenhum produto encontrado</h3>
+                <p className="text-slate-300">Ajuste os filtros para ver mais produtos</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'financial' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalRevenue)}</div>
+                <div className="text-slate-100 font-medium text-sm">Receita Total</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
+                <div className="text-slate-100 font-medium text-sm">Vendas PDV</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-blue-400">{formatCurrency(financialStats.onlineRevenue)}</div>
+                <div className="text-slate-100 font-medium text-sm">Vendas Online</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalExpenses)}</div>
+                <div className="text-slate-100 font-medium text-sm">Despesas</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.netProfit)}</div>
+                <div className="text-slate-100 font-medium text-sm">Lucro Liquido</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-2xl font-bold text-slate-100">{financialStats.profitMargin.toFixed(1)}%</div>
+                <div className="text-slate-100 font-medium text-sm">Margem de Lucro</div>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
+              <button
+                onClick={() => openExpenseModal()}
+                className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+              >
+                + Lancar Despesa
+              </button>
+              <button
+                onClick={generateFinancialReport}
+                className="bg-versiory-ink hover:bg-[#1b2a3a] text-white px-4 py-2 rounded-lg"
+              >
+                Exportar CSV
+              </button>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-4">
+              <h3 className="text-lg font-bold text-white mb-4">Transacoes Recentes</h3>
+              <div className="space-y-3">
+                {recentTransactions.map(transaction => (
+                  <div key={`${transaction.type}-${transaction.id}`} className="flex justify-between items-center p-4 bg-white/5 border border-white/15 rounded-xl">
+                    <div className="flex-1">
+                      <div className="font-medium text-slate-100">{transaction.description}</div>
+                      <div className="text-sm text-slate-200">
+                        {formatDate(transaction.date)} - {transaction.category}
+                      </div>
+                    </div>
+                    <div className="text-right flex items-center gap-3">
+                      <div>
+                        <div className={`font-bold ${transaction.type === 'revenue' ? 'text-green-600' : 'text-red-600'}`}>
+                          {transaction.type === 'revenue' ? '+' : '-'}{formatCurrency(Math.abs(transaction.amount))}
+                        </div>
+                        <div className="text-xs text-slate-200">
+                          {transaction.type === 'revenue' ? 'Receita' : 'Despesa'}
+                        </div>
+                      </div>
+                      {transaction.type === 'expense' && 'expenseId' in transaction && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => openExpenseModal(expenses.find(e => e.id === transaction.expenseId))}
+                            className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-all"
+                            title="Editar"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleExpenseDelete(transaction.expenseId!)}
+                            className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-all"
+                            title="Excluir"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {recentTransactions.length === 0 && (
+                  <p className="text-sm text-slate-200">Nenhuma transacao recente.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'fiscal' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-black text-white">Configurações Fiscais e NF-e</h2>
+              <button
+                onClick={() => setIsFiscalConfigOpen(true)}
+                className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all"
+              >
+                ⚙️ Configurar Dados Fiscais
+              </button>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
+              <h3 className="text-lg font-bold text-white mb-4">Notas Fiscais Emitidas</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-white/15 border-b border-white/25">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Pedido</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Cliente</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Data</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Valor</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10">
+                    {orders.filter(o => o.emitNF).map(order => (
+                      <tr key={order.id} className="hover:bg-white/5">
+                        <td className="px-6 py-4 text-sm font-medium text-slate-100">{order.id}</td>
+                        <td className="px-6 py-4 text-sm text-slate-100">{order.customerName}</td>
+                        <td className="px-6 py-4 text-sm text-slate-100">{formatDate(order.date)}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-slate-100">{formatCurrency(order.total)}</td>
+                        <td className="px-6 py-4 text-sm">
+                          <button
+                            onClick={() => handleDownloadNFXml(order.id)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium"
+                          >
+                            📄 Baixar XML
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {orders.filter(o => o.emitNF).length === 0 && (
+                  <p className="text-center text-slate-300 py-8">Nenhuma NF-e emitida ainda.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {
+        isProductModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+            <div className="bg-white border-0 shadow-2xl rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-6 md:p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900">
+                    {editingProductId ? 'Editar Produto' : 'Novo Produto'}
+                  </h3>
+                  <p className="text-slate-500 mt-1 text-sm">
+                    Preencha as informacoes detalhadas para a vitrine da loja.
+                  </p>
+                </div>
+                <button
+                  onClick={closeProductModal}
+                  className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-100 transition-colors text-slate-500"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+
+              <form
+                onSubmit={handleProductSubmit}
+                className="flex-1 overflow-y-auto p-6 md:p-8"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
+
+                  {/* Left Column: Basic Info */}
+                  <div className="space-y-6">
+                    <div>
+                      <h4 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm">1</span>
+                        Informacoes Basicas
+                      </h4>
+                      <div className="space-y-4">
                         <div>
-                          <label className="block text-sm font-bold text-slate-700 mb-2">Nome da Nova Categoria *</label>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Nome do Produto *</label>
                           <input
                             type="text"
-                            value={customCategory}
-                            onChange={event => {
-                              setCustomCategory(event.target.value);
-                              setProductForm(prev => ({ ...prev, category: event.target.value }));
-                            }}
+                            value={productForm.name || ''}
+                            onChange={event => setProductForm(prev => ({ ...prev, name: event.target.value }))}
                             className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
-                            placeholder="Ex: Acessorios"
+                            placeholder="Ex: Tenis Esportivo Nike Air"
                             required
                           />
                         </div>
-                      )}
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Tamanhos (Opcional)</label>
-                        <input
-                          type="text"
-                          value={productForm.sizes || ''}
-                          onChange={event => setProductForm(prev => ({ ...prev, sizes: event.target.value }))}
-                          className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
-                          placeholder={productForm.category === 'Cama, Mesa e Banho' ? 'Digite o tipo: Lençol, Edredom, Toalha de Banho, etc.' : 'Ex: P, M, G, GG'}
-                        />
-                        <p className="text-xs text-slate-500 mt-1">
-                          💡 Separe por vírgula. Use o botão "📏 Tamanhos" no card do produto para gerenciar estoque por tamanho.
-                        </p>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-2">Categoria *</label>
+                            <select
+                              value={isCustomCategory ? '__new__' : productForm.category}
+                              onChange={event => {
+                                const value = event.target.value;
+                                if (value === '__new__') {
+                                  setIsCustomCategory(true);
+                                  setProductForm(prev => ({ ...prev, category: '' }));
+                                } else {
+                                  setIsCustomCategory(false);
+                                  setCustomCategory('');
+                                  setProductForm(prev => ({ ...prev, category: value }));
+                                }
+                              }}
+                              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
+                            >
+                              {categoryOptions.map(category => (
+                                <option key={category} value={category}>{category}</option>
+                              ))}
+                              <option value="__new__">+ Nova categoria...</option>
+                            </select>
+                          </div>
+                          {isCustomCategory && (
+                            <div>
+                              <label className="block text-sm font-bold text-slate-700 mb-2">Nome da Nova Categoria *</label>
+                              <input
+                                type="text"
+                                value={customCategory}
+                                onChange={event => {
+                                  setCustomCategory(event.target.value);
+                                  setProductForm(prev => ({ ...prev, category: event.target.value }));
+                                }}
+                                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
+                                placeholder="Ex: Acessorios"
+                                required
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-2">Tamanhos (Opcional)</label>
+                            <input
+                              type="text"
+                              value={productForm.sizes || ''}
+                              onChange={event => setProductForm(prev => ({ ...prev, sizes: event.target.value }))}
+                              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
+                              placeholder={productForm.category === 'Cama, Mesa e Banho' ? 'Digite o tipo: Lençol, Edredom, Toalha de Banho, etc.' : 'Ex: P, M, G, GG'}
+                            />
+                            <p className="text-xs text-slate-500 mt-1">
+                              💡 Separe por vírgula. Use o botão "📏 Tamanhos" no card do produto para gerenciar estoque por tamanho.
+                            </p>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-2">Cores (Opcional)</label>
+                            <input
+                              type="text"
+                              value={productForm.colors || ''}
+                              onChange={event => setProductForm(prev => ({ ...prev, colors: event.target.value }))}
+                              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
+                              placeholder="Ex: Preto, Branco, Vermelho, Azul"
+                            />
+                            <p className="text-xs text-slate-500 mt-1">
+                              🎨 Separe por vírgula. Se usar cores + tamanhos, gerencie estoque por combinação (ex: M-Preto).
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Descricao Detalhada *</label>
+                          <textarea
+                            rows={6}
+                            value={productForm.description || ''}
+                            onChange={event => setProductForm(prev => ({ ...prev, description: event.target.value }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900 resize-none"
+                            placeholder="Dica: Use quebras de linha para criar topicos (como na Amazon)."
+                            required
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Cores (Opcional)</label>
-                        <input
-                          type="text"
-                          value={productForm.colors || ''}
-                          onChange={event => setProductForm(prev => ({ ...prev, colors: event.target.value }))}
-                          className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
-                          placeholder="Ex: Preto, Branco, Vermelho, Azul"
-                        />
-                        <p className="text-xs text-slate-500 mt-1">
-                          🎨 Separe por vírgula. Se usar cores + tamanhos, gerencie estoque por combinação (ex: M-Preto).
-                        </p>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Pricing, Inventory & Media */}
+                  <div className="space-y-6">
+
+                    {/* Pricing block */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6">
+                      <h4 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center text-sm">2</span>
+                        Preco e Estoque
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Preco de Venda (R$) *</label>
+                          <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">R$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={productForm.price || ''}
+                              onChange={event => setProductForm(prev => ({ ...prev, price: parseFloat(event.target.value) }))}
+                              className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
+                              placeholder="0.00"
+                              required
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Quantidade em Estoque *</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={productForm.stock ?? 0}
+                            onChange={event => setProductForm(prev => ({ ...prev, stock: parseInt(event.target.value, 10) }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
+                            required
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Descricao Detalhada *</label>
-                      <textarea
-                        rows={6}
-                        value={productForm.description || ''}
-                        onChange={event => setProductForm(prev => ({ ...prev, description: event.target.value }))}
-                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900 resize-none"
-                        placeholder="Dica: Use quebras de linha para criar topicos (como na Amazon)."
-                        required
-                      />
+                    {/* Media block */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6">
+                      <h4 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <span className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-sm">3</span>
+                        Midia
+                      </h4>
+                      <div className="flex gap-6 items-start">
+                        <div className="flex-1">
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Imagem Principal</label>
+                          <div className="relative border-2 border-dashed border-slate-300 rounded-2xl p-6 hover:border-versiory-coral hover:bg-white transition-all text-center cursor-pointer overflow-hidden group">
+                            {productForm.image ? (
+                              <img src={productForm.image} alt="Preview" className="mx-auto h-32 object-contain group-hover:opacity-50 transition-opacity" />
+                            ) : (
+                              <div className="py-6">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto text-slate-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <p className="text-sm font-medium text-slate-600">Clique para upload</p>
+                              </div>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={event => handleImageUpload(event.target.files?.[0] || null)}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                        <div className="w-1/3">
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Avaliacao</label>
+                          <p className="text-xs text-slate-500 mb-2">Estrelas.</p>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="5"
+                            value={productForm.rating || 5}
+                            onChange={event => setProductForm(prev => ({ ...prev, rating: parseFloat(event.target.value) }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 mb-3"
+                          />
+                          <p className="text-xs text-slate-500 mb-2">Qtd Avaliacoes.</p>
+                          <input
+                            type="number"
+                            min="0"
+                            value={productForm.reviews || 0}
+                            onChange={event => setProductForm(prev => ({ ...prev, reviews: parseInt(event.target.value, 10) }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900"
+                          />
+                        </div>
+                      </div>
                     </div>
+
+                    <ImageGallery
+                      images={productForm.images || []}
+                      onImagesChange={(images) => {
+                        setProductForm(prev => ({
+                          ...prev,
+                          images,
+                          image: prev.image || images[0] || ''
+                        }));
+                      }}
+                    />
+
+
+                    {productForm.sizes && (
+                      <SizeChartEditor
+                        sizeChart={productForm.sizeChart}
+                        onChange={(sizeChart) => setProductForm(prev => ({ ...prev, sizeChart }))}
+                        availableSizes={productForm.sizes.split(',').map(s => s.trim()).filter(s => s)}
+                      />
+                    )}
+
+                    <FiscalFields
+                      productForm={productForm}
+                      onChange={(field, value) => setProductForm(prev => ({ ...prev, [field]: value }))}
+                    />
+
                   </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white pb-4">
+                  <button
+                    type="button"
+                    onClick={closeProductModal}
+                    className="px-6 py-3 border border-slate-200 text-slate-700 rounded-xl font-bold bg-white hover:bg-slate-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="bg-versiory-ink hover:bg-[#1b2a3a] text-white px-8 py-3 rounded-xl font-bold shadow-xl shadow-versiory-ink/20 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Salvando...
+                      </>
+                    ) : (
+                      'Salvar Produto'
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {
+        isCategoryModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="text-xl font-black text-gray-900">
+                  {editingCategoryId ? 'Editar Categoria' : 'Nova Categoria'}
+                </h3>
+
+              </div>
+              <form
+                onSubmit={handleCategorySubmit}
+                className="p-6 space-y-4"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Nome da Categoria</label>
+                  <input
+                    type="text"
+                    value={categoryForm.name}
+                    onChange={event => setCategoryForm(prev => ({ ...prev, name: event.target.value }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Descricao</label>
+                  <textarea
+                    rows={3}
+                    value={categoryForm.description}
+                    onChange={event => setCategoryForm(prev => ({ ...prev, description: event.target.value }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Tipo de Tamanho</label>
+                  <select
+                    value={categoryForm.sizeType}
+                    onChange={event => setCategoryForm(prev => ({ ...prev, sizeType: event.target.value as any }))}
+                    className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                  >
+                    <option value="none">Sem tamanhos</option>
+                    <option value="clothing">Roupas (P, M, G, GG)</option>
+                    <option value="shoes">Calçados (34, 35, 36...)</option>
+                    <option value="accessories">Acessórios (Único, P, M, G)</option>
+                  </select>
+                </div>
+                {categoryForm.sizeType !== 'none' && (
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Tamanhos Disponíveis</label>
+                    <input
+                      type="text"
+                      value={categoryForm.availableSizes.join(', ')}
+                      onChange={event => setCategoryForm(prev => ({
+                        ...prev,
+                        availableSizes: event.target.value.split(',').map(s => s.trim()).filter(s => s)
+                      }))}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                      placeholder={categoryForm.sizeType === 'clothing' ? 'P, M, G, GG' : categoryForm.sizeType === 'shoes' ? '34, 35, 36, 37, 38, 39, 40' : 'Único, P, M, G'}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Separe os tamanhos por vírgula</p>
+                  </div>
+                )}
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-3 rounded-xl transition-all"
+                  >
+                    Salvar Categoria
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCategoryModalOpen(false)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {
+        isOrderStatusModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="text-xl font-black text-gray-900">Atualizar Status do Pedido</h3>
+              </div>
+              <form onSubmit={handleOrderStatusSubmit} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Status</label>
+                  <select
+                    value={orderStatusForm.status}
+                    onChange={event => setOrderStatusForm(prev => ({ ...prev, status: event.target.value as OrderStatus }))}
+                    className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                  >
+                    <option value="pending">Aguardando Pagamento</option>
+                    <option value="paid">Pagamento Efetuado</option>
+                    <option value="processing">Em Processamento</option>
+                    <option value="shipped">Enviado</option>
+                    <option value="delivered">Entregue</option>
+                    <option value="cancelled">Cancelado</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Observacoes</label>
+                  <textarea
+                    rows={3}
+                    value={orderStatusForm.notes}
+                    onChange={event => setOrderStatusForm(prev => ({ ...prev, notes: event.target.value }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                  />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-3 rounded-xl transition-all"
+                  >
+                    Atualizar Status
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsOrderStatusModalOpen(false)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {
+        isTrackingModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="text-xl font-black text-gray-900">Adicionar Rastreamento</h3>
+              </div>
+              <form onSubmit={handleTrackingSubmit} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Pedido</label>
+                  <select
+                    value={trackingForm.orderId}
+                    onChange={event => setTrackingForm(prev => ({ ...prev, orderId: event.target.value }))}
+                    className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  >
+                    <option value="">Selecione um pedido</option>
+                    {orders.map(order => (
+                      <option key={order.id} value={order.id}>
+                        {order.id} - {order.customerName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Transportadora</label>
+                  <input
+                    type="text"
+                    value={trackingForm.carrier}
+                    onChange={event => setTrackingForm(prev => ({ ...prev, carrier: event.target.value }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Codigo de Rastreamento</label>
+                  <input
+                    type="text"
+                    value={trackingForm.code}
+                    onChange={event => setTrackingForm(prev => ({ ...prev, code: event.target.value }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Status do Envio</label>
+                  <select
+                    value={trackingForm.status}
+                    onChange={event => setTrackingForm(prev => ({ ...prev, status: event.target.value as TrackingStatus }))}
+                    className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                  >
+                    <option value="posted">Postado</option>
+                    <option value="in_transit">Em Transito</option>
+                    <option value="out_for_delivery">Saiu para Entrega</option>
+                    <option value="delivered">Entregue</option>
+                    <option value="delayed">Atrasado</option>
+                  </select>
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-3 rounded-xl transition-all"
+                  >
+                    Salvar Rastreamento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsTrackingModalOpen(false)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {
+        isInventoryModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="text-xl font-black text-gray-900">Movimentacao de Estoque</h3>
+              </div>
+              <form onSubmit={handleInventorySubmit} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Produto</label>
+                  <select
+                    value={inventoryForm.productId}
+                    onChange={event => setInventoryForm(prev => ({ ...prev, productId: event.target.value, selectedSize: '' }))}
+                    className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  >
+                    <option value="">Selecione um produto</option>
+                    {products.map(product => (
+                      <option key={product.id} value={product.id}>
+                        {product.name} (Estoque: {product.stock || 0}){product.sizes ? ' - Com tamanhos' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {inventoryForm.productId && products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes && (
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Tamanho</label>
+                    <select
+                      value={inventoryForm.selectedSize}
+                      onChange={event => setInventoryForm(prev => ({ ...prev, selectedSize: event.target.value }))}
+                      className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                      required
+                    >
+                      <option value="">Selecione um tamanho</option>
+                      {products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes?.split(',').map(size => {
+                        const trimmedSize = size.trim();
+                        const product = products.find(p => p.id === parseInt(inventoryForm.productId));
+                        const sizeStock = product?.stockBySize?.[trimmedSize] || 0;
+                        return (
+                          <option key={trimmedSize} value={trimmedSize}>
+                            {trimmedSize} (Estoque: {sizeStock})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+                {inventoryForm.productId && !products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-xs text-blue-800">
+                      💡 Este produto não tem tamanhos configurados. Para adicionar tamanhos, edite o produto na aba "Produtos".
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Tipo</label>
+                  <select
+                    value={inventoryForm.type}
+                    onChange={event => setInventoryForm(prev => ({ ...prev, type: event.target.value as 'in' | 'out' | 'adjustment' }))}
+                    className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                  >
+                    <option value="in">Entrada</option>
+                    <option value="out">Saida</option>
+                    <option value="adjustment">Ajuste</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Quantidade</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={inventoryForm.quantity}
+                    onChange={event => setInventoryForm(prev => ({ ...prev, quantity: parseInt(event.target.value, 10) }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Motivo</label>
+                  <input
+                    type="text"
+                    value={inventoryForm.reason}
+                    onChange={event => setInventoryForm(prev => ({ ...prev, reason: event.target.value }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-3 rounded-xl transition-all"
+                  >
+                    Salvar Movimentacao
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsInventoryModalOpen(false)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {
+        isExpenseModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="text-xl font-black text-gray-900">{editingExpenseId ? 'Editar Despesa' : 'Lancar Despesa'}</h3>
+              </div>
+              <form onSubmit={handleExpenseSubmit} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Descricao</label>
+                  <input
+                    type="text"
+                    value={expenseForm.description}
+                    onChange={event => setExpenseForm(prev => ({ ...prev, description: event.target.value }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Categoria</label>
+                  <select
+                    value={expenseForm.category}
+                    onChange={event => setExpenseForm(prev => ({ ...prev, category: event.target.value as Expense['category'] }))}
+                    className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  >
+                    <option value="fixed">Fixa</option>
+                    <option value="variable">Variavel</option>
+                    <option value="investment">Investimento</option>
+                    <option value="emergency">Emergencial</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={expenseForm.amount}
+                    onChange={event => setExpenseForm(prev => ({ ...prev, amount: parseFloat(event.target.value) }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Data</label>
+                  <input
+                    type="date"
+                    value={expenseForm.date}
+                    onChange={event => setExpenseForm(prev => ({ ...prev, date: event.target.value }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Observacoes</label>
+                  <textarea
+                    rows={3}
+                    value={expenseForm.notes}
+                    onChange={event => setExpenseForm(prev => ({ ...prev, notes: event.target.value }))}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                  />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white font-black py-3 rounded-xl transition-all"
+                  >
+                    {editingExpenseId ? 'Salvar Alterações' : 'Lancar Despesa'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsExpenseModalOpen(false)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal de Checkout PDV */}
+      <PdvCheckoutModal
+        isOpen={isPdvCheckoutModalOpen}
+        onClose={() => setIsPdvCheckoutModalOpen(false)}
+        cart={pdvCart}
+        onSubmit={handlePdvCheckoutSubmit}
+        isSubmitting={isSubmitting}
+      />
+
+      {/* Modal Gerenciador de Tamanhos */}
+      {isSizeManagerModalOpen && sizeManagerProductId && (() => {
+        const product = products.find(p => p.id === sizeManagerProductId);
+        if (!product) return null;
+
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200 sticky top-0 bg-white">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xl font-black text-gray-900">Gerenciar Tamanhos - {product.name}</h3>
+                  <button
+                    onClick={() => setIsSizeManagerModalOpen(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
               </div>
 
-              {/* Right Column: Pricing, Inventory & Media */}
-              <div className="space-y-6">
+              <div className="p-6">
+                <SizeStockManager
+                  sizes={product.sizes!.split(',').map(s => s.trim()).filter(s => s)}
+                  colors={product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : undefined}
+                  stockBySize={product.stockBySize || {}}
+                  stockBySizeColor={product.stockBySizeColor || {}}
+                  onChange={async (data) => {
+                    const { stockBySize, stockBySizeColor } = data;
 
-                {/* Pricing block */}
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6">
-                  <h4 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center text-sm">2</span>
-                    Preco e Estoque
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Preco de Venda (R$) *</label>
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">R$</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={productForm.price || ''}
-                          onChange={event => setProductForm(prev => ({ ...prev, price: parseFloat(event.target.value) }))}
-                          className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
-                          placeholder="0.00"
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Quantidade em Estoque *</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={productForm.stock ?? 0}
-                        onChange={event => setProductForm(prev => ({ ...prev, stock: parseInt(event.target.value, 10) }))}
-                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
+                    let totalStock = 0;
+                    if (stockBySizeColor && Object.keys(stockBySizeColor).length > 0) {
+                      totalStock = Object.values(stockBySizeColor).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+                    } else if (stockBySize) {
+                      totalStock = Object.values(stockBySize).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+                    }
 
-                {/* Media block */}
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6">
-                  <h4 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-sm">3</span>
-                    Midia
-                  </h4>
-                  <div className="flex gap-6 items-start">
-                    <div className="flex-1">
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Imagem Principal</label>
-                      <div className="relative border-2 border-dashed border-slate-300 rounded-2xl p-6 hover:border-versiory-coral hover:bg-white transition-all text-center cursor-pointer overflow-hidden group">
-                        {productForm.image ? (
-                          <img src={productForm.image} alt="Preview" className="mx-auto h-32 object-contain group-hover:opacity-50 transition-opacity" />
-                        ) : (
-                          <div className="py-6">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto text-slate-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <p className="text-sm font-medium text-slate-600">Clique para upload</p>
-                          </div>
-                        )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={event => handleImageUpload(event.target.files?.[0] || null)}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                      </div>
-                    </div>
-                    <div className="w-1/3">
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Avaliacao</label>
-                      <p className="text-xs text-slate-500 mb-2">Estrelas.</p>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="5"
-                        value={productForm.rating || 5}
-                        onChange={event => setProductForm(prev => ({ ...prev, rating: parseFloat(event.target.value) }))}
-                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 mb-3"
-                      />
-                      <p className="text-xs text-slate-500 mb-2">Qtd Avaliacoes.</p>
-                      <input
-                        type="number"
-                        min="0"
-                        value={productForm.reviews || 0}
-                        onChange={event => setProductForm(prev => ({ ...prev, reviews: parseInt(event.target.value, 10) }))}
-                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900"
-                      />
-                    </div>
-                  </div>
-                </div>
+                    const updatedProduct = {
+                      ...product,
+                      stock: totalStock,
+                      ...(stockBySize && { stockBySize }),
+                      ...(stockBySizeColor && { stockBySizeColor })
+                    };
 
-                <ImageGallery
-                  images={productForm.images || []}
-                  onImagesChange={(images) => {
-                    setProductForm(prev => ({ 
-                      ...prev, 
-                      images,
-                      image: images[0] || prev.image
-                    }));
+                    try {
+                      await saveProduct(updatedProduct);
+
+                      const updatedProducts = products.map(p =>
+                        p.id === sizeManagerProductId ? updatedProduct : p
+                      );
+                      onUpdateProducts(updatedProducts);
+                    } catch (error) {
+                      console.error(error);
+                      window.alert('Erro ao salvar estoque');
+                    }
                   }}
                 />
 
-                {productForm.sizes && (
-                  <SizeChartEditor
-                    sizeChart={productForm.sizeChart}
-                    onChange={(sizeChart) => setProductForm(prev => ({ ...prev, sizeChart }))}
-                    availableSizes={productForm.sizes.split(',').map(s => s.trim()).filter(s => s)}
-                  />
-                )}
-
-                <FiscalFields
-                  productForm={productForm}
-                  onChange={(field, value) => setProductForm(prev => ({ ...prev, [field]: value }))}
-                />
-
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => setIsSizeManagerModalOpen(false)}
+                    className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-bold transition-all"
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
             </div>
-
-            {/* Action Buttons */}
-            <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white pb-4">
-              <button
-                type="button"
-                onClick={closeProductModal}
-                className="px-6 py-3 border border-slate-200 text-slate-700 rounded-xl font-bold bg-white hover:bg-slate-50 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="bg-versiory-ink hover:bg-[#1b2a3a] text-white px-8 py-3 rounded-xl font-bold shadow-xl shadow-versiory-ink/20 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Salvando...
-                  </>
-                ) : (
-                  'Salvar Produto'
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
-  {
-    isCategoryModalOpen && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl font-black text-gray-900">Nova Categoria</h3>
           </div>
-          <form onSubmit={handleCategorySubmit} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Nome da Categoria</label>
-              <input
-                type="text"
-                value={categoryForm.name}
-                onChange={event => setCategoryForm(prev => ({ ...prev, name: event.target.value }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Descricao</label>
-              <textarea
-                rows={3}
-                value={categoryForm.description}
-                onChange={event => setCategoryForm(prev => ({ ...prev, description: event.target.value }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Tipo de Tamanho</label>
-              <select
-                value={categoryForm.sizeType}
-                onChange={event => setCategoryForm(prev => ({ ...prev, sizeType: event.target.value as any }))}
-                className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-              >
-                <option value="none">Sem tamanhos</option>
-                <option value="clothing">Roupas (P, M, G, GG)</option>
-                <option value="shoes">Calçados (34, 35, 36...)</option>
-                <option value="accessories">Acessórios (Único, P, M, G)</option>
-              </select>
-            </div>
-            {categoryForm.sizeType !== 'none' && (
+        );
+      })()}
+
+      <FiscalConfigModal
+        isOpen={isFiscalConfigOpen}
+        onClose={() => setIsFiscalConfigOpen(false)}
+      />
+
+
+
+      {/* Modal de Seleção de Produto PDV */}
+      {pdvProductModal.isOpen && pdvProductModal.product && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-[#0b1f4b] via-[#0a1b3d] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 p-8 max-w-md w-full">
+            <div className="flex justify-between items-start mb-6">
               <div>
-                <label className="block text-sm font-black text-gray-700 mb-2">Tamanhos Disponíveis</label>
-                <input
-                  type="text"
-                  value={categoryForm.availableSizes.join(', ')}
-                  onChange={event => setCategoryForm(prev => ({ 
-                    ...prev, 
-                    availableSizes: event.target.value.split(',').map(s => s.trim()).filter(s => s) 
-                  }))}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                  placeholder={categoryForm.sizeType === 'clothing' ? 'P, M, G, GG' : categoryForm.sizeType === 'shoes' ? '34, 35, 36, 37, 38, 39, 40' : 'Único, P, M, G'}
-                />
-                <p className="text-xs text-gray-500 mt-1">Separe os tamanhos por vírgula</p>
+                <h3 className="text-2xl font-black text-white mb-2">{pdvProductModal.product.name}</h3>
+                <p className="text-white/60 text-sm">{pdvProductModal.product.category}</p>
               </div>
-            )}
-            <div className="flex gap-4 pt-4">
               <button
-                type="submit"
-                className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-3 rounded-xl transition-all"
-              >
-                Salvar Categoria
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsCategoryModalOpen(false)}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
-  {
-    isOrderStatusModalOpen && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl font-black text-gray-900">Atualizar Status do Pedido</h3>
-          </div>
-          <form onSubmit={handleOrderStatusSubmit} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Status</label>
-              <select
-                value={orderStatusForm.status}
-                onChange={event => setOrderStatusForm(prev => ({ ...prev, status: event.target.value as OrderStatus }))}
-                className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-              >
-                <option value="pending">Aguardando Pagamento</option>
-                <option value="paid">Pagamento Efetuado</option>
-                <option value="processing">Em Processamento</option>
-                <option value="shipped">Enviado</option>
-                <option value="delivered">Entregue</option>
-                <option value="cancelled">Cancelado</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Observacoes</label>
-              <textarea
-                rows={3}
-                value={orderStatusForm.notes}
-                onChange={event => setOrderStatusForm(prev => ({ ...prev, notes: event.target.value }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-              />
-            </div>
-            <div className="flex gap-4 pt-4">
-              <button
-                type="submit"
-                className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-3 rounded-xl transition-all"
-              >
-                Atualizar Status
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsOrderStatusModalOpen(false)}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
-  {
-    isTrackingModalOpen && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl font-black text-gray-900">Adicionar Rastreamento</h3>
-          </div>
-          <form onSubmit={handleTrackingSubmit} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Pedido</label>
-              <select
-                value={trackingForm.orderId}
-                onChange={event => setTrackingForm(prev => ({ ...prev, orderId: event.target.value }))}
-                className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              >
-                <option value="">Selecione um pedido</option>
-                {orders.map(order => (
-                  <option key={order.id} value={order.id}>
-                    {order.id} - {order.customerName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Transportadora</label>
-              <input
-                type="text"
-                value={trackingForm.carrier}
-                onChange={event => setTrackingForm(prev => ({ ...prev, carrier: event.target.value }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Codigo de Rastreamento</label>
-              <input
-                type="text"
-                value={trackingForm.code}
-                onChange={event => setTrackingForm(prev => ({ ...prev, code: event.target.value }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Status do Envio</label>
-              <select
-                value={trackingForm.status}
-                onChange={event => setTrackingForm(prev => ({ ...prev, status: event.target.value as TrackingStatus }))}
-                className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-              >
-                <option value="posted">Postado</option>
-                <option value="in_transit">Em Transito</option>
-                <option value="out_for_delivery">Saiu para Entrega</option>
-                <option value="delivered">Entregue</option>
-                <option value="delayed">Atrasado</option>
-              </select>
-            </div>
-            <div className="flex gap-4 pt-4">
-              <button
-                type="submit"
-                className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-3 rounded-xl transition-all"
-              >
-                Salvar Rastreamento
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsTrackingModalOpen(false)}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
-  {
-    isInventoryModalOpen && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl font-black text-gray-900">Movimentacao de Estoque</h3>
-          </div>
-          <form onSubmit={handleInventorySubmit} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Produto</label>
-              <select
-                value={inventoryForm.productId}
-                onChange={event => setInventoryForm(prev => ({ ...prev, productId: event.target.value, selectedSize: '' }))}
-                className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              >
-                <option value="">Selecione um produto</option>
-                {products.map(product => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} (Estoque: {product.stock || 0}){product.sizes ? ' - Com tamanhos' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {inventoryForm.productId && products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes && (
-              <div>
-                <label className="block text-sm font-black text-gray-700 mb-2">Tamanho</label>
-                <select
-                  value={inventoryForm.selectedSize}
-                  onChange={event => setInventoryForm(prev => ({ ...prev, selectedSize: event.target.value }))}
-                  className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                  required
-                >
-                  <option value="">Selecione um tamanho</option>
-                  {products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes?.split(',').map(size => {
-                    const trimmedSize = size.trim();
-                    const product = products.find(p => p.id === parseInt(inventoryForm.productId));
-                    const sizeStock = product?.stockBySize?.[trimmedSize] || 0;
-                    return (
-                      <option key={trimmedSize} value={trimmedSize}>
-                        {trimmedSize} (Estoque: {sizeStock})
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
-            {inventoryForm.productId && !products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-xs text-blue-800">
-                  💡 Este produto não tem tamanhos configurados. Para adicionar tamanhos, edite o produto na aba "Produtos".
-                </p>
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Tipo</label>
-              <select
-                value={inventoryForm.type}
-                onChange={event => setInventoryForm(prev => ({ ...prev, type: event.target.value as 'in' | 'out' | 'adjustment' }))}
-                className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-              >
-                <option value="in">Entrada</option>
-                <option value="out">Saida</option>
-                <option value="adjustment">Ajuste</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Quantidade</label>
-              <input
-                type="number"
-                min="1"
-                value={inventoryForm.quantity}
-                onChange={event => setInventoryForm(prev => ({ ...prev, quantity: parseInt(event.target.value, 10) }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Motivo</label>
-              <input
-                type="text"
-                value={inventoryForm.reason}
-                onChange={event => setInventoryForm(prev => ({ ...prev, reason: event.target.value }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              />
-            </div>
-            <div className="flex gap-4 pt-4">
-              <button
-                type="submit"
-                className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-3 rounded-xl transition-all"
-              >
-                Salvar Movimentacao
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsInventoryModalOpen(false)}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
-  {
-    isExpenseModalOpen && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl font-black text-gray-900">{editingExpenseId ? 'Editar Despesa' : 'Lancar Despesa'}</h3>
-          </div>
-          <form onSubmit={handleExpenseSubmit} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Descricao</label>
-              <input
-                type="text"
-                value={expenseForm.description}
-                onChange={event => setExpenseForm(prev => ({ ...prev, description: event.target.value }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Categoria</label>
-              <select
-                value={expenseForm.category}
-                onChange={event => setExpenseForm(prev => ({ ...prev, category: event.target.value as Expense['category'] }))}
-                className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              >
-                <option value="fixed">Fixa</option>
-                <option value="variable">Variavel</option>
-                <option value="investment">Investimento</option>
-                <option value="emergency">Emergencial</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={expenseForm.amount}
-                onChange={event => setExpenseForm(prev => ({ ...prev, amount: parseFloat(event.target.value) }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Data</label>
-              <input
-                type="date"
-                value={expenseForm.date}
-                onChange={event => setExpenseForm(prev => ({ ...prev, date: event.target.value }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-black text-gray-700 mb-2">Observacoes</label>
-              <textarea
-                rows={3}
-                value={expenseForm.notes}
-                onChange={event => setExpenseForm(prev => ({ ...prev, notes: event.target.value }))}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-              />
-            </div>
-            <div className="flex gap-4 pt-4">
-              <button
-                type="submit"
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-black py-3 rounded-xl transition-all"
-              >
-                {editingExpenseId ? 'Salvar Alterações' : 'Lancar Despesa'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsExpenseModalOpen(false)}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
-  {/* Modal de Checkout PDV */}
-  <PdvCheckoutModal
-    isOpen={isPdvCheckoutModalOpen}
-    onClose={() => setIsPdvCheckoutModalOpen(false)}
-    cart={pdvCart}
-    onSubmit={handlePdvCheckoutSubmit}
-    isSubmitting={isSubmitting}
-  />
-
-  {/* Modal Gerenciador de Tamanhos */}
-  {isSizeManagerModalOpen && sizeManagerProductId && (() => {
-    const product = products.find(p => p.id === sizeManagerProductId);
-    if (!product) return null;
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-          <div className="p-6 border-b border-gray-200 sticky top-0 bg-white">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-black text-gray-900">Gerenciar Tamanhos - {product.name}</h3>
-              <button
-                onClick={() => setIsSizeManagerModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setPdvProductModal({ isOpen: false, product: null })}
+                className="text-white/60 hover:text-white transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-          </div>
-          
-          <div className="p-6">
-            <SizeStockManager
-              sizes={product.sizes!.split(',').map(s => s.trim()).filter(s => s)}
-              colors={product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : undefined}
-              stockBySize={product.stockBySize || {}}
-              stockBySizeColor={product.stockBySizeColor || {}}
-              onChange={async (data) => {
-                const { stockBySize, stockBySizeColor } = data;
-                
-                let totalStock = 0;
-                if (stockBySizeColor && Object.keys(stockBySizeColor).length > 0) {
-                  totalStock = Object.values(stockBySizeColor).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
-                } else if (stockBySize) {
-                  totalStock = Object.values(stockBySize).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
-                }
-                
-                const updatedProduct = {
-                  ...product,
-                  stock: totalStock,
-                  ...(stockBySize && { stockBySize }),
-                  ...(stockBySizeColor && { stockBySizeColor })
-                };
-                
-                try {
-                  const { saveProduct } = await import('../services/firebase');
-                  await saveProduct(updatedProduct);
-                  
-                  const updatedProducts = products.map(p =>
-                    p.id === sizeManagerProductId ? updatedProduct : p
-                  );
-                  onUpdateProducts(updatedProducts);
-                } catch (error) {
-                  console.error(error);
-                  window.alert('Erro ao salvar estoque');
-                }
-              }}
-            />
-            
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => setIsSizeManagerModalOpen(false)}
-                className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-bold transition-all"
-              >
-                Fechar
-              </button>
+
+            <div className="mb-6 lg:bg-white/5 p-2 rounded-2xl border border-white/10">
+              <ProductMediaShowcase
+                mainImage={pdvProductModal.product.image}
+                allImages={pdvProductModal.product.images}
+                productName={pdvProductModal.product.name}
+              />
             </div>
-          </div>
-        </div>
-      </div>
-    );
-  })()}
 
-  <FiscalConfigModal
-    isOpen={isFiscalConfigOpen}
-    onClose={() => setIsFiscalConfigOpen(false)}
-  />
+            <div className="space-y-4">
+              {pdvProductModal.product.sizes && (
+                <div>
+                  <label className="block text-sm font-bold text-white/80 mb-2">Tamanho</label>
+                  <select
+                    value={pdvModalSelection.size}
+                    onChange={(e) => setPdvModalSelection({ ...pdvModalSelection, size: e.target.value })}
+                    className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                  >
+                    <option value="" className="bg-slate-800">Selecione o tamanho</option>
+                    {pdvProductModal.product.sizes.split(',').map(size => {
+                      const trimmedSize = size.trim();
+                      const stock = pdvProductModal.product.stockBySize?.[trimmedSize] || 0;
+                      return (
+                        <option
+                          key={trimmedSize}
+                          value={trimmedSize}
+                          disabled={stock <= 0}
+                          className="bg-slate-800"
+                        >
+                          {trimmedSize} - {stock} disponível{stock !== 1 ? 'is' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
 
+              {pdvProductModal.product.colors && (
+                <div>
+                  <label className="block text-sm font-bold text-white/80 mb-2">Cor</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {pdvProductModal.product.colors.split(',').map(color => {
+                      const trimmedColor = color.trim();
+                      return (
+                        <button
+                          key={trimmedColor}
+                          onClick={() => setPdvModalSelection({ ...pdvModalSelection, color: trimmedColor })}
+                          className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${pdvModalSelection.color === trimmedColor
+                            ? 'bg-versiory-coral text-white'
+                            : 'bg-white/10 text-white/60 hover:bg-white/20'
+                            }`}
+                        >
+                          {trimmedColor}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-
-  {/* Modal de Seleção de Produto PDV */}
-  {pdvProductModal.isOpen && pdvProductModal.product && (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gradient-to-br from-[#0b1f4b] via-[#0a1b3d] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 p-8 max-w-md w-full">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h3 className="text-2xl font-black text-white mb-2">{pdvProductModal.product.name}</h3>
-            <p className="text-white/60 text-sm">{pdvProductModal.product.category}</p>
-          </div>
-          <button
-            onClick={() => setPdvProductModal({ isOpen: false, product: null })}
-            className="text-white/60 hover:text-white transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <img
-          src={pdvProductModal.product.image}
-          alt={pdvProductModal.product.name}
-          className="w-full h-48 object-cover rounded-2xl mb-6"
-        />
-
-        <div className="space-y-4">
-          {pdvProductModal.product.sizes && (
-            <div>
-              <label className="block text-sm font-bold text-white/80 mb-2">Tamanho</label>
-              <select
-                value={pdvModalSelection.size}
-                onChange={(e) => setPdvModalSelection({ ...pdvModalSelection, size: e.target.value })}
-                className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
-              >
-                <option value="" className="bg-slate-800">Selecione o tamanho</option>
-                {pdvProductModal.product.sizes.split(',').map(size => {
-                  const trimmedSize = size.trim();
-                  const stock = pdvProductModal.product.stockBySize?.[trimmedSize] || 0;
-                  return (
-                    <option
-                      key={trimmedSize}
-                      value={trimmedSize}
-                      disabled={stock <= 0}
-                      className="bg-slate-800"
-                    >
-                      {trimmedSize} - {stock} disponível{stock !== 1 ? 'is' : ''}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-          )}
-
-          {pdvProductModal.product.colors && (
-            <div>
-              <label className="block text-sm font-bold text-white/80 mb-2">Cor</label>
-              <div className="grid grid-cols-4 gap-2">
-                {pdvProductModal.product.colors.split(',').map(color => {
-                  const trimmedColor = color.trim();
-                  return (
-                    <button
-                      key={trimmedColor}
-                      onClick={() => setPdvModalSelection({ ...pdvModalSelection, color: trimmedColor })}
-                      className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${
-                        pdvModalSelection.color === trimmedColor
-                          ? 'bg-versiory-coral text-white'
-                          : 'bg-white/10 text-white/60 hover:bg-white/20'
-                      }`}
-                    >
-                      {trimmedColor}
-                    </button>
-                  );
-                })}
+              <div className="pt-4 border-t border-white/10">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-white/60">Preço unitário:</span>
+                  <span className="text-2xl font-black text-white">{formatCurrency(pdvProductModal.product.price)}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    const product = pdvProductModal.product!;
+                    if (product.sizes && !pdvModalSelection.size) {
+                      alert('⚠️ Selecione um tamanho');
+                      return;
+                    }
+                    if (product.colors && !pdvModalSelection.color) {
+                      alert('⚠️ Selecione uma cor');
+                      return;
+                    }
+                    setSelectedSizes(prev => ({ ...prev, [product.id]: pdvModalSelection.size }));
+                    addToPdvCart(product);
+                    setPdvProductModal({ isOpen: false, product: null });
+                    setPdvModalSelection({ size: '', color: '' });
+                  }}
+                  className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl active:scale-[0.98]"
+                >
+                  Adicionar ao Carrinho
+                </button>
               </div>
             </div>
-          )}
-
-          <div className="pt-4 border-t border-white/10">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-white/60">Preço unitário:</span>
-              <span className="text-2xl font-black text-white">{formatCurrency(pdvProductModal.product.price)}</span>
-            </div>
-            <button
-              onClick={() => {
-                const product = pdvProductModal.product!;
-                if (product.sizes && !pdvModalSelection.size) {
-                  alert('⚠️ Selecione um tamanho');
-                  return;
-                }
-                if (product.colors && !pdvModalSelection.color) {
-                  alert('⚠️ Selecione uma cor');
-                  return;
-                }
-                setSelectedSizes(prev => ({ ...prev, [product.id]: pdvModalSelection.size }));
-                addToPdvCart(product);
-                setPdvProductModal({ isOpen: false, product: null });
-                setPdvModalSelection({ size: '', color: '' });
-              }}
-              className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl active:scale-[0.98]"
-            >
-              Adicionar ao Carrinho
-            </button>
           </div>
         </div>
-      </div>
-    </div>
-  )}
+      )}
 
-  <footer className="bg-gradient-to-r from-versiory-ink to-slate-900 text-white py-8 mt-12 border-t border-white/10 text-center">
-    <div className="max-w-7xl mx-auto px-4 flex flex-col items-center gap-4">
-      <p className="text-white/80 text-sm font-medium">Área restrita. Acesso exclusivo para administradores. Todas as ações são monitoradas.</p>
-      <button
-        onClick={onLogout}
-        className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-xl font-medium transition-all mt-2"
-      >
-        Sair
-      </button>
-      <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados.</p>
-    </div>
-  </footer>
+      <footer className="bg-gradient-to-r from-versiory-ink to-slate-900 text-white py-8 mt-12 border-t border-white/10 text-center">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col items-center gap-4">
+          <p className="text-white/80 text-sm font-medium">Área restrita. Acesso exclusivo para administradores. Todas as ações são monitoradas.</p>
+          <button
+            onClick={onLogout}
+            className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-xl font-medium transition-all mt-2"
+          >
+            Sair
+          </button>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados.</p>
+        </div>
+      </footer>
     </div>
   );
 };

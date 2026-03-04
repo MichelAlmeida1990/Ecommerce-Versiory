@@ -49,17 +49,23 @@ const AdminApp: React.FC = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Sempre limpar a sessão ao acessar a página admin
-        await clearAdminSession();
-        setIsAuthenticated(false);
+        const session = await getAdminSession();
+        if (session && session.isAuthenticated) {
+          setIsAuthenticated(true);
+          setUserRole(session.role || 'seller');
+        } else {
+          setIsAuthenticated(false);
+        }
       } catch (error) {
-        console.error('Erro ao limpar autenticação:', error);
+        console.error('Erro ao recuperar sessão admin:', error);
+        setIsAuthenticated(false);
       } finally {
         setIsLoading(false);
       }
     };
     checkAuth();
   }, []);
+
 
   // Carregar dados do Firebase
   useEffect(() => {
@@ -139,7 +145,7 @@ const AdminApp: React.FC = () => {
     }, 30 * 1000);
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     return () => {
       clearInterval(saveInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -147,7 +153,7 @@ const AdminApp: React.FC = () => {
   }, [isAuthenticated]);
 
   const handleLogin = async (password: string, role: 'admin' | 'seller') => {
-    const isValidPassword = 
+    const isValidPassword =
       (role === 'admin' && password === ADMIN_PASSWORD) ||
       (role === 'seller' && password === SELLER_PASSWORD);
 
@@ -225,7 +231,7 @@ const AdminApp: React.FC = () => {
   }
 
   return (
-    <AdminDashboard 
+    <AdminDashboard
       products={products}
       categories={categories}
       orders={orders}

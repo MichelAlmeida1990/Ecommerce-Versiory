@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Product } from '../types';
+import ProductMediaShowcase from './ProductMediaShowcase';
 
 interface ProductModalProps {
   product: Product | null;
@@ -18,21 +19,21 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
 
   const handleAddToCart = () => {
     let hasError = false;
-    
+
     if (product.sizes && !selectedSize) {
       setSizeError(true);
       setTimeout(() => setSizeError(false), 2000);
       hasError = true;
     }
-    
+
     if (product.colors && !selectedColor) {
       setColorError(true);
       setTimeout(() => setColorError(false), 2000);
       hasError = true;
     }
-    
+
     if (hasError) return;
-    
+
     onAddToCart(product, selectedSize, selectedColor);
     onClose();
   };
@@ -46,20 +47,25 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
-      
+
       <div className="relative bg-blue-50 border border-blue-200 w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[85vh] sm:max-h-[90vh] overflow-y-auto">
-        <button 
+        <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 bg-blue-50/80 p-2 rounded-full hover:bg-blue-100 shadow-sm transition-colors"
+          className="absolute top-4 right-4 z-20 bg-blue-50/80 p-2 rounded-full hover:bg-blue-100 shadow-sm transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
 
-        <div className="lg:w-1/2 h-48 sm:h-64 md:h-80 lg:h-auto">
-          <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+        <div className="lg:w-1/2 p-4 md:p-6 lg:bg-white border-r border-slate-100 flex flex-col justify-center">
+          <ProductMediaShowcase
+            mainImage={product.image}
+            allImages={product.images}
+            productName={product.name}
+          />
         </div>
+
 
         <div className="lg:w-1/2 p-6 sm:p-8 lg:p-10">
           <div className="flex items-center gap-2 mb-2">
@@ -74,7 +80,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
           </div>
 
           <h2 className="text-4xl font-black text-slate-800 mb-4">{product.name}</h2>
-          
+
           <div className="text-5xl font-black text-versiory-coral mb-6">
             R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
@@ -93,7 +99,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                 {product.sizes.split(',').map(size => {
                   const trimmedSize = size.trim();
                   let sizeStock = 0;
-                  
+
                   if (product.colors && product.stockBySizeColor) {
                     // Se tem cores, soma estoque de todas as cores para este tamanho
                     product.colors.split(',').forEach(color => {
@@ -102,7 +108,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                   } else {
                     sizeStock = product.stockBySize?.[trimmedSize] || 0;
                   }
-                  
+
                   const isAvailable = sizeStock > 0;
                   const isSelected = selectedSize === trimmedSize;
 
@@ -111,13 +117,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                       key={trimmedSize}
                       onClick={() => isAvailable && setSelectedSize(trimmedSize)}
                       disabled={!isAvailable}
-                      className={`px-6 py-3 rounded-xl font-bold transition-all ${
-                        isSelected
-                          ? 'bg-versiory-coral text-white shadow-lg scale-105'
-                          : isAvailable
+                      className={`px-6 py-3 rounded-xl font-bold transition-all ${isSelected
+                        ? 'bg-versiory-coral text-white shadow-lg scale-105'
+                        : isAvailable
                           ? 'bg-white border-2 border-slate-200 text-slate-700 hover:border-versiory-coral'
                           : 'bg-slate-100 text-slate-400 line-through cursor-not-allowed'
-                      }`}
+                        }`}
                     >
                       {trimmedSize}
                     </button>
@@ -137,7 +142,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                 {product.colors.split(',').map(color => {
                   const trimmedColor = color.trim();
                   let colorStock = 0;
-                  
+
                   if (selectedSize && product.stockBySizeColor) {
                     colorStock = getStockForSizeColor(selectedSize, trimmedColor);
                   } else if (product.sizes && product.stockBySizeColor) {
@@ -146,7 +151,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                       colorStock += getStockForSizeColor(size.trim(), trimmedColor);
                     });
                   }
-                  
+
                   const isAvailable = colorStock > 0;
                   const isSelected = selectedColor === trimmedColor;
 
@@ -155,13 +160,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                       key={trimmedColor}
                       onClick={() => isAvailable && setSelectedColor(trimmedColor)}
                       disabled={!isAvailable}
-                      className={`px-6 py-3 rounded-xl font-bold transition-all ${
-                        isSelected
-                          ? 'bg-versiory-coral text-white shadow-lg scale-105'
-                          : isAvailable
+                      className={`px-6 py-3 rounded-xl font-bold transition-all ${isSelected
+                        ? 'bg-versiory-coral text-white shadow-lg scale-105'
+                        : isAvailable
                           ? 'bg-white border-2 border-slate-200 text-slate-700 hover:border-versiory-coral'
                           : 'bg-slate-100 text-slate-400 line-through cursor-not-allowed'
-                      }`}
+                        }`}
                     >
                       {trimmedColor}
                       {isAvailable && selectedSize && <span className="text-xs ml-1">({colorStock})</span>}
@@ -176,7 +180,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
           )}
 
           <div className="flex gap-4 sticky bottom-0 bg-blue-50 pt-4">
-            <button 
+            <button
               onClick={handleAddToCart}
               className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-bold py-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-[0.98] text-base"
             >

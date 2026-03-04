@@ -95,10 +95,28 @@ export const saveProduct = async (product: Product, base64Image?: string) => {
         imageUrl = await uploadImageObj(base64Image, `product_${product.id}_${Date.now()}`);
     }
 
-    const productData = { ...product, image: imageUrl };
+    // Processar array de imagens secundárias
+    const uploadedImages: string[] = [];
+    if (product.images && product.images.length > 0) {
+        for (const img of product.images) {
+            if (img && img.startsWith('data:image')) {
+                const url = await uploadImageObj(img, `product_${product.id}_gallery_${Date.now()}`);
+                uploadedImages.push(url);
+            } else if (img) {
+                uploadedImages.push(img);
+            }
+        }
+    }
+
+    const productData = {
+        ...product,
+        image: imageUrl,
+        images: uploadedImages
+    };
     await setDocument("products", product.id, productData);
     return productData;
 };
+
 
 export const deleteProductItem = (id: number) => deleteDocument("products", id);
 
@@ -168,10 +186,10 @@ export const getUserSession = async (): Promise<UserSession | null> => {
         // Buscar o último usuário logado
         const lastUser = localStorage.getItem('versiory_last_user');
         if (!lastUser) return null;
-        
+
         const sessionData = localStorage.getItem(`versiory_user_${lastUser}`);
         if (!sessionData) return null;
-        
+
         return JSON.parse(sessionData) as UserSession;
     } catch (error) {
         console.error('Erro ao buscar sessão:', error);
@@ -198,15 +216,21 @@ export interface AdminSession {
 }
 
 export const saveAdminSession = async (session: AdminSession) => {
-    await setDocument("adminSessions", ADMIN_SESSION_KEY, session);
+    localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
 };
 
 export const getAdminSession = async (): Promise<AdminSession | null> => {
     try {
-        const docRef = doc(db, "adminSessions", ADMIN_SESSION_KEY);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            return docSnap.data() as AdminSession;
+        const sessionData = localStorage.getItem(ADMIN_SESSION_KEY);
+        if (sessionData) {
+            const session = JSON.parse(sessionData) as AdminSession;
+            // Verificar se a sessão é válida (ex: menos de 24h)
+            const isExpired = Date.now() - session.loginTime > 24 * 60 * 60 * 1000;
+            if (isExpired) {
+                localStorage.removeItem(ADMIN_SESSION_KEY);
+                return null;
+            }
+            return session;
         }
         return null;
     } catch (error) {
@@ -230,5 +254,6 @@ export const updateAdminActivity = async () => {
 };
 
 export const clearAdminSession = async () => {
-    await deleteDocument("adminSessions", ADMIN_SESSION_KEY);
+    localStorage.removeItem(ADMIN_SESSION_KEY);
 };
+

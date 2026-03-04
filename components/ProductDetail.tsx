@@ -9,6 +9,9 @@ const ProductDetail: React.FC = () => {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSize, setSelectedSize] = useState<string>('');
+  const [activeImage, setActiveImage] = useState<string>('');
+  const [allImages, setAllImages] = useState<string[]>([]);
+
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -16,8 +19,13 @@ const ProductDetail: React.FC = () => {
         const products = await getProducts();
         const found = products.find((p: Product) => String(p.id) === String(id));
         setProduct(found || null);
-        if (found && found.sizes && found.sizes.length > 0) {
-          setSelectedSize(found.sizes[0]);
+        if (found) {
+          const imgs = [found.image, ...(found.images || [])].filter(Boolean);
+          setAllImages(imgs);
+          setActiveImage(found.image);
+          if (found.sizes && found.sizes.length > 0) {
+            setSelectedSize(found.sizes[0]);
+          }
         }
       } catch (error) {
         console.error("Error fetching product:", error);
@@ -99,19 +107,26 @@ const ProductDetail: React.FC = () => {
               <div className="sticky top-24">
                 <div className="aspect-square bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center p-4 group">
                   <img
-                    src={product.image}
+                    src={activeImage || product.image}
                     alt={product.name}
                     className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-500"
                   />
                 </div>
-                {/* Thumbnails placeholder (Can be expanded later if product has multiple images) */}
+                {/* Thumbnails */}
                 <div className="grid grid-cols-5 gap-4 mt-4">
-                  <div className="aspect-square rounded-xl border-2 border-versiory-coral p-1 cursor-pointer">
-                    <img src={product.image} alt="Thumb 1" className="w-full h-full object-cover rounded-lg mix-blend-multiply" />
-                  </div>
+                  {allImages.map((img, index) => (
+                    <div
+                      key={index}
+                      onClick={() => setActiveImage(img)}
+                      className={`aspect-square rounded-xl border-2 p-1 cursor-pointer transition-all ${activeImage === img ? 'border-versiory-coral scale-110 shadow-md' : 'border-slate-100 hover:border-slate-300'}`}
+                    >
+                      <img src={img} alt={`Thumb ${index + 1}`} className="w-full h-full object-cover rounded-lg mix-blend-multiply" />
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
+
 
             {/* Right Column: Details */}
             <div className="flex flex-col">
@@ -171,20 +186,22 @@ const ProductDetail: React.FC = () => {
                 </div>
 
                 {/* Variations */}
-                {product.sizes && product.sizes.length > 0 && (
+                {product.sizes && product.sizes.trim().length > 0 && (
                   <div className="mb-8">
                     <div className="flex justify-between items-center mb-3">
                       <span className="font-bold text-slate-900">Tamanho: <span className="text-slate-500 font-normal">{selectedSize}</span></span>
-                      <button className="text-sm text-blue-600 hover:underline">Guia de tamanhos</button>
+                      {product.sizeChart && Object.keys(product.sizeChart).length > 0 && (
+                        <a href="#medidas" className="text-sm text-blue-600 hover:underline">Guia de tamanhos</a>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {product.sizes.map((size) => (
+                      {product.sizes.split(',').map(s => s.trim()).filter(s => s).map((size) => (
                         <button
                           key={size}
                           onClick={() => setSelectedSize(size)}
                           className={`min-w-[3rem] px-4 py-2 border-2 rounded-xl font-bold transition-all ${selectedSize === size
-                              ? 'border-versiory-coral text-versiory-coral bg-[#fff6ef]'
-                              : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            ? 'border-versiory-coral text-versiory-coral bg-[#fff6ef]'
+                            : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                             }`}
                         >
                           {size}
@@ -193,6 +210,50 @@ const ProductDetail: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Régua de Medição (Tabela) */}
+                {product.sizeChart && Object.keys(product.sizeChart).length > 0 && (
+                  <div id="medidas" className="mb-8 p-6 bg-slate-50 border border-slate-100 rounded-3xl">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                      Guia de Medidas (cm)
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-center border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200">
+                            <th className="py-2 px-2 text-left text-slate-500 font-medium">Tamanho</th>
+                            {['chest', 'waist', 'hip', 'length', 'width'].map(key => {
+                              const labels: Record<string, string> = { chest: 'Peito', waist: 'Cintura', hip: 'Quadril', length: 'Compr.', width: 'Largura' };
+                              const hasData = Object.values(product.sizeChart!).some(m => m[key as keyof typeof m]);
+                              if (!hasData) return null;
+                              return <th key={key} className="py-2 px-2 text-slate-500 font-medium">{labels[key]}</th>;
+                            })}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {product.sizes?.split(',').map(s => s.trim()).filter(s => s).map(size => {
+                            const measures = product.sizeChart![size];
+                            if (!measures) return null;
+                            return (
+                              <tr key={size} className={selectedSize === size ? "bg-white/60" : ""}>
+                                <td className="py-2 px-2 text-left font-bold text-slate-900">{size}</td>
+                                {['chest', 'waist', 'hip', 'length', 'width'].map(key => {
+                                  if (!Object.values(product.sizeChart!).some(m => m[key as keyof typeof m])) return null;
+                                  return <td key={key} className="py-2 px-2 text-slate-600">{measures[key as keyof typeof measures] || '-'}</td>;
+                                })}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+
               </div>
 
               {/* Action Buttons */}

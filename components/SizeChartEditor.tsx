@@ -65,16 +65,20 @@ const SizeChartEditor: React.FC<SizeChartEditorProps> = ({
 
   const applyStandardChart = (type: 'clothing' | 'shoes' | 'pants') => {
     const standardChart = STANDARD_CHARTS[type];
-    const newChart: SizeChart = {};
-    
+    const newChart: SizeChart = { ...sizeChart };
+
     availableSizes.forEach(size => {
       if (standardChart[size as keyof typeof standardChart]) {
-        newChart[size as keyof SizeChart] = standardChart[size as keyof typeof standardChart] as any;
+        newChart[size as keyof SizeChart] = {
+          ...newChart[size as keyof SizeChart],
+          ...(standardChart[size as keyof typeof standardChart] as any)
+        };
       }
     });
-    
+
     onChange(newChart);
   };
+
 
   if (availableSizes.length === 0) {
     return (
@@ -93,7 +97,7 @@ const SizeChartEditor: React.FC<SizeChartEditorProps> = ({
           <span className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-sm">📏</span>
           Régua de Medição
         </h4>
-        
+
         <div className="flex gap-2">
           <button
             type="button"
@@ -121,7 +125,7 @@ const SizeChartEditor: React.FC<SizeChartEditorProps> = ({
           </button>
         </div>
       </div>
-      
+
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -164,7 +168,7 @@ const SizeChartEditor: React.FC<SizeChartEditorProps> = ({
 
       <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
         <p className="text-xs text-blue-700">
-          <strong>💡 Dica:</strong> Use os botões acima para aplicar medidas padrão automaticamente. 
+          <strong>💡 Dica:</strong> Use os botões acima para aplicar medidas padrão automaticamente.
           Você pode ajustar os valores depois se necessário.
         </p>
       </div>

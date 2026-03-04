@@ -10,7 +10,8 @@ import CustomerOrders from './components/CustomerOrders';
 import Account from './components/Account';
 import LoginRegister from './components/LoginRegister';
 import ProductDetail from './components/ProductDetail';
-import { getProducts } from './services/firebase';
+import { getProducts, getCategories } from './services/firebase';
+
 
 const PrivateRoute: React.FC<{ children: React.ReactNode; isAuthenticated: boolean; isLoading: boolean }> = ({ children, isAuthenticated, isLoading }) => {
   if (isLoading) {
@@ -40,6 +41,8 @@ const App: React.FC = () => {
   const [isCustomerOrdersOpen, setIsCustomerOrdersOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [categoriesList, setCategoriesList] = useState<string[]>([]);
+
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -78,8 +81,24 @@ const App: React.FC = () => {
       }
     };
 
+    const loadCategories = async () => {
+      try {
+        const categoriesData = await getCategories();
+        if (categoriesData.length > 0) {
+          setCategoriesList(['Todos', ...categoriesData.map(c => c.name)]);
+        } else {
+          setCategoriesList(['Todos', 'Eletrônicos', 'Moda', 'Casa', 'Esportes', 'Cama, Mesa e Banho']);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar categorias:', error);
+        setCategoriesList(['Todos', 'Eletrônicos', 'Moda', 'Casa', 'Esportes', 'Cama, Mesa e Banho']);
+      }
+    };
+
     loadProducts();
+    loadCategories();
     loadUserSession();
+
 
     // Listen for addToCart custom events from ProductDetail
     const onAddToCartEvent = (e: Event) => {
@@ -133,26 +152,26 @@ const App: React.FC = () => {
 
   const addToCart = (product: Product, selectedSize?: string, selectedColor?: string) => {
     setCartItems(prev => {
-      const found = prev.find(i => 
-        i.id === product.id && 
-        i.selectedSize === selectedSize && 
+      const found = prev.find(i =>
+        i.id === product.id &&
+        i.selectedSize === selectedSize &&
         i.selectedColor === selectedColor
       );
       if (found) {
-        return prev.map(i => 
-          (i.id === product.id && i.selectedSize === selectedSize && i.selectedColor === selectedColor) 
-            ? { ...i, quantity: i.quantity + 1 } 
+        return prev.map(i =>
+          (i.id === product.id && i.selectedSize === selectedSize && i.selectedColor === selectedColor)
+            ? { ...i, quantity: i.quantity + 1 }
             : i
         );
       }
       return [...prev, { ...product, quantity: 1, selectedSize, selectedColor }];
     });
-    
+
     const details = [
       selectedSize,
       selectedColor
     ].filter(Boolean).join(' - ');
-    
+
     setToastMessage(`${product.name}${details ? ` (${details})` : ''} adicionado ao carrinho`);
     setTimeout(() => setToastMessage(''), 2200);
   };
@@ -162,7 +181,7 @@ const App: React.FC = () => {
   };
 
   const removeFromCart = (id: number, selectedSize?: string, selectedColor?: string) => {
-    setCartItems(prev => prev.filter(i => 
+    setCartItems(prev => prev.filter(i =>
       !(i.id === id && i.selectedSize === selectedSize && i.selectedColor === selectedColor)
     ));
   };
@@ -173,7 +192,8 @@ const App: React.FC = () => {
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  const categories: Category[] = ['Todos', 'Eletrônicos', 'Moda', 'Casa', 'Esportes', 'Cama, Mesa e Banho'];
+  const categories: Category[] = categoriesList as Category[];
+
 
   return (
     <Router>
@@ -362,7 +382,7 @@ const App: React.FC = () => {
               onClick={() => setIsProfileOpen(false)}
             />
             <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6">
-              <LoginRegister 
+              <LoginRegister
                 onClose={() => setIsProfileOpen(false)}
                 onLoginSuccess={(email, address) => {
                   setIsAuthenticated(true);

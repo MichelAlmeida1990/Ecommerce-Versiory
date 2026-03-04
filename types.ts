@@ -22,7 +22,16 @@ export interface Product {
   cest?: string; // Código Especificador da Substituição Tributária
   unidade?: string; // UN, KG, PC, etc.
   peso?: number; // Peso em kg
+  aliquotaIcms?: number;
+  aliquotaPis?: number;
+  aliquotaCofins?: number;
+  aliquotaIpi?: number;
+  codigoBeneficio?: string;
+  usoReformaTributaria?: boolean; // Reforma Tributária 2026
+  aliquotaCbs?: number; // Contribuição sobre Bens e Serviços (Federal)
+  aliquotaIbs?: number; // Imposto sobre Bens e Serviços (Estadual/Municipal)
 }
+
 
 export interface SizeChart {
   P?: { chest?: number; waist?: number; hip?: number; length?: number };
