@@ -7,7 +7,7 @@ interface CartProps {
   isOpen: boolean;
   onClose: () => void;
   items: CartItem[];
-  onUpdateQuantity: (id: number, delta: number) => void;
+  onUpdateQuantity: (id: number, delta: number, selectedSize?: string, selectedColor?: string) => void;
   onRemove: (id: number, selectedSize?: string, selectedColor?: string) => void;
   customerEmail: string;
   customerAddress: string;
@@ -21,6 +21,27 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [addressForm, setAddressForm] = useState('');
+
+  const getMaxStock = (item: CartItem): number => {
+    if (item.selectedSize && item.selectedColor && item.stockBySizeColor) {
+      return item.stockBySizeColor[`${item.selectedSize}-${item.selectedColor}`] || 0;
+    } else if (item.selectedSize && item.stockBySize) {
+      return item.stockBySize[item.selectedSize] || 0;
+    }
+    return item.stock || 0;
+  };
+
+  const handleUpdateQuantity = (item: CartItem, delta: number) => {
+    const maxStock = getMaxStock(item);
+    const newQuantity = item.quantity + delta;
+    
+    if (newQuantity > maxStock) {
+      alert(`⚠️ Estoque disponível: ${maxStock} unidades`);
+      return;
+    }
+    
+    onUpdateQuantity(item.id, delta, item.selectedSize, item.selectedColor);
+  };
 
   const buildWhatsAppMessage = () => {
     const lines = items.map(item => (
@@ -160,7 +181,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                     <div className="flex items-center gap-3 mt-2">
                       <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
                         <button 
-                          onClick={() => onUpdateQuantity(item.id, -1)}
+                          onClick={() => handleUpdateQuantity(item, -1)}
                           className="px-4 py-2 bg-slate-50 hover:bg-slate-100 disabled:opacity-50 text-lg font-bold min-w-[44px] h-11"
                           disabled={item.quantity <= 1}
                         >
@@ -168,12 +189,15 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                         </button>
                         <span className="px-4 py-2 font-bold text-slate-700 min-w-[44px] text-center text-lg">{item.quantity}</span>
                         <button 
-                          onClick={() => onUpdateQuantity(item.id, 1)}
+                          onClick={() => handleUpdateQuantity(item, 1)}
                           className="px-4 py-2 bg-slate-50 hover:bg-slate-100 text-lg font-bold min-w-[44px] h-11"
                         >
                           +
                         </button>
                       </div>
+                      <span className="text-xs text-slate-500 font-medium">
+                        Máx: {getMaxStock(item)}
+                      </span>
                     </div>
                   </div>
                 </div>

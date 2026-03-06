@@ -176,3 +176,43 @@ export interface FiscalConfig {
   serie: string;
   numeroAtual: number;
 }
+
+export interface CashWithdrawal {
+  id: string;
+  amount: number;
+  reason: string;
+  timestamp: string;
+  user: string;
+}
+
+export interface CashDeposit {
+  id: string;
+  amount: number;
+  reason: string;
+  timestamp: string;
+  user: string;
+}
+
+export interface CashRegister {
+  id: string;
+  openedAt: string;
+  closedAt?: string;
+  openedBy: string;
+  closedBy?: string;
+  status: 'open' | 'closed';
+  initialAmount: number;
+  expectedAmount: number;
+  actualAmount?: number;
+  difference?: number;
+  totalSales: number;
+  totalOrders: number;
+  salesByPayment: {
+    dinheiro: number;
+    pix: number;
+    debito: number;
+    credito: number;
+  };
+  withdrawals: CashWithdrawal[];
+  deposits: CashDeposit[];
+  notes?: string;
+}

@@ -82,6 +82,20 @@ const ProductDetail: React.FC = () => {
 
     if (hasError) return;
 
+    let stock = 0;
+    if (selectedSize && selectedColor && product.stockBySizeColor) {
+      stock = product.stockBySizeColor[`${selectedSize}-${selectedColor}`] || 0;
+    } else if (selectedSize && product.stockBySize) {
+      stock = product.stockBySize[selectedSize] || 0;
+    } else {
+      stock = product.stock || 0;
+    }
+
+    if (stock === 0) {
+      alert('⚠️ Produto sem estoque disponível para a combinação selecionada.');
+      return;
+    }
+
     const event = new CustomEvent('addToCart', {
       detail: {
         product: {
@@ -249,7 +263,12 @@ const ProductDetail: React.FC = () => {
                         return (
                           <button
                             key={size}
-                            onClick={() => isAvailable && setSelectedSize(size)}
+                            onClick={() => {
+                              if (isAvailable) {
+                                setSelectedSize(size);
+                                setSelectedColor('');
+                              }
+                            }}
                             disabled={!isAvailable}
                             className={`min-w-[3.5rem] px-4 py-2 border-2 rounded-xl font-bold transition-all ${selectedSize === size
                               ? 'border-versiory-coral text-versiory-coral bg-[#fff6ef] shadow-sm'
@@ -398,12 +417,8 @@ const ProductDetail: React.FC = () => {
         {/* Product Specs / About */}
         <div className="mt-12 bg-white rounded-3xl p-8 lg:p-12 shadow-sm border border-slate-100">
           <h2 className="text-2xl font-bold text-slate-900 mb-6">Sobre este item</h2>
-          <div className="prose prose-slate max-w-none prose-p:text-slate-600 prose-li:text-slate-600 prose-li:marker:text-versiory-coral">
-            <ul className="space-y-4">
-              {product.description.split('\n').filter(line => line.trim() !== '').map((line, i) => (
-                <li key={i}>{line}</li>
-              ))}
-            </ul>
+          <div className="prose prose-slate max-w-none prose-p:text-slate-600 prose-li:text-slate-600 prose-li:marker:text-versiory-coral whitespace-pre-wrap">
+            <p>{product.description}</p>
           </div>
 
           {/* Simple specs table (Mocked for layout purpose) */}

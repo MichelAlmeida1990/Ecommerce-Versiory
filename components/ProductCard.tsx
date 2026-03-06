@@ -83,7 +83,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
         </div>
 
         <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-md">
-          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white whitespace-pre-wrap">
+          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white whitespace-pre-line">
             {product.description}
           </p>
         </div>

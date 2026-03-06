@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import {
   Product,
   CategoryItem,
@@ -216,6 +216,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     currentBalance: 0,
     openedAt: null
   });
+
+  // Sistema de caixa completo
+  const [cashWithdrawals, setCashWithdrawals] = useState<Array<{ id: string; amount: number; reason: string; timestamp: string }>>([]);
+  const [cashDeposits, setCashDeposits] = useState<Array<{ id: string; amount: number; reason: string; timestamp: string }>>([]);
+  const [isCashMovementModalOpen, setIsCashMovementModalOpen] = useState(false);
+  const [cashMovementForm, setCashMovementForm] = useState({ type: 'withdrawal', amount: 0, reason: '' });
+  const [cashRegisterHistory, setCashRegisterHistory] = useState<Array<any>>([]);
+  const [isCashReportOpen, setIsCashReportOpen] = useState(false);
   const [isCashRegisterModalOpen, setIsCashRegisterModalOpen] = useState(false);
   const [cashRegisterForm, setCashRegisterForm] = useState({ amount: 0 });
 
@@ -274,6 +282,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // ERRCOM047: Busca de pedido por número
   const [orderSearch, setOrderSearch] = useState('');
+
+  // ERRCOM035: Busca de cliente por nome
+  const [customerSearch, setCustomerSearch] = useState('');
 
   // ERRCOM046: Detalhe do pedido
   const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
@@ -339,6 +350,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     return { totalStockValue, lowStockItems, outOfStockItems, totalItemsInStock };
   }, [products]);
+
+  // ERRCOM035: Clientes filtrados por busca
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return customers;
+    
+    const search = customerSearch.toLowerCase();
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(search) ||
+      customer.email?.toLowerCase().includes(search) ||
+      customer.phone?.toLowerCase().includes(search)
+    );
+  }, [customers, customerSearch]);
 
   const filteredInventoryProducts = useMemo(() => {
     const search = inventorySearch.toLowerCase();
@@ -876,9 +899,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const product = products.find(item => item.id === productId);
     if (!product) return;
 
-    // Se o produto tem tamanhos, validar seleção
+    // Se o produto tem tamanhos, validar seleção (apenas para movimentação de estoque)
     if (product.sizes && !inventoryForm.selectedSize) {
-      window.alert('Selecione um tamanho.');
+      window.alert('Selecione um tamanho para movimentação de estoque.');
       return;
     }
 
@@ -1015,8 +1038,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const addToPdvCart = (product: Product, size?: string, color?: string) => {
     // Se o produto tem variantes mas não foram passadas, usar do estado global (compatibilidade com busca direta)
-    const finalSize = size || selectedSizes[product.id];
-    const finalColor = color; // Cor geralmente vem do modal no PDV
+    const finalSize = size || pdvModalSelection.size || selectedSizes[product.id];
+    const finalColor = color || pdvModalSelection.color; // Cor geralmente vem do modal no PDV
 
     if (product.sizes && !finalSize) {
       window.alert('Selecione um tamanho antes de adicionar ao carrinho.');
@@ -1114,6 +1137,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; cpf: string }, order: Order) => {
     if (!cashRegister.isOpen) {
       window.alert('⚠️ O Caixa está fechado. Abra o caixa antes de realizar vendas.');
+      setIsPdvCheckoutModalOpen(false);
       return;
     }
     setIsSubmitting(true);
@@ -1201,6 +1225,98 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Funções de movimentação de caixa
+  const handleCashMovement = () => {
+    if (!cashMovementForm.amount || cashMovementForm.amount <= 0) {
+      window.alert('Informe um valor válido.');
+      return;
+    }
+
+    if (!cashMovementForm.reason.trim()) {
+      window.alert('Informe o motivo da movimentação.');
+      return;
+    }
+
+    const movement = {
+      id: Date.now().toString(),
+      amount: cashMovementForm.amount,
+      reason: cashMovementForm.reason,
+      timestamp: new Date().toISOString()
+    };
+
+    if (cashMovementForm.type === 'withdrawal') {
+      if (cashMovementForm.amount > cashRegister.currentBalance) {
+        window.alert('Saldo insuficiente para esta sangria.');
+        return;
+      }
+      setCashWithdrawals(prev => [...prev, movement]);
+      setCashRegister(prev => ({
+        ...prev,
+        currentBalance: prev.currentBalance - cashMovementForm.amount
+      }));
+    } else {
+      setCashDeposits(prev => [...prev, movement]);
+      setCashRegister(prev => ({
+        ...prev,
+        currentBalance: prev.currentBalance + cashMovementForm.amount
+      }));
+    }
+
+    setCashMovementForm({ type: 'withdrawal', amount: 0, reason: '' });
+    setIsCashMovementModalOpen(false);
+    window.alert(`${cashMovementForm.type === 'withdrawal' ? 'Sangria' : 'Suprimento'} registrado com sucesso!`);
+  };
+
+  const handleCashRegisterClose = () => {
+    const actualAmount = window.prompt('Informe o valor total em dinheiro no caixa:');
+    if (!actualAmount) return;
+
+    const actual = parseFloat(actualAmount);
+    const expected = cashRegister.currentBalance;
+    const difference = actual - expected;
+
+    const closedRegister = {
+      id: Date.now().toString(),
+      openedAt: cashRegister.openedAt!,
+      closedAt: new Date().toISOString(),
+      openedBy: 'Operador',
+      closedBy: 'Operador',
+      status: 'closed' as const,
+      initialAmount: cashRegister.openingAmount,
+      expectedAmount: expected,
+      actualAmount: actual,
+      difference: difference,
+      totalSales: expected - cashRegister.openingAmount,
+      totalOrders: orders.filter(o => o.status === 'paid' || o.status === 'processing').length,
+      salesByPayment: {
+        dinheiro: expected * 0.6, // Simulação
+        pix: expected * 0.3,
+        debito: expected * 0.08,
+        credito: expected * 0.02
+      },
+      withdrawals: cashWithdrawals,
+      deposits: cashDeposits,
+      notes: difference !== 0 ? `${difference > 0 ? 'Sobra' : 'Falta'} de R$ ${Math.abs(difference).toFixed(2)}` : undefined
+    };
+
+    // Salvar no histórico
+    setCashRegisterHistory(prev => [...prev, closedRegister]);
+    
+    // Resetar caixa atual
+    setCashRegister({
+      isOpen: false,
+      openingAmount: 0,
+      currentBalance: 0,
+      openedAt: null
+    });
+    setCashWithdrawals([]);
+    setCashDeposits([]);
+
+    // Abrir relatório
+    setIsCashReportOpen(true);
+    setIsCashRegisterModalOpen(false);
   };
 
   const openExpenseModal = (expense?: Expense) => {
@@ -1340,12 +1456,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <p className="text-gray-400 text-sm">Versiory Store</p>
               </div>
             </div>
-            <button
-              onClick={onLogout}
-              className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-xl font-medium transition-all"
-            >
-              Sair
-            </button>
+            <div className="flex items-center gap-3">
+              {/* ERRCOM038: Botão Suporte WhatsApp */}
+              <button
+                onClick={() => window.open('https://wa.me/5511958540171?text=Olá! Preciso de suporte no painel Versiory Store.', '_blank')}
+                className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2"
+              >
+                💬 Suporte
+              </button>
+              <button
+                onClick={onLogout}
+                className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-xl font-medium transition-all"
+              >
+                Sair
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1628,6 +1753,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-white">Gerenciar Produtos</h2>
               <div className="flex gap-3">
+                {/* ERRCOM034: Busca de produtos para vendedor */}
+                <input
+                  type="text"
+                  placeholder="🔍 Buscar produto..."
+                  className="px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none w-64"
+                />
                 {userRole === 'admin' && (
                   <>
                     <button
@@ -1877,6 +2008,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         >
                           📏 Tamanhos
                         </button>
+                        {/* ERRCOM044: Botão Mais Detalhes */}
+                        <button
+                          onClick={() => {
+                            alert(`📋 Detalhes Técnicos\n\n${product.name}\n\nCódigo: #${product.id}\nCategoria: ${product.category}\nEstoque: ${product.stock} unidades\nPreço: R$ ${product.price.toFixed(2)}\n\nDescrição:\n${product.description || 'Nenhuma descrição disponível'}\n\nEspecificações:\n- Peso: ${product.peso || 'N/A'} kg\n- Dimensões: ${product.ncm || 'N/A'}\n- Garantia: ${product.gtin || 'N/A'}\n- Material: ${product.unidade || 'N/A'}`);
+                          }}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                        >
+                          📋 Mais Detalhes
+                        </button>
                         <button
                           onClick={() => handleProductDelete(product.id)}
                           className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
@@ -2094,6 +2234,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
+            <div className="mb-6">
+              <input
+                type="text"
+                value={customerSearch}
+                onChange={e => setCustomerSearch(e.target.value)}
+                placeholder="🔍 Buscar cliente por nome, email ou telefone..."
+                className="px-4 py-3 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none w-full"
+              />
+            </div>
+
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -2108,7 +2258,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10">
-                    {[...customers].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).map(customer => (
+                    {[...filteredCustomers].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).map(customer => (
                       <tr key={customer.id} className="hover:bg-white/5 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">#{customer.id}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.name}</td>
@@ -2587,12 +2737,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-black text-white">Configurações Fiscais e NF-e</h2>
-              <button
-                onClick={() => setIsFiscalConfigOpen(true)}
-                className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all"
-              >
-                ⚙️ Configurar Dados Fiscais
-              </button>
+              {userRole === 'admin' && (
+                <button
+                  onClick={() => setIsFiscalConfigOpen(true)}
+                  className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all"
+                >
+                  ⚙️ Configurar Dados Fiscais
+                </button>
+              )}
             </div>
 
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
@@ -3527,7 +3679,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             disabled={stock <= 0}
                             className="bg-slate-800"
                           >
-                            {trimmedSize} - {stock} disponível{stock !== 1 ? 'is' : ''}
+                            {trimmedSize} - {stock} disponível
                           </option>
                         );
                       })}
@@ -3750,8 +3902,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="space-y-6">
-                <div className="bg-white/5 rounded-2xl p-6 border border-white/10 space-y-3">
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setCashMovementForm({ type: 'withdrawal', amount: 0, reason: '' });
+                      setIsCashMovementModalOpen(true);
+                    }}
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                  >
+                    💸 Sangria
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCashMovementForm({ type: 'deposit', amount: 0, reason: '' });
+                      setIsCashMovementModalOpen(true);
+                    }}
+                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                  >
+                    💰 Suprimento
+                  </button>
+                </div>
+                <div className="bg-white/5 rounded-2xl p-4 border border-white/10 space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-400">Abertura:</span>
                     <span className="text-white font-bold">{formatCurrency(cashRegister.openingAmount)}</span>
@@ -3771,17 +3943,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
 
                 <button
-                  onClick={() => {
-                    if (window.confirm('Confirma o fechamento do caixa?')) {
-                      setCashRegister({
-                        isOpen: false,
-                        openingAmount: 0,
-                        currentBalance: 0,
-                        openedAt: null
-                      });
-                      setIsCashRegisterModalOpen(false);
-                    }
-                  }}
+                  onClick={handleCashRegisterClose}
                   className="w-full bg-red-500 hover:bg-red-600 text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl"
                 >
                   FECHAR CAIXA AGORA
@@ -3795,6 +3957,194 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               CANCELAR
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Movimentação de Caixa */}
+      {isCashMovementModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[250] p-4">
+          <div className="bg-gradient-to-br from-[#0b1f4b] via-[#0a1b3d] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 p-8 max-w-sm w-full">
+            <h3 className="text-2xl font-black text-white mb-6">
+              {cashMovementForm.type === 'withdrawal' ? 'Sangria' : 'Suprimento'}
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-black text-white mb-2">Valor (R$)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={cashMovementForm.amount}
+                    onChange={e => setCashMovementForm(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                    className="w-full bg-white/5 border border-white/20 text-white rounded-xl pl-12 pr-4 py-4 text-xl font-bold focus:ring-2 focus:ring-versiory-coral outline-none"
+                    placeholder="0,00"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-black text-white mb-2">Motivo</label>
+                <textarea
+                  value={cashMovementForm.reason}
+                  onChange={e => setCashMovementForm(prev => ({ ...prev, reason: e.target.value }))}
+                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none resize-none"
+                  rows={3}
+                  placeholder="Informe o motivo..."
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsCashMovementModalOpen(false)}
+                  className="flex-1 bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-xl font-medium transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCashMovement}
+                  className={`flex-1 px-6 py-3 rounded-xl font-black text-lg transition-all shadow-xl ${
+                    cashMovementForm.type === 'withdrawal' 
+                      ? 'bg-orange-500 hover:bg-orange-600' 
+                      : 'bg-blue-500 hover:bg-blue-600'
+                  } text-white`}
+                >
+                  {cashMovementForm.type === 'withdrawal' ? '💸 Sangria' : '💰 Suprimento'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Relatório de Caixa */}
+      {isCashReportOpen && cashRegisterHistory.length > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCashReportOpen(false)} />
+          
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-8 border-b border-gray-200 flex justify-between items-center print:border-black">
+              <div>
+                <h3 className="text-2xl font-black text-gray-900">Relatório de Fechamento de Caixa</h3>
+                <p className="text-sm text-gray-500 mt-1">Caixa #{cashRegisterHistory[cashRegisterHistory.length - 1]?.id?.slice(0, 8)}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                  🖨 Imprimir
+                </button>
+                <button onClick={() => setIsCashReportOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-8 space-y-6">
+              {cashRegisterHistory.slice(-1).map(register => (
+                <div key={register.id} className="bg-gray-50 rounded-2xl p-6 space-y-4">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-500 font-medium">Abertura:</p>
+                      <p className="font-bold text-gray-900">{new Date(register.openedAt).toLocaleString('pt-BR')}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 font-medium">Fechamento:</p>
+                      <p className="font-bold text-gray-900">{new Date(register.closedAt).toLocaleString('pt-BR')}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 font-medium">Operador:</p>
+                      <p className="font-bold text-gray-900">{register.openedBy}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 font-medium">Status:</p>
+                      <p className="font-bold text-gray-900">{register.status === 'open' ? 'Aberto' : 'Fechado'}</p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-4 space-y-3">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="bg-blue-50 p-4 rounded-xl">
+                        <p className="text-blue-600 font-bold text-lg">{formatCurrency(register.initialAmount)}</p>
+                        <p className="text-blue-500 text-sm">Valor Abertura</p>
+                      </div>
+                      <div className="bg-green-50 p-4 rounded-xl">
+                        <p className="text-green-600 font-bold text-lg">{formatCurrency(register.totalSales)}</p>
+                        <p className="text-green-500 text-sm">Total Vendas</p>
+                      </div>
+                      <div className={`p-4 rounded-xl ${register.difference > 0 ? 'bg-yellow-50' : register.difference < 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                        <p className={`font-bold text-lg ${register.difference > 0 ? 'text-yellow-600' : register.difference < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                          {register.difference > 0 ? '+' : ''}{formatCurrency(register.difference)}
+                        </p>
+                        <p className={`text-sm ${register.difference > 0 ? 'text-yellow-500' : register.difference < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                          {register.difference > 0 ? 'Sobra' : register.difference < 0 ? 'Falta' : 'Ok'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {register.withdrawals.length > 0 && (
+                      <div>
+                        <h4 className="font-bold text-gray-700 mb-2">Sangrias</h4>
+                        <div className="space-y-1">
+                          {register.withdrawals.map((withdrawal: any, i: number) => (
+                            <div key={i} className="flex justify-between text-sm bg-red-50 p-2 rounded">
+                              <span>{withdrawal.reason}</span>
+                              <span className="text-red-600 font-bold">-{formatCurrency(withdrawal.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {register.deposits.length > 0 && (
+                      <div>
+                        <h4 className="font-bold text-gray-700 mb-2">Suprimentos</h4>
+                        <div className="space-y-1">
+                          {register.deposits.map((deposit: any, i: number) => (
+                            <div key={i} className="flex justify-between text-sm bg-blue-50 p-2 rounded">
+                              <span>{deposit.reason}</span>
+                              <span className="text-blue-600 font-bold">+{formatCurrency(deposit.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {register.salesByPayment && (
+                      <div>
+                        <h4 className="font-bold text-gray-700 mb-2">Vendas por Forma de Pagamento</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-gray-50 p-3 rounded">
+                            <span className="text-sm text-gray-600">Dinheiro:</span>
+                            <span className="font-bold text-gray-900">{formatCurrency(register.salesByPayment.dinheiro)}</span>
+                          </div>
+                          <div className="bg-gray-50 p-3 rounded">
+                            <span className="text-sm text-gray-600">PIX:</span>
+                            <span className="font-bold text-gray-900">{formatCurrency(register.salesByPayment.pix)}</span>
+                          </div>
+                          <div className="bg-gray-50 p-3 rounded">
+                            <span className="text-sm text-gray-600">Débito:</span>
+                            <span className="font-bold text-gray-900">{formatCurrency(register.salesByPayment.debito)}</span>
+                          </div>
+                          <div className="bg-gray-50 p-3 rounded">
+                            <span className="text-sm text-gray-600">Crédito:</span>
+                            <span className="font-bold text-gray-900">{formatCurrency(register.salesByPayment.credito)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {register.notes && (
+                      <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-xl">
+                        <p className="text-sm font-bold text-yellow-800">{register.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
