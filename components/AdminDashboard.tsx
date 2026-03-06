@@ -246,6 +246,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     selectedColor: ''
   });
 
+  const [expandedSizes, setExpandedSizes] = useState<{ [key: string]: boolean }>({});
+
+  const toggleSizeExpansion = (productId: number, size: string) => {
+    const key = `${productId}-${size}`;
+    setExpandedSizes(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const [isSizeManagerModalOpen, setIsSizeManagerModalOpen] = useState(false);
   const [sizeManagerProductId, setSizeManagerProductId] = useState<number | null>(null);
   const [tempStockBySize, setTempStockBySize] = useState<{ [size: string]: number }>({});
@@ -972,7 +979,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           const combKey = `${inventoryForm.selectedSize}-${inventoryForm.selectedColor}`;
           const currentCombStock = newStockBySizeColor[combKey] || 0;
           let newCombStock = currentCombStock;
-          
+
           if (inventoryForm.type === 'in') {
             newCombStock = currentCombStock + inventoryForm.quantity;
           } else if (inventoryForm.type === 'out') {
@@ -980,7 +987,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           } else {
             newCombStock = inventoryForm.quantity;
           }
-          
+
           newStockBySizeColor[combKey] = newCombStock;
         }
         if (Object.keys(newStockBySizeColor).length > 0) {
@@ -1779,38 +1786,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     {product.sizes && (
                       <div className="mb-4">
-                        <div className="text-xs text-slate-400 mb-2">Estoque Detalhado:</div>
-                        <div className="space-y-1">
+                        <div className="text-xs text-slate-400 mb-2 font-medium uppercase tracking-wider">Estoque Detalhado:</div>
+                        <div className="flex flex-wrap gap-2">
                           {product.sizes.split(',').map(size => {
                             const trimmedSize = size.trim();
+                            const isExpanded = expandedSizes[`${product.id}-${trimmedSize}`];
                             const colors = product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : [];
 
                             if (colors.length > 0 && product.stockBySizeColor) {
-                              const sizeLines = colors.map(color => {
+                              const totalSizeStock = colors.reduce((sum, color) => {
                                 const key = `${trimmedSize}-${color}`;
-                                const qty = product.stockBySizeColor?.[key] || 0;
-                                return qty > 0 ? `${color}: ${qty}` : null;
-                              }).filter(Boolean);
+                                return sum + (product.stockBySizeColor?.[key] || 0);
+                              }, 0);
 
-                              if (sizeLines.length === 0) return null;
+                              if (totalSizeStock === 0) return null;
 
                               return (
-                                <div key={trimmedSize} className="flex flex-col bg-white/5 rounded-lg p-2 border border-white/5">
-                                  <span className="text-xs font-bold text-versiory-coral mb-1">{trimmedSize}</span>
-                                  <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] text-slate-300">
-                                    {sizeLines.map((line, idx) => (
-                                      <span key={idx} className="truncate">• {line}</span>
-                                    ))}
-                                  </div>
+                                <div key={trimmedSize} className="flex flex-col">
+                                  <button
+                                    onClick={() => toggleSizeExpansion(product.id, trimmedSize)}
+                                    className={`inline-flex items-center rounded-lg px-2 py-1 border transition-all hover:scale-105 active:scale-95 ${isExpanded
+                                      ? 'bg-versiory-coral/20 border-versiory-coral text-white'
+                                      : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                                      } text-[10px]`}
+                                  >
+                                    <span className="font-bold mr-1">{trimmedSize}:</span>
+                                    <span className="font-black">{totalSizeStock}</span>
+                                    <span className={`ml-1 opacity-60 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                                      <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
+                                      </svg>
+                                    </span>
+                                  </button>
+                                  {isExpanded && (
+                                    <div className="ml-1 mt-1 pl-2 border-l-2 border-versiory-coral/30 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                      {colors.map(color => {
+                                        const qty = product.stockBySizeColor?.[`${trimmedSize}-${color}`] || 0;
+                                        if (qty === 0) return null;
+                                        return (
+                                          <div key={color} className="flex items-center gap-1 text-[9px] text-slate-400">
+                                            <span className="w-1 h-1 rounded-full bg-versiory-coral/50"></span>
+                                            <span>{color}:</span>
+                                            <span className="text-white font-bold">{qty}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             } else {
                               const sizeStock = product.stockBySize?.[trimmedSize] || 0;
                               if (sizeStock === 0) return null;
                               return (
-                                <div key={trimmedSize} className="inline-flex items-center bg-white/5 rounded-lg px-2 py-1 border border-white/5 text-[10px] text-slate-300 mr-1 mb-1">
-                                  <span className="font-bold text-versiory-coral mr-1">{trimmedSize}:</span> {sizeStock} un
-                                </div>
+                                <span key={trimmedSize} className="inline-flex items-center bg-white/5 rounded-lg px-2 py-1 border border-white/10 text-[10px] text-slate-300">
+                                  <span className="font-bold text-versiory-coral mr-1">{trimmedSize}:</span>
+                                  <span className="font-black">{sizeStock}</span>
+                                </span>
                               );
                             }
                           })}
@@ -2287,17 +2319,68 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       {product.sizes && (
                         <div className="mb-4">
-                          <div className="text-xs text-slate-400 mb-2">Estoque por tamanho:</div>
-                          <div className="flex flex-wrap gap-1">
+                          <div className="text-xs text-slate-400 mb-2 font-medium uppercase tracking-wider">Estoque por tamanho:</div>
+                          <div className="flex flex-wrap gap-2">
                             {product.sizes.split(',').map(size => {
                               const trimmedSize = size.trim();
-                              const sizeStock = product.stockBySize?.[trimmedSize] || 0;
-                              return (
-                                <span key={trimmedSize} className={`px-2 py-1 text-xs rounded font-medium ${sizeStock > 0 ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
-                                  }`}>
-                                  {trimmedSize}: {sizeStock}
-                                </span>
-                              );
+                              const isExpanded = expandedSizes[`inv-${product.id}-${trimmedSize}`]; // usar prefixo inv para não conflitar com a aba produtos se necessário, ou manter igual
+                              const colors = product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : [];
+
+                              if (colors.length > 0 && product.stockBySizeColor) {
+                                const totalSizeStock = colors.reduce((sum, color) => {
+                                  const key = `${trimmedSize}-${color}`;
+                                  return sum + (product.stockBySizeColor?.[key] || 0);
+                                }, 0);
+
+                                if (totalSizeStock === 0) return null;
+
+                                return (
+                                  <div key={trimmedSize} className="flex flex-col">
+                                    <button
+                                      onClick={() => {
+                                        const key = `inv-${product.id}-${trimmedSize}`;
+                                        setExpandedSizes(prev => ({ ...prev, [key]: !prev[key] }));
+                                      }}
+                                      className={`inline-flex items-center rounded-lg px-2 py-1 border transition-all hover:scale-105 active:scale-95 ${isExpanded
+                                        ? 'bg-green-500/20 border-green-500 text-green-300'
+                                        : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                                        } text-[10px]`}
+                                    >
+                                      <span className="font-bold mr-1">{trimmedSize}:</span>
+                                      <span className="font-black">{totalSizeStock}</span>
+                                      <span className={`ml-1 opacity-60 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                      </span>
+                                    </button>
+                                    {isExpanded && (
+                                      <div className="ml-1 mt-1 pl-2 border-l-2 border-green-500/30 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        {colors.map(color => {
+                                          const qty = product.stockBySizeColor?.[`${trimmedSize}-${color}`] || 0;
+                                          if (qty === 0) return null;
+                                          return (
+                                            <div key={color} className="flex items-center gap-1 text-[9px] text-slate-400">
+                                              <span className="w-1 h-1 rounded-full bg-green-500/50"></span>
+                                              <span>{color}:</span>
+                                              <span className="text-white font-bold">{qty}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              } else {
+                                const sizeStock = product.stockBySize?.[trimmedSize] || 0;
+                                if (sizeStock === 0) return null;
+                                return (
+                                  <span key={trimmedSize} className={`px-2 py-1 text-[10px] rounded-lg border font-medium ${sizeStock > 0 ? 'bg-green-500/10 border-green-500/20 text-green-300' : 'bg-red-500/10 border-red-500/20 text-red-300'
+                                    }`}>
+                                    {trimmedSize}: {sizeStock}
+                                  </span>
+                                );
+                              }
                             })}
                           </div>
                         </div>
@@ -2328,30 +2411,62 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'financial' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+              <button
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => (o.salesChannel === 'physical' || !o.salesChannel) && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
+              >
                 <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalRevenue)}</div>
-                <div className="text-slate-100 font-medium text-sm">Receita Total</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-slate-100 font-medium text-sm">Receita Total — clique para detalhes</div>
+              </button>
+              <button
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
+              >
                 <div className="text-2xl font-bold text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
-                <div className="text-slate-100 font-medium text-sm">Vendas PDV</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-slate-100 font-medium text-sm">Vendas PDV — clique para detalhes</div>
+              </button>
+              <button
+                onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
+              >
                 <div className="text-2xl font-bold text-blue-400">{formatCurrency(financialStats.onlineRevenue)}</div>
-                <div className="text-slate-100 font-medium text-sm">Vendas Online</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-slate-100 font-medium text-sm">Vendas Online — clique para detalhes</div>
+              </button>
+              <button
+                onClick={() => {
+                  const expensesList = expenses.map(e => ({
+                    ...e,
+                    categoryLabel: e.category === 'fixed' ? 'Fixa' : e.category === 'variable' ? 'Variável' : e.category === 'investment' ? 'Investimento' : 'Emergencial'
+                  }));
+                  if (expensesList.length > 0) {
+                    alert(`Despesas Totais: ${formatCurrency(financialStats.totalExpenses)}\n\nDetalhamento:\n${expensesList.map(e => `• ${e.description} (${e.categoryLabel}): ${formatCurrency(e.amount)}`).join('\n')}`);
+                  } else {
+                    alert('Nenhuma despesa cadastrada.');
+                  }
+                }}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
+              >
                 <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalExpenses)}</div>
-                <div className="text-slate-100 font-medium text-sm">Despesas</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-slate-100 font-medium text-sm">Despesas — clique para detalhes</div>
+              </button>
+              <button
+                onClick={() => {
+                  alert(`Lucro Líquido: ${formatCurrency(financialStats.netProfit)}\n\nCálculo:\nReceita Total: ${formatCurrency(financialStats.totalRevenue)}\n(-) Despesas: ${formatCurrency(financialStats.totalExpenses)}\n(=) Lucro Líquido: ${formatCurrency(financialStats.netProfit)}`);
+                }}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
+              >
                 <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.netProfit)}</div>
-                <div className="text-slate-100 font-medium text-sm">Lucro Liquido</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
+                <div className="text-slate-100 font-medium text-sm">Lucro Líquido — clique para detalhes</div>
+              </button>
+              <button
+                onClick={() => {
+                  alert(`Margem de Lucro: ${financialStats.profitMargin.toFixed(1)}%\n\nCálculo:\nLucro Líquido: ${formatCurrency(financialStats.netProfit)}\nReceita Total: ${formatCurrency(financialStats.totalRevenue)}\nMargem = (Lucro / Receita) × 100\nMargem = ${financialStats.profitMargin.toFixed(2)}%`);
+                }}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
+              >
                 <div className="text-2xl font-bold text-slate-100">{financialStats.profitMargin.toFixed(1)}%</div>
-                <div className="text-slate-100 font-medium text-sm">Margem de Lucro</div>
-              </div>
+                <div className="text-slate-100 font-medium text-sm">Margem de Lucro — clique para detalhes</div>
+              </button>
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center gap-4">
@@ -2404,7 +2519,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <h3 className="text-lg font-bold text-white mb-4">Transacoes Recentes</h3>
               <div className="space-y-3">
                 {recentTransactions.map(transaction => (
-                  <div key={`${transaction.type}-${transaction.id}`} className="flex justify-between items-center p-4 bg-white/5 border border-white/15 rounded-xl">
+                  <button
+                    key={`${transaction.type}-${transaction.id}`}
+                    onClick={() => {
+                      if (transaction.type === 'revenue') {
+                        const order = orders.find(o => o.id === transaction.id);
+                        if (order) setSelectedOrderDetail(order);
+                      } else if (transaction.type === 'expense' && 'expenseId' in transaction) {
+                        openExpenseModal(expenses.find(e => e.id === transaction.expenseId));
+                      }
+                    }}
+                    className="w-full flex justify-between items-center p-4 bg-white/5 border border-white/15 rounded-xl hover:bg-white/10 transition-all text-left cursor-pointer"
+                  >
                     <div className="flex-1">
                       <div className="font-medium text-slate-100">{transaction.description}</div>
                       <div className="text-sm text-slate-200">
@@ -2425,7 +2551,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                       </div>
                       {transaction.type === 'expense' && 'expenseId' in transaction && (
-                        <div className="flex gap-2">
+                        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => openExpenseModal(expenses.find(e => e.id === transaction.expenseId))}
                             className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-all"
@@ -2447,7 +2573,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                       )}
                     </div>
-                  </div>
+                  </button>
                 ))}
                 {recentTransactions.length === 0 && (
                   <p className="text-sm text-slate-200">Nenhuma transacao recente.</p>
