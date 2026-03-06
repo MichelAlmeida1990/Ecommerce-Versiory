@@ -9,6 +9,9 @@ const ProductDetail: React.FC = () => {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSize, setSelectedSize] = useState<string>('');
+  const [selectedColor, setSelectedColor] = useState<string>('');
+  const [sizeError, setSizeError] = useState(false);
+  const [colorError, setColorError] = useState(false);
   const [activeImage, setActiveImage] = useState<string>('');
   const [allImages, setAllImages] = useState<string[]>([]);
 
@@ -63,7 +66,31 @@ const ProductDetail: React.FC = () => {
   }
 
   const handleAddToCart = () => {
-    const event = new CustomEvent('addToCart', { detail: { product } });
+    if (!product) return;
+
+    let hasError = false;
+    if (product.sizes && !selectedSize) {
+      setSizeError(true);
+      setTimeout(() => setSizeError(false), 2000);
+      hasError = true;
+    }
+    if (product.colors && !selectedColor) {
+      setColorError(true);
+      setTimeout(() => setColorError(false), 2000);
+      hasError = true;
+    }
+
+    if (hasError) return;
+
+    const event = new CustomEvent('addToCart', {
+      detail: {
+        product: {
+          ...product,
+          selectedSize,
+          selectedColor
+        }
+      }
+    });
     window.dispatchEvent(event);
   };
 
@@ -180,34 +207,105 @@ const ProductDetail: React.FC = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                     </svg>
                     <span>
-                      Estoque disponível: <strong className={product.stock === 0 ? "text-red-500" : "text-emerald-600"}>{product.stock ?? 0} unidades</strong>
+                      {(() => {
+                        let stock = product.stock ?? 0;
+                        if (selectedSize && selectedColor && product.stockBySizeColor) {
+                          stock = product.stockBySizeColor[`${selectedSize}-${selectedColor}`] || 0;
+                        } else if (selectedSize && product.stockBySize) {
+                          stock = product.stockBySize[selectedSize] || 0;
+                        }
+                        return (
+                          <>
+                            Estoque disponível: <strong className={stock === 0 ? "text-red-500" : "text-emerald-600"}>{stock} unidades</strong>
+                          </>
+                        );
+                      })()}
                     </span>
                   </div>
                 </div>
 
                 {/* Variations */}
                 {product.sizes && product.sizes.trim().length > 0 && (
-                  <div className="mb-8">
+                  <div className="mb-6">
                     <div className="flex justify-between items-center mb-3">
-                      <span className="font-bold text-slate-900">Tamanho: <span className="text-slate-500 font-normal">{selectedSize}</span></span>
+                      <span className="font-bold text-slate-900">Tamanho: <span className="text-slate-500 font-normal">{selectedSize || 'Selecione'}</span></span>
                       {product.sizeChart && Object.keys(product.sizeChart).length > 0 && (
                         <a href="#medidas" className="text-sm text-blue-600 hover:underline">Guia de tamanhos</a>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {product.sizes.split(',').map(s => s.trim()).filter(s => s).map((size) => (
-                        <button
-                          key={size}
-                          onClick={() => setSelectedSize(size)}
-                          className={`min-w-[3rem] px-4 py-2 border-2 rounded-xl font-bold transition-all ${selectedSize === size
-                            ? 'border-versiory-coral text-versiory-coral bg-[#fff6ef]'
-                            : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                            }`}
-                        >
-                          {size}
-                        </button>
-                      ))}
+                      {product.sizes.split(',').map(s => s.trim()).filter(s => s).map((size) => {
+                        let sizeStock = 0;
+                        if (product.colors && product.stockBySizeColor) {
+                          product.colors.split(',').forEach(color => {
+                            const key = `${size}-${color.trim()}`;
+                            sizeStock += product.stockBySizeColor?.[key] || 0;
+                          });
+                        } else {
+                          sizeStock = product.stockBySize?.[size] || 0;
+                        }
+                        const isAvailable = sizeStock > 0;
+
+                        return (
+                          <button
+                            key={size}
+                            onClick={() => isAvailable && setSelectedSize(size)}
+                            disabled={!isAvailable}
+                            className={`min-w-[3.5rem] px-4 py-2 border-2 rounded-xl font-bold transition-all ${selectedSize === size
+                              ? 'border-versiory-coral text-versiory-coral bg-[#fff6ef] shadow-sm'
+                              : isAvailable
+                                ? 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                                : 'border-slate-100 text-slate-300 bg-slate-50 cursor-not-allowed line-through'
+                              }`}
+                          >
+                            {size}
+                          </button>
+                        );
+                      })}
                     </div>
+                    {sizeError && <p className="text-red-500 text-xs font-bold mt-2 animate-pulse">⚠️ Selecione um tamanho</p>}
+                  </div>
+                )}
+
+                {/* Cores */}
+                {product.colors && product.colors.trim().length > 0 && (
+                  <div className="mb-8">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="font-bold text-slate-900">Cor: <span className="text-slate-500 font-normal">{selectedColor || 'Selecione'}</span></span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {product.colors.split(',').map(c => c.trim()).filter(c => c).map((color) => {
+                        let colorStock = 0;
+                        if (selectedSize && product.stockBySizeColor) {
+                          colorStock = product.stockBySizeColor[`${selectedSize}-${color}`] || 0;
+                        } else if (product.sizes && product.stockBySizeColor) {
+                          product.sizes.split(',').forEach(size => {
+                            colorStock += product.stockBySizeColor?.[`${size.trim()}-${color}`] || 0;
+                          });
+                        } else {
+                          colorStock = product.stock || 0;
+                        }
+                        const isAvailable = colorStock > 0;
+
+                        return (
+                          <button
+                            key={color}
+                            onClick={() => isAvailable && setSelectedColor(color)}
+                            disabled={!isAvailable}
+                            className={`px-4 py-2 border-2 rounded-xl font-bold transition-all ${selectedColor === color
+                              ? 'border-versiory-coral text-versiory-coral bg-[#fff6ef] shadow-sm'
+                              : isAvailable
+                                ? 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                                : 'border-slate-100 text-slate-300 bg-slate-50 cursor-not-allowed line-through'
+                              }`}
+                          >
+                            {color}
+                            {isAvailable && <span className="text-[10px] ml-1 opacity-70 font-normal">({colorStock})</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {colorError && <p className="text-red-500 text-xs font-bold mt-2 animate-pulse">⚠️ Selecione uma cor</p>}
                   </div>
                 )}
 

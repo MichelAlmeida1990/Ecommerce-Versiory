@@ -10,6 +10,7 @@ export interface Product {
   rating: number;
   reviews: number;
   stock?: number;
+  minStock?: number; // Estoque mínimo configurável (default: 10)
   stockBySize?: { [size: string]: number }; // Estoque por tamanho
   sizes?: string;
   colors?: string; // Cores disponíveis (ex: "Preto, Branco, Vermelho")
@@ -27,9 +28,13 @@ export interface Product {
   aliquotaCofins?: number;
   aliquotaIpi?: number;
   codigoBeneficio?: string;
+  gtin?: string; // Código de Barras (EAN)
+  gtinTrib?: string; // Código de Barras Tributável
   usoReformaTributaria?: boolean; // Reforma Tributária 2026
   aliquotaCbs?: number; // Contribuição sobre Bens e Serviços (Federal)
   aliquotaIbs?: number; // Imposto sobre Bens e Serviços (Estadual/Municipal)
+  aliquotaIs?: number; // Imposto Seletivo (Específico)
+  cClassTrib?: string; // Código de Classificação Tributária (Reforma 2026)
 }
 
 
@@ -64,6 +69,8 @@ export interface OrderItem {
   price: number;
   image?: string;
   description?: string;
+  selectedSize?: string;
+  selectedColor?: string;
 }
 
 export interface Order {

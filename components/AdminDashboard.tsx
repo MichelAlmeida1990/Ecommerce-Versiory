@@ -105,8 +105,18 @@ const BEDDING_SIZES = {
 const formatCurrency = (value: number) =>
   `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
-const formatDate = (value: string) =>
-  new Date(value).toLocaleDateString('pt-BR');
+// ERRCOM026: Corrigido para usar data local (evita fuso horário UTC -1 dia)
+const formatDate = (value: string) => {
+  if (!value) return '';
+  // Se formato YYYY-MM-DD, parsear como local
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('pt-BR');
+  }
+  // ISO string com horário
+  const dt = new Date(value);
+  return new Date(dt.getTime() + dt.getTimezoneOffset() * -60000).toLocaleDateString('pt-BR');
+};
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
   products,
@@ -165,9 +175,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     reviews: 0,
     stock: 0,
     stockBySize: {},
+    colors: '',
+    stockBySizeColor: {},
     sizes: '',
     sizeChart: {},
     ncm: '',
+    gtin: '',
+    gtinTrib: '',
     cfop: '5102',
     cst: '00',
     origem: 0,
@@ -175,7 +189,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     peso: 0,
     usoReformaTributaria: false,
     aliquotaCbs: 0,
-    aliquotaIbs: 0
+    aliquotaIbs: 0,
+    aliquotaIs: 0,
+    cClassTrib: ''
   });
 
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -188,12 +204,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   // PDV State
-  const [pdvCart, setPdvCart] = useState<{ product: Product; quantity: number; selectedSize?: string }[]>([]);
+  const [pdvCart, setPdvCart] = useState<{ product: Product; quantity: number; selectedSize?: string; selectedColor?: string }[]>([]);
   const [pdvSearch, setPdvSearch] = useState('');
   const [isPdvCheckoutModalOpen, setIsPdvCheckoutModalOpen] = useState(false);
   const [selectedSizes, setSelectedSizes] = useState<{ [productId: number]: string }>({});
   const [pdvProductModal, setPdvProductModal] = useState<{ isOpen: boolean; product: Product | null }>({ isOpen: false, product: null });
   const [pdvModalSelection, setPdvModalSelection] = useState<{ size: string; color: string }>({ size: '', color: '' });
+  const [cashRegister, setCashRegister] = useState<{ isOpen: boolean; openingAmount: number; currentBalance: number; openedAt: string | null }>({
+    isOpen: false,
+    openingAmount: 0,
+    currentBalance: 0,
+    openedAt: null
+  });
+  const [isCashRegisterModalOpen, setIsCashRegisterModalOpen] = useState(false);
+  const [cashRegisterForm, setCashRegisterForm] = useState({ amount: 0 });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -218,13 +242,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     type: 'in' as 'in' | 'out' | 'adjustment',
     quantity: 1,
     reason: '',
-    selectedSize: ''
+    selectedSize: '',
+    selectedColor: ''
   });
 
   const [isSizeManagerModalOpen, setIsSizeManagerModalOpen] = useState(false);
   const [sizeManagerProductId, setSizeManagerProductId] = useState<number | null>(null);
+  const [tempStockBySize, setTempStockBySize] = useState<{ [size: string]: number }>({});
+  const [tempStockBySizeColor, setTempStockBySizeColor] = useState<{ [key: string]: number }>({});
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
   const [expenseForm, setExpenseForm] = useState({
     description: '',
@@ -233,6 +261,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     date: new Date().toISOString().split('T')[0],
     notes: ''
   });
+
+  // ERRCOM027: Filtro de data dos lançamentos financeiros
+  const [financialDateFilter, setFinancialDateFilter] = useState({ from: '', to: '' });
+
+  // ERRCOM047: Busca de pedido por número
+  const [orderSearch, setOrderSearch] = useState('');
+
+  // ERRCOM046: Detalhe do pedido
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
+
+  // ERRCOM022: Histórico de pedidos do cliente
+  const [customerOrderHistory, setCustomerOrderHistory] = useState<{ customer: Customer; orders: Order[] } | null>(null);
+
+  // ERRCOM029/030: Modal de vendas por forma de pagamento
+  const [paymentBreakdownModal, setPaymentBreakdownModal] = useState<{ channel: 'pdv' | 'online'; orders: Order[] } | null>(null);
 
   const categoryOptions = useMemo(() => {
     const productCategories = products.map(product => product.category).filter(Boolean);
@@ -260,9 +303,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   );
 
   const filteredOrders = useMemo(() => {
-    if (orderFilter === 'all') return orders;
-    return orders.filter(order => order.status === orderFilter);
-  }, [orders, orderFilter]);
+    let filtered = orderFilter === 'all' ? orders : orders.filter(order => order.status === orderFilter);
+    // ERRCOM047: Filtro por número do pedido
+    if (orderSearch.trim()) {
+      filtered = filtered.filter(o =>
+        o.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
+        o.customerName.toLowerCase().includes(orderSearch.toLowerCase())
+      );
+    }
+    return filtered;
+  }, [orders, orderFilter, orderSearch]);
 
   const inventoryStats = useMemo(() => {
     const totalStockValue = products.reduce(
@@ -271,7 +321,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
     const lowStockItems = products.filter(product => {
       const stock = product.stock || 0;
-      return stock > 0 && stock < 10;
+      const threshold = product.minStock ?? 10;
+      return stock > 0 && stock < threshold;
     }).length;
     const outOfStockItems = products.filter(product => (product.stock || 0) === 0).length;
     const totalItemsInStock = products.reduce(
@@ -290,13 +341,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         product.name.toLowerCase().includes(search) ||
         product.category.toLowerCase().includes(search);
 
+      const threshold = product.minStock ?? 10;
       let matchesFilter = true;
       if (stockFilter === 'low') {
-        matchesFilter = stock > 0 && stock < 10;
+        matchesFilter = stock > 0 && stock < threshold;
       } else if (stockFilter === 'out') {
         matchesFilter = stock === 0;
       } else if (stockFilter === 'normal') {
-        matchesFilter = stock >= 10;
+        matchesFilter = stock >= threshold;
       }
 
       return matchesSearch && matchesFilter;
@@ -322,7 +374,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       amount: order.total,
       type: 'revenue' as const,
       date: order.date,
-      category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online'
+      category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
+      notes: order.notes || ''
     }));
 
     const expenseItems = expenses.map(expense => ({
@@ -332,21 +385,68 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       type: 'expense' as const,
       date: expense.date,
       category: expense.category,
-      expenseId: expense.id
+      expenseId: expense.id,
+      notes: expense.notes || '' // Novo: exibir observações
     }));
 
-    return [...revenue, ...expenseItems]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 20);
-  }, [orders, expenses]);
+    const all = [...revenue, ...expenseItems]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // ERRCOM027: Filtro por período
+    if (financialDateFilter.from || financialDateFilter.to) {
+      return all.filter(t => {
+        const d = t.date.split('T')[0];
+        if (financialDateFilter.from && d < financialDateFilter.from) return false;
+        if (financialDateFilter.to && d > financialDateFilter.to) return false;
+        return true;
+      });
+    }
+    return all.slice(0, 50);
+  }, [orders, expenses, financialDateFilter]);
+
+  // ERRCOM033: Estatísticas de clientes
+  const customerStats = useMemo(() => {
+    const pdvCustomerIds = new Set(
+      orders.filter(o => o.salesChannel === 'physical').map(o => o.customerId)
+    );
+    const onlineCustomerIds = new Set(
+      orders.filter(o => !o.salesChannel || o.salesChannel === 'online').map(o => o.customerId)
+    );
+    const paidOrders = orders.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status));
+    const totalRevenue = paidOrders.reduce((s, o) => s + o.total, 0);
+    const avgTicket = customers.length > 0 ? totalRevenue / customers.length : 0;
+    return {
+      total: customers.length,
+      pdv: pdvCustomerIds.size,
+      online: onlineCustomerIds.size,
+      avgTicket
+    };
+  }, [customers, orders]);
 
   const lowStockProducts = useMemo(() =>
     products.filter(product => {
       const stock = product.stock || 0;
-      return stock > 0 && stock < 10;
+      const threshold = product.minStock ?? 10;
+      return stock > 0 && stock < threshold;
     }),
     [products]
   );
+
+  // ERRCOM031: Top 5 produtos mais vendidos
+  const top5Products = useMemo(() => {
+    const salesCount: Record<number, number> = {};
+    orders.forEach(order => {
+      if (['paid', 'processing', 'shipped', 'delivered'].includes(order.status)) {
+        order.items?.forEach(item => {
+          salesCount[item.productId] = (salesCount[item.productId] || 0) + item.quantity;
+        });
+      }
+    });
+    return products
+      .map(p => ({ product: p, sold: salesCount[p.id] || 0 }))
+      .sort((a, b) => b.sold - a.sold)
+      .slice(0, 5);
+  }, [orders, products]);
 
   const resetProductForm = () => {
     setProductForm({
@@ -370,7 +470,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       peso: 0,
       usoReformaTributaria: false,
       aliquotaCbs: 0,
-      aliquotaIbs: 0
+      aliquotaIbs: 0,
+      aliquotaIs: 0,
+      cClassTrib: '',
+      gtin: '',
+      gtinTrib: ''
     });
     setEditingProductId(null);
     setIsCustomCategory(false);
@@ -415,25 +519,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       const { saveProduct } = await import('../services/firebase');
 
-      // Inicializar stockBySize se houver tamanhos e não for edição
+      // Inicializar stockBySize e stockBySizeColor se houver variações
       let stockBySize = productForm.stockBySize || {};
-      if (productForm.sizes && productForm.sizes.trim()) {
-        const sizeArray = productForm.sizes.split(',').map(s => s.trim()).filter(s => s);
+      let stockBySizeColor = productForm.stockBySizeColor || {};
 
-        // Se não tem stockBySize ou está vazio, distribuir o estoque igualmente
-        if (!productForm.stockBySize || Object.keys(productForm.stockBySize).length === 0) {
-          const stockPerSize = Math.floor((productForm.stock || 0) / sizeArray.length);
-          stockBySize = {};
-          sizeArray.forEach(size => {
-            stockBySize[size] = stockPerSize;
-          });
+      const sizeArray = productForm.sizes ? productForm.sizes.split(',').map(s => s.trim()).filter(s => s) : [];
+      const colorArray = productForm.colors ? productForm.colors.split(',').map(c => c.trim()).filter(c => c) : [];
+
+      if (sizeArray.length > 0) {
+        if (colorArray.length > 0) {
+          // Tem Tamanho e Cor -> Usar stockBySizeColor
+          if (!productForm.stockBySizeColor || Object.keys(productForm.stockBySizeColor).length === 0) {
+            const combinations: string[] = [];
+            sizeArray.forEach(s => colorArray.forEach(c => combinations.push(`${s}-${c}`)));
+
+            const stockPerComb = Math.floor((productForm.stock || 0) / combinations.length);
+            const remainder = (productForm.stock || 0) % combinations.length;
+
+            stockBySizeColor = {};
+            combinations.forEach((key, index) => {
+              stockBySizeColor[key] = stockPerComb + (index < remainder ? 1 : 0);
+            });
+          }
+          stockBySize = {}; // Limpar stockBySize simples se tem cores
         } else {
-          // Se já tem stockBySize, garantir que todos os tamanhos existem
-          sizeArray.forEach(size => {
-            if (!(size in stockBySize)) {
-              stockBySize[size] = 0;
-            }
-          });
+          // Apenas Tamanho -> Usar stockBySize
+          if (!productForm.stockBySize || Object.keys(productForm.stockBySize).length === 0) {
+            const stockPerSize = Math.floor((productForm.stock || 0) / sizeArray.length);
+            const remainder = (productForm.stock || 0) % sizeArray.length;
+
+            stockBySize = {};
+            sizeArray.forEach((size, index) => {
+              stockBySize[size] = stockPerSize + (index < remainder ? 1 : 0);
+            });
+          }
+          stockBySizeColor = {}; // Limpar stockBySizeColor se não tem cores
         }
       }
 
@@ -442,7 +562,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         category: trimmedCategory,
         stock: productForm.stock || 0,
         stockBySize: stockBySize,
+        stockBySizeColor: stockBySizeColor,
         sizes: productForm.sizes || '',
+        colors: productForm.colors || '',
         images: productForm.images || [],
         sizeChart: productForm.sizeChart || {},
         ncm: productForm.ncm || '',
@@ -459,7 +581,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         codigoBeneficio: productForm.codigoBeneficio || '',
         usoReformaTributaria: productForm.usoReformaTributaria || false,
         aliquotaCbs: productForm.aliquotaCbs || 0,
-        aliquotaIbs: productForm.aliquotaIbs || 0
+        aliquotaIbs: productForm.aliquotaIbs || 0,
+        aliquotaIs: productForm.aliquotaIs || 0,
+        cClassTrib: productForm.cClassTrib || '',
+        gtin: productForm.gtin || '',
+        gtinTrib: productForm.gtinTrib || ''
       };
 
 
@@ -502,7 +628,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleProductDelete = async (id: number) => {
-    if (!window.confirm('Tem certeza que deseja excluir este produto?')) return;
+    // Verificar se existe movimentações ou pedidos vinculados
+    const hasOrders = orders.some(order =>
+      order.items?.some(item => item.productId === id)
+    );
+    const hasMovements = inventoryMovements.some(m => m.productId === id);
+
+    if (hasOrders || hasMovements) {
+      window.alert('❌ Este produto não pode ser excluído pois possui pedidos ou movimentações de estoque vinculadas. Por normas fiscais, a exclusão é bloqueada.');
+      return;
+    }
+
+    if (!window.confirm('Tem certeza que deseja excluir este produto? Esta ação não pode ser desfeita.')) return;
     try {
       const { deleteProductItem } = await import('../services/firebase');
       await deleteProductItem(id);
@@ -615,6 +752,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleCategoryDelete = async (categoryId: string) => {
+    // ERRCOM017: Bloquear exclusão se houver produtos vinculados
+    const categoryName = categories.find(c => c.id === categoryId)?.name;
+    const hasProducts = products.some(p => p.category === categoryName);
+    if (hasProducts) {
+      window.alert(`❌ Não é possível excluir a categoria "${categoryName}" pois ela possui produtos vinculados. Remova ou reclassifique os produtos antes de excluir a categoria.`);
+      return;
+    }
     if (!window.confirm('Tem certeza que deseja excluir esta categoria?')) return;
     try {
       const { deleteCategoryItem } = await import('../services/firebase');
@@ -707,7 +851,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       type: 'in',
       quantity: 1,
       reason: '',
-      selectedSize: ''
+      selectedSize: '',
+      selectedColor: ''
     });
     setIsInventoryModalOpen(true);
   };
@@ -756,6 +901,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       newStockBySize[inventoryForm.selectedSize] = newSizeStock;
+    } else if (inventoryForm.selectedSize && inventoryForm.selectedColor && product.colors && product.sizes) {
+      // Se tem tamanho e cor selecionados
+      let newStockBySizeColor = { ...(product.stockBySizeColor || {}) };
+      const combKey = `${inventoryForm.selectedSize}-${inventoryForm.selectedColor}`;
+      const currentCombStock = newStockBySizeColor[combKey] || 0;
+      let newCombStock = currentCombStock;
+
+      if (inventoryForm.type === 'in') {
+        newCombStock = currentCombStock + inventoryForm.quantity;
+        newStock = currentStock + inventoryForm.quantity;
+      } else if (inventoryForm.type === 'out') {
+        if (currentCombStock < inventoryForm.quantity) {
+          window.alert('Estoque insuficiente para esta saída.');
+          return;
+        }
+        newCombStock = currentCombStock - inventoryForm.quantity;
+        newStock = currentStock - inventoryForm.quantity;
+      } else {
+        newCombStock = inventoryForm.quantity;
+        const diff = newCombStock - currentCombStock;
+        newStock = currentStock + diff;
+      }
+
+      newStockBySizeColor[combKey] = newCombStock;
     } else {
       // Produto sem tamanhos
       if (inventoryForm.type === 'in') {
@@ -797,6 +966,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (product.sizes && Object.keys(newStockBySize).length > 0) {
         updatedProduct.stockBySize = newStockBySize;
       }
+      if (product.colors && product.sizes) {
+        const newStockBySizeColor = { ...(product.stockBySizeColor || {}) };
+        if (inventoryForm.selectedSize && inventoryForm.selectedColor) {
+          const combKey = `${inventoryForm.selectedSize}-${inventoryForm.selectedColor}`;
+          const currentCombStock = newStockBySizeColor[combKey] || 0;
+          let newCombStock = currentCombStock;
+          
+          if (inventoryForm.type === 'in') {
+            newCombStock = currentCombStock + inventoryForm.quantity;
+          } else if (inventoryForm.type === 'out') {
+            newCombStock = Math.max(0, currentCombStock - inventoryForm.quantity);
+          } else {
+            newCombStock = inventoryForm.quantity;
+          }
+          
+          newStockBySizeColor[combKey] = newCombStock;
+        }
+        if (Object.keys(newStockBySizeColor).length > 0) {
+          updatedProduct.stockBySizeColor = newStockBySizeColor;
+        }
+      }
 
       await Promise.all([
         saveInventoryMovement(movement),
@@ -816,77 +1006,82 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const addToPdvCart = (product: Product) => {
-    // Se o produto tem tamanhos, verificar se um tamanho foi selecionado
-    if (product.sizes && product.stockBySize) {
-      const selectedSize = selectedSizes[product.id];
-      if (!selectedSize) {
-        window.alert('Selecione um tamanho antes de adicionar ao carrinho.');
-        return;
-      }
+  const addToPdvCart = (product: Product, size?: string, color?: string) => {
+    // Se o produto tem variantes mas não foram passadas, usar do estado global (compatibilidade com busca direta)
+    const finalSize = size || selectedSizes[product.id];
+    const finalColor = color; // Cor geralmente vem do modal no PDV
 
-      const sizeStock = product.stockBySize[selectedSize] || 0;
-      if (sizeStock <= 0) {
-        window.alert('Tamanho selecionado sem estoque!');
-        return;
-      }
-    } else {
-      // Produto sem tamanhos, verificar estoque geral
-      if ((product.stock || 0) <= 0) {
-        window.alert('Produto sem estoque!');
-        return;
-      }
+    if (product.sizes && !finalSize) {
+      window.alert('Selecione um tamanho antes de adicionar ao carrinho.');
+      return;
+    }
+
+    if (product.colors && !finalColor) {
+      window.alert('Selecione uma cor antes de adicionar ao carrinho.');
+      return;
+    }
+
+    // Verificar estoque específico
+    let availableStock = product.stock || 0;
+    if (finalSize && finalColor && product.stockBySizeColor) {
+      availableStock = product.stockBySizeColor[`${finalSize}-${finalColor}`] || 0;
+    } else if (finalSize && product.stockBySize) {
+      availableStock = product.stockBySize[finalSize] || 0;
+    }
+
+    if (availableStock <= 0) {
+      window.alert('Produto/Variante sem estoque!');
+      return;
     }
 
     setPdvCart(prev => {
-      const selectedSize = selectedSizes[product.id];
       const existing = prev.find(item =>
         item.product.id === product.id &&
-        item.selectedSize === selectedSize
+        item.selectedSize === finalSize &&
+        item.selectedColor === finalColor
       );
 
       if (existing) {
-        const maxStock = product.stockBySize && selectedSize
-          ? product.stockBySize[selectedSize]
-          : product.stock || 0;
-
-        if (existing.quantity >= maxStock) {
+        if (existing.quantity >= availableStock) {
           window.alert('Quantidade máxima em estoque atingida.');
           return prev;
         }
 
         return prev.map(item =>
-          item.product.id === product.id && item.selectedSize === selectedSize
+          (item.product.id === product.id && item.selectedSize === finalSize && item.selectedColor === finalColor)
             ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       }
 
-      return [...prev, { product, quantity: 1, selectedSize }];
+      return [...prev, { product, quantity: 1, selectedSize: finalSize, selectedColor: finalColor }];
     });
   };
 
-  const removeFromPdvCart = (productId: number, selectedSize?: string) => {
+  const removeFromPdvCart = (productId: number, selectedSize?: string, selectedColor?: string) => {
     setPdvCart(prev => prev.filter(item =>
-      !(item.product.id === productId && item.selectedSize === selectedSize)
+      !(item.product.id === productId && item.selectedSize === selectedSize && item.selectedColor === selectedColor)
     ));
   };
 
-  const updatePdvItemQuantity = (productId: number, newQuantity: number, selectedSize?: string) => {
+  const updatePdvItemQuantity = (productId: number, newQuantity: number, selectedSize?: string, selectedColor?: string) => {
     if (newQuantity <= 0) {
-      removeFromPdvCart(productId, selectedSize);
+      removeFromPdvCart(productId, selectedSize, selectedColor);
       return;
     }
 
     // Check against stock
     const productItem = pdvCart.find(item =>
-      item.product.id === productId && item.selectedSize === selectedSize
+      item.product.id === productId && item.selectedSize === selectedSize && item.selectedColor === selectedColor
     );
 
     if (productItem) {
-      const maxStock = productItem.product.stockBySize && selectedSize
-        ? productItem.product.stockBySize[selectedSize]
-        : productItem.product.stock || 0;
+      let maxStock = productItem.product.stock || 0;
+      if (selectedSize && selectedColor && productItem.product.stockBySizeColor) {
+        maxStock = productItem.product.stockBySizeColor[`${selectedSize}-${selectedColor}`] || 0;
+      } else if (selectedSize && productItem.product.stockBySize) {
+        maxStock = productItem.product.stockBySize[selectedSize] || 0;
+      }
 
       if (newQuantity > maxStock) {
         window.alert('Quantidade máxima em estoque atingida.');
@@ -895,7 +1090,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     setPdvCart(prev => prev.map(item =>
-      item.product.id === productId && item.selectedSize === selectedSize
+      (item.product.id === productId && item.selectedSize === selectedSize && item.selectedColor === selectedColor)
         ? { ...item, quantity: newQuantity }
         : item
     ));
@@ -910,6 +1105,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; cpf: string }, order: Order) => {
+    if (!cashRegister.isOpen) {
+      window.alert('⚠️ O Caixa está fechado. Abra o caixa antes de realizar vendas.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const { saveOrder, saveProduct, saveCustomer, getCustomers } = await import('../services/firebase');
@@ -948,17 +1147,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           const p = updatedProducts[productIndex];
           const newStock = Math.max(0, (p.stock || 0) - item.quantity);
 
-          // CORREÇÃO CRÍTICA: Atualizar stockBySize quando produto tem tamanhos
           let newStockBySize = { ...(p.stockBySize || {}) };
-          if (item.selectedSize && p.sizes) {
+          let newStockBySizeColor = { ...(p.stockBySizeColor || {}) };
+
+          // ERRCOM021: Respeitar estoque individual por cor/tamanho
+          if (item.selectedSize && item.selectedColor && p.colors && p.stockBySizeColor) {
+            const key = `${item.selectedSize}-${item.selectedColor}`;
+            const currentVariantStock = newStockBySizeColor[key] || 0;
+            newStockBySizeColor[key] = Math.max(0, currentVariantStock - item.quantity);
+
+            // Também atualizar o estoque geral por tamanho para consistência
+            const currentSizeStock = newStockBySize[item.selectedSize] || 0;
+            newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+          } else if (item.selectedSize && p.sizes && p.stockBySize) {
             const currentSizeStock = newStockBySize[item.selectedSize] || 0;
             newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
           }
 
-          const productToSave = { ...p, stock: newStock };
-          if (p.sizes && Object.keys(newStockBySize).length > 0) {
-            productToSave.stockBySize = newStockBySize;
-          }
+          const productToSave = {
+            ...p,
+            stock: newStock,
+            stockBySize: (p.sizes && Object.keys(newStockBySize).length > 0) ? newStockBySize : p.stockBySize,
+            stockBySizeColor: (p.colors && Object.keys(newStockBySizeColor).length > 0) ? newStockBySizeColor : p.stockBySizeColor
+          };
 
           const saved = await saveProduct(productToSave);
           updatedProducts[productIndex] = saved;
@@ -971,6 +1182,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (!order.emitNF) {
         window.alert(`Venda finalizada!\n\nCliente: ${customerData.name}\nTotal: ${formatCurrency(order.total)}`);
       }
+
+      // Atualizar saldo do caixa
+      setCashRegister(prev => ({
+        ...prev,
+        currentBalance: prev.currentBalance + order.total
+      }));
     } catch (error) {
       console.error('Erro:', error);
       window.alert('Erro ao finalizar venda.');
@@ -1292,18 +1509,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </span>
               </h2>
 
+              <div className="mb-6 p-4 bg-white/5 rounded-xl border border-white/10">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Status do Caixa</p>
+                    <p className={`text-sm font-bold ${cashRegister.isOpen ? 'text-green-400' : 'text-red-400'}`}>
+                      {cashRegister.isOpen ? 'ABERTO' : 'FECHADO'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsCashRegisterModalOpen(true)}
+                    className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${cashRegister.isOpen
+                      ? 'bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white'
+                      : 'bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white'
+                      }`}
+                  >
+                    {cashRegister.isOpen ? 'FECHAR CAIXA' : 'ABRIR CAIXA'}
+                  </button>
+                </div>
+                {cashRegister.isOpen && (
+                  <div className="mt-3 pt-3 border-t border-white/10 flex justify-between text-xs">
+                    <span className="text-slate-400">Saldo atual:</span>
+                    <span className="text-white font-bold">{formatCurrency(cashRegister.currentBalance)}</span>
+                  </div>
+                )}
+              </div>
+
               <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar mb-6">
                 {pdvCart.map((item, index) => (
-                  <div key={`${item.product.id}-${item.selectedSize || 'no-size'}-${index}`} className="bg-white/5 rounded-xl p-3 border border-white/10">
+                  <div key={`${item.product.id}-${item.selectedSize || 'no-size'}-${item.selectedColor || 'no-color'}-${index}`} className="bg-white/5 rounded-xl p-3 border border-white/10">
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1 pr-2">
                         <p className="text-sm font-bold text-white line-clamp-1">{item.product.name}</p>
-                        {item.selectedSize && (
-                          <p className="text-xs text-blue-300">Tamanho: {item.selectedSize}</p>
-                        )}
-                        <p className="text-xs text-slate-400">{formatCurrency(item.product.price)} / un</p>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {item.selectedSize && (
+                            <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30">
+                              TAM: {item.selectedSize}
+                            </span>
+                          )}
+                          {item.selectedColor && (
+                            <span className="text-[10px] bg-versiory-coral/20 text-versiory-coral px-1.5 py-0.5 rounded border border-versiory-coral/30">
+                              COR: {item.selectedColor}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">{formatCurrency(item.product.price)} / un</p>
                       </div>
-                      <button onClick={() => removeFromPdvCart(item.product.id, item.selectedSize)} className="text-slate-400 hover:text-red-400 transition-colors">
+                      <button onClick={() => removeFromPdvCart(item.product.id, item.selectedSize, item.selectedColor)} className="text-slate-400 hover:text-red-400 transition-colors">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
@@ -1312,12 +1564,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="flex justify-between items-center mt-2">
                       <div className="flex items-center gap-2 bg-white/10 rounded-lg p-1">
                         <button
-                          onClick={() => updatePdvItemQuantity(item.product.id, item.quantity - 1, item.selectedSize)}
+                          onClick={() => updatePdvItemQuantity(item.product.id, item.quantity - 1, item.selectedSize, item.selectedColor)}
                           className="w-6 h-6 flex items-center justify-center text-white hover:bg-white/20 rounded-md transition-colors"
                         >-</button>
                         <span className="text-sm font-bold text-white w-6 text-center">{item.quantity}</span>
                         <button
-                          onClick={() => updatePdvItemQuantity(item.product.id, item.quantity + 1, item.selectedSize)}
+                          onClick={() => updatePdvItemQuantity(item.product.id, item.quantity + 1, item.selectedSize, item.selectedColor)}
                           className="w-6 h-6 flex items-center justify-center text-white hover:bg-white/20 rounded-md transition-colors"
                         >+</button>
                       </div>
@@ -1444,8 +1696,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
+            {/* ERRCOM031: Top 5 Produtos Mais Vendidos */}
+            {top5Products.some(p => p.sold > 0) && (
+              <div className="mb-6 bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-5">
+                <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
+                  <span className="text-2xl">🏆</span> Top 5 Produtos Mais Vendidos
+                </h3>
+                <div className="space-y-2">
+                  {top5Products.filter(p => p.sold > 0).map(({ product, sold }, idx) => (
+                    <div key={product.id} className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-xl">
+                      <span className={`w-8 h-8 flex items-center justify-center rounded-full font-black text-sm ${idx === 0 ? 'bg-yellow-500 text-white' :
+                        idx === 1 ? 'bg-slate-400 text-white' :
+                          idx === 2 ? 'bg-amber-700 text-white' : 'bg-white/20 text-white'
+                        }`}>{idx + 1}°</span>
+                      <img src={product.image} alt={product.name} className="w-10 h-10 rounded-lg object-cover bg-white" />
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-white line-clamp-1">{product.name}</p>
+                        <p className="text-xs text-slate-400">{product.category}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-black text-versiory-coral">{sold} vendas</p>
+                        <p className="text-xs text-slate-400">{formatCurrency(product.price)}</p>
+                        <p className="text-xs text-green-400">{product.stock ?? 0} em estoque</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map(product => (
+              {/* ERRCOM009: Ordenar numericamente por ID */}
+              {[...products].sort((a, b) => a.id - b.id).map(product => (
                 <div key={product.id} className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden hover:scale-[1.02] transition-transform">
                   <div className="relative h-48 bg-white">
                     <img
@@ -1461,8 +1743,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         SEM ESTOQUE
                       </div>
                     )}
-                    {(product.stock || 0) > 0 && (product.stock || 0) < 10 && (
-                      <div className="absolute top-3 left-3 bg-yellow-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+                    {(product.stock || 0) > 0 && (product.stock || 0) < (product.minStock ?? 10) && (
+                      <div className="absolute top-3 left-3 bg-yellow-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse">
                         ESTOQUE BAIXO
                       </div>
                     )}
@@ -1478,7 +1760,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
 
-                    <p className="text-sm text-slate-300 line-clamp-2 mb-4">{product.description}</p>
+                    {/* ERRCOM003: Descrição com quebra de linha */}
+                    <p className="text-sm text-slate-300 line-clamp-2 mb-4 whitespace-pre-wrap">{product.description}</p>
 
                     <div className="grid grid-cols-2 gap-3 mb-4">
                       <div className="bg-white/5 rounded-lg p-3">
@@ -1487,35 +1770,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                       <div className="bg-white/5 rounded-lg p-3">
                         <div className="text-xs text-slate-400 mb-1">Estoque</div>
-                        <div className="text-lg font-bold text-white">{product.stock || 0} un</div>
+                        <div className={`text-lg font-bold ${(product.stock || 0) < (product.minStock ?? 10) ? 'text-red-400' : 'text-white'}`}>
+                          {product.stock || 0} un
+                        </div>
+                        <div className="text-xs text-slate-400">Mín: {product.minStock ?? 10} un</div>
                       </div>
                     </div>
 
                     {product.sizes && (
                       <div className="mb-4">
-                        <div className="text-xs text-slate-400 mb-2">Tamanhos disponíveis:</div>
-                        <div className="flex flex-wrap gap-1">
+                        <div className="text-xs text-slate-400 mb-2">Estoque Detalhado:</div>
+                        <div className="space-y-1">
                           {product.sizes.split(',').map(size => {
                             const trimmedSize = size.trim();
-                            let sizeStock = product.stockBySize?.[trimmedSize] || 0;
+                            const colors = product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : [];
 
-                            // Se tiver cores, somar o estoque de todas as cores para este tamanho
-                            if (product.colors && product.stockBySizeColor) {
-                              const colors = product.colors.split(',').map(c => c.trim());
-                              sizeStock = colors.reduce((sum, color) => {
+                            if (colors.length > 0 && product.stockBySizeColor) {
+                              const sizeLines = colors.map(color => {
                                 const key = `${trimmedSize}-${color}`;
-                                return sum + (product.stockBySizeColor?.[key] || 0);
-                              }, 0);
+                                const qty = product.stockBySizeColor?.[key] || 0;
+                                return qty > 0 ? `${color}: ${qty}` : null;
+                              }).filter(Boolean);
+
+                              if (sizeLines.length === 0) return null;
+
+                              return (
+                                <div key={trimmedSize} className="flex flex-col bg-white/5 rounded-lg p-2 border border-white/5">
+                                  <span className="text-xs font-bold text-versiory-coral mb-1">{trimmedSize}</span>
+                                  <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] text-slate-300">
+                                    {sizeLines.map((line, idx) => (
+                                      <span key={idx} className="truncate">• {line}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              const sizeStock = product.stockBySize?.[trimmedSize] || 0;
+                              if (sizeStock === 0) return null;
+                              return (
+                                <div key={trimmedSize} className="inline-flex items-center bg-white/5 rounded-lg px-2 py-1 border border-white/5 text-[10px] text-slate-300 mr-1 mb-1">
+                                  <span className="font-bold text-versiory-coral mr-1">{trimmedSize}:</span> {sizeStock} un
+                                </div>
+                              );
                             }
-
-                            return (
-                              <span key={trimmedSize} className={`px-2 py-1 text-xs rounded ${sizeStock > 0 ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
-                                }`}>
-                                {trimmedSize} ({sizeStock})
-                              </span>
-                            );
                           })}
-
                         </div>
                       </div>
                     )}
@@ -1536,17 +1834,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         >
                           ✏️ Editar
                         </button>
-                        {product.sizes && (
-                          <button
-                            onClick={() => {
-                              setSizeManagerProductId(product.id);
-                              setIsSizeManagerModalOpen(true);
-                            }}
-                            className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
-                          >
-                            📏 Tamanhos
-                          </button>
-                        )}
+                        <button
+                          onClick={() => {
+                            setSizeManagerProductId(product.id);
+                            setTempStockBySize(product.stockBySize || {});
+                            setTempStockBySizeColor(product.stockBySizeColor || {});
+                            setIsSizeManagerModalOpen(true);
+                          }}
+                          className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                        >
+                          📏 Tamanhos
+                        </button>
                         <button
                           onClick={() => handleProductDelete(product.id)}
                           className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
@@ -1588,7 +1886,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-white">Gerenciar Categorias</h2>
               <button
-                onClick={openCategoryModal}
+                onClick={() => openCategoryModal()}
                 className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
               >
                 + Nova Categoria
@@ -1636,9 +1934,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'orders' && (
           <div>
-            <div className="flex justify-between items-center mb-6">
+            {/* ERRCOM031B: Cards de total e status de pedidos */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+              <div className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20">
+                <div className="text-xl font-black text-white">{formatCurrency(orders.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}</div>
+                <div className="text-slate-300 text-xs font-medium mt-1">Valor Total de Pedidos</div>
+              </div>
+              {(['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as OrderStatus[]).map(status => (
+                <div key={status} className="bg-white/10 backdrop-blur-xl rounded-2xl p-3 border border-white/20">
+                  <div className="text-lg font-black text-white">{orders.filter(o => o.status === status).length}</div>
+                  <div className="text-xs text-slate-300">{STATUS_LABELS[status]}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
               <h2 className="text-xl font-black text-white">Gerenciar Pedidos</h2>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
+                {/* ERRCOM047: Busca por número do pedido */}
+                <input
+                  type="text"
+                  value={orderSearch}
+                  onChange={e => setOrderSearch(e.target.value)}
+                  placeholder="🔍 Buscar pedido ou cliente..."
+                  className="px-4 py-2 border border-white/20 bg-white/5 text-white rounded-xl text-sm focus:ring-2 focus:ring-versiory-coral outline-none w-64"
+                />
                 <button
                   onClick={() => handleDownloadNFXml()}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
@@ -1671,13 +1991,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Data</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Total</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Status</th>
+                      {/* ERRCOM018: Coluna de Observação */}
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Observação</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Acoes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10">
                     {filteredOrders.map(order => (
                       <tr key={order.id} className="hover:bg-white/5 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">{order.id}</td>
+                        {/* ERRCOM046: Clicar no número do pedido abre detalhe */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-versiory-coral">
+                          <button onClick={() => setSelectedOrderDetail(order)} className="hover:underline font-bold">
+                            {order.id}
+                          </button>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{order.customerName}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{formatDate(order.date)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">
@@ -1687,6 +2014,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${STATUS_COLORS[order.status]}`}>
                             {STATUS_LABELS[order.status]}
                           </span>
+                        </td>
+                        {/* ERRCOM018: Campo observação */}
+                        <td className="px-6 py-4 text-sm text-slate-300 max-w-[180px] truncate" title={order.notes || ''}>
+                          {order.notes || <span className="text-slate-500 italic text-xs">—</span>}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
@@ -1706,9 +2037,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
 
+
         {activeTab === 'customers' && (
           <div>
-            <h2 className="text-xl font-black text-white mb-6">Gerenciar Clientes</h2>
+            <h2 className="text-xl font-black text-white mb-4">Gerenciar Clientes</h2>
+
+            {/* ERRCOM033: Cards de métricas de clientes */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20">
+                <div className="text-2xl font-black text-white">{customerStats.total}</div>
+                <div className="text-slate-300 text-sm">Total Clientes</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20">
+                <div className="text-2xl font-black text-green-400">{customerStats.pdv}</div>
+                <div className="text-slate-300 text-sm">Clientes PDV</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20">
+                <div className="text-2xl font-black text-blue-400">{customerStats.online}</div>
+                <div className="text-slate-300 text-sm">Clientes Online</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20">
+                <div className="text-2xl font-black text-versiory-coral">{formatCurrency(customerStats.avgTicket)}</div>
+                <div className="text-slate-300 text-sm">Ticket Médio</div>
+              </div>
+            </div>
+
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -1723,13 +2076,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10">
-                    {customers.map(customer => (
+                    {[...customers].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).map(customer => (
                       <tr key={customer.id} className="hover:bg-white/5 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">#{customer.id}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.phone}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.totalOrders}</td>
+                        {/* ERRCOM022: Clicar na quantidade de pedidos abre histórico */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <button
+                            onClick={() => {
+                              const custOrders = orders.filter(o => o.customerId === customer.id || o.customerEmail === customer.email);
+                              setCustomerOrderHistory({ customer, orders: custOrders });
+                            }}
+                            className="text-versiory-coral hover:underline font-bold"
+                          >
+                            {customer.totalOrders} pedidos
+                          </button>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">
                           {formatCurrency(customer.totalSpent)}
                         </td>
@@ -1741,6 +2105,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         )}
+
 
         {activeTab === 'tracking' && (
           <div>
@@ -1870,10 +2235,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 const totalValue = stock * product.price;
                 let statusLabel = 'Normal';
                 let statusClass = 'bg-green-100 text-green-800';
+                const threshold = product.minStock ?? 10;
                 if (stock === 0) {
                   statusLabel = 'Esgotado';
                   statusClass = 'bg-red-100 text-red-800';
-                } else if (stock < 10) {
+                } else if (stock < threshold) {
                   statusLabel = 'Estoque Baixo';
                   statusClass = 'bg-yellow-100 text-yellow-800';
                 }
@@ -1910,7 +2276,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="bg-white/5 rounded-lg p-3">
                           <div className="text-xs text-slate-400 mb-1">Estoque Atual</div>
                           <div className="text-2xl font-black text-white">{stock}</div>
-                          <div className="text-xs text-slate-400">Mín: 10 un</div>
+                          <div className="text-xs text-slate-400">Mín: {product.minStock ?? 10} un</div>
                         </div>
                         <div className="bg-white/5 rounded-lg p-3">
                           <div className="text-xs text-slate-400 mb-1">Valor Unit.</div>
@@ -2003,6 +2369,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
+            {/* ERRCOM029/030: Cards clicáveis PDV e Online por forma de pagamento */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <button
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 text-left hover:bg-white/20 transition-all"
+              >
+                <div className="text-lg font-black text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
+                <div className="text-slate-300 text-sm">Vendas PDV — clique para ver por forma de pagamento</div>
+              </button>
+              <button
+                onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 text-left hover:bg-white/20 transition-all"
+              >
+                <div className="text-lg font-black text-blue-400">{formatCurrency(financialStats.onlineRevenue)}</div>
+                <div className="text-slate-300 text-sm">Vendas Online — clique para ver por forma de pagamento</div>
+              </button>
+            </div>
+
+            {/* ERRCOM027: Filtro de data */}
+            <div className="flex flex-wrap gap-3 items-center mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
+              <span className="text-slate-300 text-sm font-bold">Filtrar por período:</span>
+              <input type="date" value={financialDateFilter.from} onChange={e => setFinancialDateFilter(p => ({ ...p, from: e.target.value }))}
+                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none" />
+              <span className="text-slate-400 text-sm">até</span>
+              <input type="date" value={financialDateFilter.to} onChange={e => setFinancialDateFilter(p => ({ ...p, to: e.target.value }))}
+                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none" />
+              {(financialDateFilter.from || financialDateFilter.to) && (
+                <button onClick={() => setFinancialDateFilter({ from: '', to: '' })} className="text-slate-400 hover:text-white text-sm underline">Limpar</button>
+              )}
+            </div>
+
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-4">
               <h3 className="text-lg font-bold text-white mb-4">Transacoes Recentes</h3>
               <div className="space-y-3">
@@ -2013,6 +2410,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="text-sm text-slate-200">
                         {formatDate(transaction.date)} - {transaction.category}
                       </div>
+                      {/* Novo: Observações */}
+                      {'notes' in transaction && transaction.notes && (
+                        <div className="text-xs text-slate-400 mt-1 italic">{transaction.notes as string}</div>
+                      )}
                     </div>
                     <div className="text-right flex items-center gap-3">
                       <div>
@@ -2283,6 +2684,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
                             required
                           />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Estoque Mínimo (alerta) <span className="text-slate-400 font-normal">— padrão: 10</span></label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={productForm.minStock ?? 10}
+                            onChange={event => setProductForm(prev => ({ ...prev, minStock: parseInt(event.target.value, 10) }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900"
+                          />
+                          <p className="text-xs text-slate-500 mt-1">O sistema emite alerta quando o estoque for menor que este valor.</p>
                         </div>
                       </div>
                     </div>
@@ -2665,6 +3077,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </select>
                   </div>
                 )}
+                {inventoryForm.productId && products.find(p => p.id === parseInt(inventoryForm.productId))?.colors && products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes && (
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Cor</label>
+                    <select
+                      value={inventoryForm.selectedColor}
+                      onChange={event => setInventoryForm(prev => ({ ...prev, selectedColor: event.target.value }))}
+                      className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                      required
+                    >
+                      <option value="">Selecione uma cor</option>
+                      {products.find(p => p.id === parseInt(inventoryForm.productId))?.colors?.split(',').map(color => {
+                        const trimmedColor = color.trim();
+                        const product = products.find(p => p.id === parseInt(inventoryForm.productId));
+                        const combKey = inventoryForm.selectedSize ? `${inventoryForm.selectedSize}-${trimmedColor}` : '';
+                        const colorStock = combKey ? product?.stockBySizeColor?.[combKey] || 0 : 'Selecione o tamanho para ver estoque';
+
+                        return (
+                          <option key={trimmedColor} value={trimmedColor}>
+                            {trimmedColor} {combKey && `(Estoque: ${colorStock})`}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
                 {inventoryForm.productId && !products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-xs text-blue-800">
@@ -2844,47 +3281,59 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <SizeStockManager
                   sizes={product.sizes!.split(',').map(s => s.trim()).filter(s => s)}
                   colors={product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : undefined}
-                  stockBySize={product.stockBySize || {}}
-                  stockBySizeColor={product.stockBySizeColor || {}}
-                  onChange={async (data) => {
-                    const { stockBySize, stockBySizeColor } = data;
+                  stockBySize={tempStockBySize}
+                  stockBySizeColor={tempStockBySizeColor}
+                  onChange={(data) => {
+                    if (data.stockBySize) setTempStockBySize(data.stockBySize);
+                    if (data.stockBySizeColor) setTempStockBySizeColor(data.stockBySizeColor);
+                  }}
+                />
+              </div>
 
+              <div className="p-6 border-t border-gray-100 flex gap-3">
+                <button
+                  onClick={() => setIsSizeManagerModalOpen(false)}
+                  className="flex-1 px-6 py-4 border-2 border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    const { saveProduct } = await import('../services/firebase');
                     let totalStock = 0;
-                    if (stockBySizeColor && Object.keys(stockBySizeColor).length > 0) {
-                      totalStock = Object.values(stockBySizeColor).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
-                    } else if (stockBySize) {
-                      totalStock = Object.values(stockBySize).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+                    if (product.colors && product.colors.trim()) {
+                      totalStock = Object.values(tempStockBySizeColor).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+                    } else {
+                      totalStock = Object.values(tempStockBySize).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
                     }
 
                     const updatedProduct = {
                       ...product,
                       stock: totalStock,
-                      ...(stockBySize && { stockBySize }),
-                      ...(stockBySizeColor && { stockBySizeColor })
+                      stockBySize: tempStockBySize,
+                      stockBySizeColor: tempStockBySizeColor
                     };
 
                     try {
+                      setIsSubmitting(true);
                       await saveProduct(updatedProduct);
 
                       const updatedProducts = products.map(p =>
                         p.id === sizeManagerProductId ? updatedProduct : p
                       );
                       onUpdateProducts(updatedProducts);
+                      setIsSizeManagerModalOpen(false);
                     } catch (error) {
                       console.error(error);
                       window.alert('Erro ao salvar estoque');
+                    } finally {
+                      setIsSubmitting(false);
                     }
                   }}
-                />
-
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={() => setIsSizeManagerModalOpen(false)}
-                    className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-bold transition-all"
-                  >
-                    Fechar
-                  </button>
-                </div>
+                  className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-4 rounded-xl font-black text-lg transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Salvando...' : 'Salvar Alterações'}
+                </button>
               </div>
             </div>
           </div>
@@ -2896,113 +3345,330 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onClose={() => setIsFiscalConfigOpen(false)}
       />
 
-
-
       {/* Modal de Seleção de Produto PDV */}
-      {pdvProductModal.isOpen && pdvProductModal.product && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-br from-[#0b1f4b] via-[#0a1b3d] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 p-8 max-w-md w-full">
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <h3 className="text-2xl font-black text-white mb-2">{pdvProductModal.product.name}</h3>
-                <p className="text-white/60 text-sm">{pdvProductModal.product.category}</p>
-              </div>
-              <button
-                onClick={() => setPdvProductModal({ isOpen: false, product: null })}
-                className="text-white/60 hover:text-white transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="mb-6 lg:bg-white/5 p-2 rounded-2xl border border-white/10">
-              <ProductMediaShowcase
-                mainImage={pdvProductModal.product.image}
-                allImages={pdvProductModal.product.images}
-                productName={pdvProductModal.product.name}
-              />
-            </div>
-
-            <div className="space-y-4">
-              {pdvProductModal.product.sizes && (
+      {
+        pdvProductModal.isOpen && pdvProductModal.product && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-gradient-to-br from-[#0b1f4b] via-[#0a1b3d] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 p-8 max-w-md w-full">
+              <div className="flex justify-between items-start mb-6">
                 <div>
-                  <label className="block text-sm font-bold text-white/80 mb-2">Tamanho</label>
-                  <select
-                    value={pdvModalSelection.size}
-                    onChange={(e) => setPdvModalSelection({ ...pdvModalSelection, size: e.target.value })}
-                    className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
-                  >
-                    <option value="" className="bg-slate-800">Selecione o tamanho</option>
-                    {pdvProductModal.product.sizes.split(',').map(size => {
-                      const trimmedSize = size.trim();
-                      const stock = pdvProductModal.product.stockBySize?.[trimmedSize] || 0;
-                      return (
-                        <option
-                          key={trimmedSize}
-                          value={trimmedSize}
-                          disabled={stock <= 0}
-                          className="bg-slate-800"
-                        >
-                          {trimmedSize} - {stock} disponível{stock !== 1 ? 'is' : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
+                  <h3 className="text-2xl font-black text-white mb-2">{pdvProductModal.product.name}</h3>
+                  <p className="text-white/60 text-sm">{pdvProductModal.product.category}</p>
                 </div>
-              )}
+                <button
+                  onClick={() => setPdvProductModal({ isOpen: false, product: null })}
+                  className="text-white/60 hover:text-white transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
 
-              {pdvProductModal.product.colors && (
-                <div>
-                  <label className="block text-sm font-bold text-white/80 mb-2">Cor</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {pdvProductModal.product.colors.split(',').map(color => {
-                      const trimmedColor = color.trim();
-                      return (
-                        <button
-                          key={trimmedColor}
-                          onClick={() => setPdvModalSelection({ ...pdvModalSelection, color: trimmedColor })}
-                          className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${pdvModalSelection.color === trimmedColor
-                            ? 'bg-versiory-coral text-white'
-                            : 'bg-white/10 text-white/60 hover:bg-white/20'
-                            }`}
-                        >
-                          {trimmedColor}
-                        </button>
-                      );
-                    })}
+              <div className="mb-6 lg:bg-white/5 p-2 rounded-2xl border border-white/10">
+                <ProductMediaShowcase
+                  mainImage={pdvProductModal.product.image}
+                  allImages={pdvProductModal.product.images}
+                  productName={pdvProductModal.product.name}
+                />
+              </div>
+
+              <div className="space-y-4">
+                {pdvProductModal.product.sizes && (
+                  <div>
+                    <label className="block text-sm font-bold text-white/80 mb-2">Tamanho</label>
+                    <select
+                      value={pdvModalSelection.size}
+                      onChange={(e) => setPdvModalSelection({ ...pdvModalSelection, size: e.target.value })}
+                      className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                    >
+                      <option value="" className="bg-slate-800">Selecione o tamanho</option>
+                      {pdvProductModal.product.sizes.split(',').map(size => {
+                        const trimmedSize = size.trim();
+                        let stock = 0;
+                        if (pdvProductModal.product.colors && pdvProductModal.product.stockBySizeColor) {
+                          pdvProductModal.product.colors.split(',').forEach(c => {
+                            stock += pdvProductModal.product.stockBySizeColor?.[`${trimmedSize}-${c.trim()}`] || 0;
+                          });
+                        } else {
+                          stock = pdvProductModal.product.stockBySize?.[trimmedSize] || 0;
+                        }
+
+                        return (
+                          <option
+                            key={trimmedSize}
+                            value={trimmedSize}
+                            disabled={stock <= 0}
+                            className="bg-slate-800"
+                          >
+                            {trimmedSize} - {stock} disponível{stock !== 1 ? 'is' : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+
+                {pdvProductModal.product.colors && (
+                  <div>
+                    <label className="block text-sm font-bold text-white/80 mb-2">Cor</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {pdvProductModal.product.colors.split(',').map(color => {
+                        const trimmedColor = color.trim();
+                        let colorStock = 0;
+                        if (pdvModalSelection.size && pdvProductModal.product.stockBySizeColor) {
+                          colorStock = pdvProductModal.product.stockBySizeColor[`${pdvModalSelection.size}-${trimmedColor}`] || 0;
+                        } else if (pdvProductModal.product.sizes && pdvProductModal.product.stockBySizeColor) {
+                          pdvProductModal.product.sizes.split(',').forEach(s => {
+                            colorStock += pdvProductModal.product.stockBySizeColor?.[`${s.trim()}-${trimmedColor}`] || 0;
+                          });
+                        } else {
+                          colorStock = pdvProductModal.product.stock || 0;
+                        }
+
+                        const isAvailable = colorStock > 0;
+                        const isSelected = pdvModalSelection.color === trimmedColor;
+
+                        return (
+                          <button
+                            key={trimmedColor}
+                            onClick={() => isAvailable && setPdvModalSelection({ ...pdvModalSelection, color: trimmedColor })}
+                            disabled={!isAvailable}
+                            className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${isSelected
+                              ? 'bg-versiory-coral text-white'
+                              : isAvailable
+                                ? 'bg-white/10 text-white hover:bg-white/20'
+                                : 'bg-white/5 text-white/20 cursor-not-allowed line-through'
+                              }`}
+                          >
+                            {trimmedColor}
+                            {isAvailable && pdvModalSelection.size && <span className="text-[10px] block opacity-70">({colorStock})</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-4 border-t border-white/10">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-white/60">Preço unitário:</span>
+                    <span className="text-2xl font-black text-white">{formatCurrency(pdvProductModal.product.price)}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const product = pdvProductModal.product!;
+                      if (product.sizes && !pdvModalSelection.size) {
+                        alert('⚠️ Selecione um tamanho');
+                        return;
+                      }
+                      if (product.colors && !pdvModalSelection.color) {
+                        alert('⚠️ Selecione uma cor');
+                        return;
+                      }
+                      setSelectedSizes(prev => ({ ...prev, [product.id]: pdvModalSelection.size }));
+                      addToPdvCart(product);
+                      setPdvProductModal({ isOpen: false, product: null });
+                      setPdvModalSelection({ size: '', color: '' });
+                    }}
+                    className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl active:scale-[0.98]"
+                  >
+                    Adicionar ao Carrinho
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* ERRCOM046: Modal de Detalhe do Pedido */}
+      {selectedOrderDetail && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setSelectedOrderDetail(null)}>
+          <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-black text-white">Pedido {selectedOrderDetail.id}</h3>
+              <button onClick={() => setSelectedOrderDetail(null)} className="text-white/60 hover:text-white">✕</button>
+            </div>
+            <div className="space-y-2 text-sm text-slate-300 mb-4">
+              <p><span className="font-bold text-white">Cliente:</span> {selectedOrderDetail.customerName}</p>
+              <p><span className="font-bold text-white">E-mail:</span> {selectedOrderDetail.customerEmail}</p>
+              <p><span className="font-bold text-white">Data:</span> {formatDate(selectedOrderDetail.date)}</p>
+              <p><span className="font-bold text-white">Status:</span> <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[selectedOrderDetail.status]}`}>{STATUS_LABELS[selectedOrderDetail.status]}</span></p>
+              <p><span className="font-bold text-white">Canal:</span> {selectedOrderDetail.salesChannel === 'physical' ? 'PDV' : 'Online'}</p>
+              {selectedOrderDetail.notes && <p><span className="font-bold text-white">Observação:</span> {selectedOrderDetail.notes}</p>}
+            </div>
+            <h4 className="font-bold text-white mb-2">Itens</h4>
+            <div className="space-y-2 mb-4">
+              {selectedOrderDetail.items?.map((item, i) => (
+                <div key={i} className="flex justify-between items-center p-2 bg-white/5 rounded-lg">
+                  <div>
+                    <p className="text-white font-medium">{item.name || `Produto #${item.productId}`}</p>
+                    {item.selectedSize && <p className="text-slate-400 text-xs">Tamanho: {item.selectedSize}</p>}
+                    {item.selectedColor && <p className="text-slate-400 text-xs">Cor: {item.selectedColor}</p>}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-white">{item.quantity}x {formatCurrency(item.price)}</p>
+                    <p className="text-versiory-coral font-bold">{formatCurrency(item.quantity * item.price)}</p>
                   </div>
                 </div>
-              )}
+              ))}
+            </div>
+            <div className="border-t border-white/10 pt-3 flex justify-between">
+              <span className="text-white font-bold">Total</span>
+              <span className="text-2xl font-black text-versiory-coral">{formatCurrency(selectedOrderDetail.total)}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
-              <div className="pt-4 border-t border-white/10">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-white/60">Preço unitário:</span>
-                  <span className="text-2xl font-black text-white">{formatCurrency(pdvProductModal.product.price)}</span>
+      {/* ERRCOM022: Modal de Histórico do Cliente */}
+      {customerOrderHistory && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setCustomerOrderHistory(null)}>
+          <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-black text-white">Histórico: {customerOrderHistory.customer.name}</h3>
+              <button onClick={() => setCustomerOrderHistory(null)} className="text-white/60 hover:text-white">✕</button>
+            </div>
+            {customerOrderHistory.orders.length === 0 ? (
+              <p className="text-slate-400 text-sm">Nenhum pedido encontrado.</p>
+            ) : (
+              <div className="space-y-3">
+                {customerOrderHistory.orders.map(o => (
+                  <div key={o.id} className="p-3 bg-white/5 border border-white/10 rounded-xl flex justify-between items-center">
+                    <div>
+                      <p className="text-white font-bold">{o.id}</p>
+                      <p className="text-slate-400 text-xs">{formatDate(o.date)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-versiory-coral font-black">{formatCurrency(o.total)}</p>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[o.status]}`}>{STATUS_LABELS[o.status]}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ERRCOM029/030: Modal de Vendas por Forma de Pagamento */}
+      {paymentBreakdownModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setPaymentBreakdownModal(null)}>
+          <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 max-w-md w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-black text-white">Vendas {paymentBreakdownModal.channel === 'pdv' ? 'PDV' : 'Online'} por Pagamento</h3>
+              <button onClick={() => setPaymentBreakdownModal(null)} className="text-white/60 hover:text-white">✕</button>
+            </div>
+            {(() => {
+              const byMethod: Record<string, number> = {};
+              paymentBreakdownModal.orders.forEach(o => {
+                const method = (o as any).paymentMethod || 'Não informado';
+                byMethod[method] = (byMethod[method] || 0) + o.total;
+              });
+              return (
+                <div className="space-y-3">
+                  {Object.entries(byMethod).map(([method, total]) => (
+                    <div key={method} className="flex justify-between items-center p-3 bg-white/5 rounded-xl">
+                      <span className="text-white font-medium">{method}</span>
+                      <span className="text-versiory-coral font-black">{formatCurrency(total)}</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-white/10 pt-2 flex justify-between">
+                    <span className="text-white font-bold">Total</span>
+                    <span className="text-white font-black">{formatCurrency(paymentBreakdownModal.orders.reduce((s, o) => s + o.total, 0))}</span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Caixa (Abertura/Fechamento) */}
+      {isCashRegisterModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[250] p-4">
+          <div className="bg-gradient-to-br from-[#0b1f4b] via-[#0a1b3d] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 p-8 max-w-sm w-full">
+            <h3 className="text-2xl font-black text-white mb-6">
+              {cashRegister.isOpen ? 'Fechar Caixa' : 'Abrir Caixa'}
+            </h3>
+
+            {!cashRegister.isOpen ? (
+              <div className="space-y-4">
+                <p className="text-white/60 text-sm">Informe o valor de abertura (fundo de caixa):</p>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={cashRegisterForm.amount}
+                    onChange={e => setCashRegisterForm({ amount: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-white/5 border border-white/20 text-white rounded-xl pl-12 pr-4 py-4 text-xl font-bold focus:ring-2 focus:ring-versiory-coral outline-none"
+                    placeholder="0,00"
+                  />
                 </div>
                 <button
                   onClick={() => {
-                    const product = pdvProductModal.product!;
-                    if (product.sizes && !pdvModalSelection.size) {
-                      alert('⚠️ Selecione um tamanho');
-                      return;
-                    }
-                    if (product.colors && !pdvModalSelection.color) {
-                      alert('⚠️ Selecione uma cor');
-                      return;
-                    }
-                    setSelectedSizes(prev => ({ ...prev, [product.id]: pdvModalSelection.size }));
-                    addToPdvCart(product);
-                    setPdvProductModal({ isOpen: false, product: null });
-                    setPdvModalSelection({ size: '', color: '' });
+                    setCashRegister({
+                      isOpen: true,
+                      openingAmount: cashRegisterForm.amount,
+                      currentBalance: cashRegisterForm.amount,
+                      openedAt: new Date().toISOString()
+                    });
+                    setIsCashRegisterModalOpen(false);
+                    setCashRegisterForm({ amount: 0 });
                   }}
-                  className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl active:scale-[0.98]"
+                  className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl"
                 >
-                  Adicionar ao Carrinho
+                  ABRIR CAIXA AGORA
                 </button>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="bg-white/5 rounded-2xl p-6 border border-white/10 space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Abertura:</span>
+                    <span className="text-white font-bold">{formatCurrency(cashRegister.openingAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Vendas no período:</span>
+                    <span className="text-white font-bold">{formatCurrency(cashRegister.currentBalance - cashRegister.openingAmount)}</span>
+                  </div>
+                  <div className="pt-3 border-t border-white/10 flex justify-between items-baseline">
+                    <span className="text-sm font-black text-white uppercase tracking-widest">Saldo Final:</span>
+                    <span className="text-2xl font-black text-green-400">{formatCurrency(cashRegister.currentBalance)}</span>
+                  </div>
+                </div>
+
+                <p className="text-red-400 text-xs font-bold text-center">
+                  ⚠️ Ao fechar o caixa, você não poderá realizar novas vendas no PDV até abri-lo novamente.
+                </p>
+
+                <button
+                  onClick={() => {
+                    if (window.confirm('Confirma o fechamento do caixa?')) {
+                      setCashRegister({
+                        isOpen: false,
+                        openingAmount: 0,
+                        currentBalance: 0,
+                        openedAt: null
+                      });
+                      setIsCashRegisterModalOpen(false);
+                    }
+                  }}
+                  className="w-full bg-red-500 hover:bg-red-600 text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl"
+                >
+                  FECHAR CAIXA AGORA
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setIsCashRegisterModalOpen(false)}
+              className="w-full mt-4 text-white/40 hover:text-white font-bold text-sm transition-colors py-2"
+            >
+              CANCELAR
+            </button>
           </div>
         </div>
       )}
@@ -3019,7 +3685,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados.</p>
         </div>
       </footer>
-    </div>
+    </div >
   );
 };
 

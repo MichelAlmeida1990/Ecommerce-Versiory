@@ -16,21 +16,21 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
 
   const handleAddToCart = () => {
     let hasError = false;
-    
+
     if (product.sizes && !selectedSize) {
       setShowSizeError(true);
       setTimeout(() => setShowSizeError(false), 2000);
       hasError = true;
     }
-    
+
     if (product.colors && !selectedColor) {
       setShowColorError(true);
       setTimeout(() => setShowColorError(false), 2000);
       hasError = true;
     }
-    
+
     if (hasError) return;
-    
+
     onAddToCart(product, selectedSize || undefined, selectedColor || undefined);
     setSelectedSize('');
     setSelectedColor('');
@@ -44,13 +44,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
 
   return (
     <div className="group relative bg-blue-50 rounded-[2rem] shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden border border-blue-200 flex flex-col h-full">
-      <div 
+      <div
         className="aspect-[4/5] overflow-hidden cursor-pointer relative"
         onClick={() => onViewDetails(product)}
       >
-        <img 
-          src={product.image} 
-          alt={product.name} 
+        <img
+          src={product.image}
+          alt={product.name}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[1.5s]"
         />
         <div className="absolute top-4 left-4">
@@ -65,25 +65,25 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
       </div>
-      
+
       <div className="p-6 flex flex-col flex-1">
         <div className="flex justify-between items-start mb-3">
-          <h3 
+          <h3
             className="text-xl font-black text-slate-900 leading-tight cursor-pointer hover:text-versiory-coral transition-colors"
             onClick={() => onViewDetails(product)}
           >
             {product.name}
           </h3>
         </div>
-        
+
         <div className="flex items-center text-amber-500 text-xs font-black mb-4 gap-1">
           <span>★</span>
           <span className="text-slate-500">{product.rating}</span>
           <span className="text-slate-300 ml-1 font-medium">({product.reviews})</span>
         </div>
-        
+
         <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-md">
-          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white">
+          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white whitespace-pre-wrap">
             {product.description}
           </p>
         </div>
@@ -95,7 +95,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
               {product.sizes.split(',').map(size => {
                 const trimmedSize = size.trim();
                 let sizeStock = 0;
-                
+
                 if (product.colors && product.stockBySizeColor) {
                   product.colors.split(',').forEach(color => {
                     sizeStock += getStockForSizeColor(trimmedSize, color.trim());
@@ -103,22 +103,21 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
                 } else {
                   sizeStock = product.stockBySize?.[trimmedSize] || 0;
                 }
-                
+
                 const isAvailable = sizeStock > 0;
                 const isSelected = selectedSize === trimmedSize;
-                
+
                 return (
                   <button
                     key={trimmedSize}
                     onClick={() => isAvailable && setSelectedSize(trimmedSize)}
                     disabled={!isAvailable}
-                    className={`px-3 py-2 rounded-lg text-sm font-bold transition-all ${
-                      isSelected
-                        ? 'bg-versiory-coral text-white ring-2 ring-versiory-coral ring-offset-2'
-                        : isAvailable
+                    className={`px-3 py-2 rounded-lg text-sm font-bold transition-all ${isSelected
+                      ? 'bg-versiory-coral text-white ring-2 ring-versiory-coral ring-offset-2'
+                      : isAvailable
                         ? 'bg-white text-slate-900 hover:bg-slate-100 border-2 border-slate-200'
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed line-through'
-                    }`}
+                      }`}
                   >
                     {trimmedSize}
                   </button>
@@ -140,7 +139,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
               {product.colors.split(',').map(color => {
                 const trimmedColor = color.trim();
                 let colorStock = 0;
-                
+
                 if (selectedSize && product.stockBySizeColor) {
                   colorStock = getStockForSizeColor(selectedSize, trimmedColor);
                 } else if (product.sizes && product.stockBySizeColor) {
@@ -148,24 +147,24 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
                     colorStock += getStockForSizeColor(size.trim(), trimmedColor);
                   });
                 }
-                
+
                 const isAvailable = colorStock > 0;
                 const isSelected = selectedColor === trimmedColor;
-                
+
                 return (
                   <button
                     key={trimmedColor}
                     onClick={() => isAvailable && setSelectedColor(trimmedColor)}
                     disabled={!isAvailable}
-                    className={`px-3 py-2 rounded-lg text-sm font-bold transition-all ${
-                      isSelected
-                        ? 'bg-versiory-coral text-white ring-2 ring-versiory-coral ring-offset-2'
-                        : isAvailable
+                    className={`px-3 py-2 rounded-lg text-sm font-bold transition-all ${isSelected
+                      ? 'bg-versiory-coral text-white ring-2 ring-versiory-coral ring-offset-2'
+                      : isAvailable
                         ? 'bg-white text-slate-900 hover:bg-slate-100 border-2 border-slate-200'
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed line-through'
-                    }`}
+                      }`}
                   >
                     {trimmedColor}
+                    {isAvailable && <span className="text-[10px] ml-1 opacity-70">({colorStock})</span>}
                   </button>
                 );
               })}
@@ -177,7 +176,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
             )}
           </div>
         )}
-        
+
         <div className="mt-auto flex items-center justify-between">
           <div className="flex flex-col">
             <span className="text-[10px] text-slate-400 uppercase font-black tracking-[0.2em] mb-1">Preço Premium</span>
@@ -185,8 +184,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
               R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </span>
           </div>
-          
-          <button 
+
+          <button
             onClick={handleAddToCart}
             className="bg-versiory-ink hover:bg-versiory-coral text-white p-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-90 group/btn"
           >

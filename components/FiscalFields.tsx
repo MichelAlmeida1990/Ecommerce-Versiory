@@ -57,49 +57,68 @@ const FiscalFields: React.FC<FiscalFieldsProps> = ({ productForm, onChange }) =>
       )}
 
       <div className="space-y-4">
-        <div>
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-bold text-slate-700">
-              NCM * <span className="text-xs font-normal text-slate-500">(8 dígitos)</span>
-            </label>
-            {ncmSuggestions.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setIsManualNcm(!isManualNcm)}
-                className="text-xs font-bold text-versiory-coral hover:underline"
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-bold text-slate-700">
+                NCM * <span className="text-xs font-normal text-slate-500">(8 dígitos)</span>
+              </label>
+              {ncmSuggestions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsManualNcm(!isManualNcm)}
+                  className="text-xs font-bold text-versiory-coral hover:underline"
+                >
+                  {isManualNcm ? '🔄 Usar sugestões' : '✏️ Digitar manualmente'}
+                </button>
+              )}
+            </div>
+
+            {!isManualNcm && ncmSuggestions.length > 0 ? (
+              <select
+                value={productForm.ncm || ''}
+                onChange={e => onChange('ncm', e.target.value)}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900 animate-in fade-in duration-200"
               >
-                {isManualNcm ? '🔄 Usar sugestões' : '✏️ Digitar manualmente'}
-              </button>
+                <option value="">Selecione um NCM sugerido</option>
+                {ncmSuggestions.map(ncm => (
+                  <option key={ncm.code} value={ncm.code}>
+                    {ncm.code} - {ncm.description}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={productForm.ncm || ''}
+                onChange={e => onChange('ncm', e.target.value)}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900 animate-in fade-in duration-200"
+                placeholder="Ex: 61102000"
+                maxLength={10}
+              />
+            )}
+
+            {productForm.ncm && productForm.ncm.replace(/\D/g, '').length !== 8 && (
+              <p className="text-xs text-red-600 mt-1">⚠️ NCM deve ter 8 dígitos numéricos</p>
             )}
           </div>
 
-          {!isManualNcm && ncmSuggestions.length > 0 ? (
-            <select
-              value={productForm.ncm || ''}
-              onChange={e => onChange('ncm', e.target.value)}
-              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900 animate-in fade-in duration-200"
-            >
-              <option value="">Selecione um NCM sugerido</option>
-              {ncmSuggestions.map(ncm => (
-                <option key={ncm.code} value={ncm.code}>
-                  {ncm.code} - {ncm.description}
-                </option>
-              ))}
-            </select>
-          ) : (
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              GTIN / EAN <span className="text-xs font-normal text-slate-500">(Cód. Barras)</span>
+            </label>
             <input
               type="text"
-              value={productForm.ncm || ''}
-              onChange={e => onChange('ncm', e.target.value)}
-              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900 animate-in fade-in duration-200"
-              placeholder="Ex: 61102000"
-              maxLength={10}
+              value={productForm.gtin || ''}
+              onChange={e => onChange('gtin', e.target.value)}
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900"
+              placeholder="Ex: 7891234567890"
+              maxLength={14}
             />
-          )}
-
-          {productForm.ncm && productForm.ncm.replace(/\D/g, '').length !== 8 && (
-            <p className="text-xs text-red-600 mt-1">⚠️ NCM deve ter 8 dígitos numéricos</p>
-          )}
+            <p className="text-[10px] text-slate-400 mt-1">
+              Deixe em branco ou use "SEM GTIN" se o produto não possuir.
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -299,34 +318,66 @@ const FiscalFields: React.FC<FiscalFieldsProps> = ({ productForm, onChange }) =>
           </div>
 
           {productForm.usoReformaTributaria && (
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-blue-100 animate-in fade-in slide-in-from-top-1 duration-200">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  CBS (%) <span className="text-[10px] font-normal text-slate-400">(Contribuição Federal)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={productForm.aliquotaCbs ?? ''}
-                  onChange={e => onChange('aliquotaCbs', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
-                  placeholder="0.00"
-                />
+            <div className="pt-2 border-t border-blue-100 animate-in fade-in slide-in-from-top-1 duration-200 space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    CBS (%) <span className="text-[10px] font-normal text-slate-400">(Federal)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={productForm.aliquotaCbs ?? ''}
+                    onChange={e => onChange('aliquotaCbs', parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    IBS (%) <span className="text-[10px] font-normal text-slate-400">(Est./Mun.)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={productForm.aliquotaIbs ?? ''}
+                    onChange={e => onChange('aliquotaIbs', parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    IS (%) <span className="text-[10px] font-normal text-slate-400">(Seletivo)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={productForm.aliquotaIs ?? ''}
+                    onChange={e => onChange('aliquotaIs', parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
+                    placeholder="0.00"
+                  />
+                </div>
               </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">
-                  IBS (%) <span className="text-[10px] font-normal text-slate-400">(Imposto Est./Mun.)</span>
+                  cClassTrib <span className="text-[10px] font-normal text-slate-400">(Classe Tributária Reforma 2026)</span>
                 </label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={productForm.aliquotaIbs ?? ''}
-                  onChange={e => onChange('aliquotaIbs', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-versiory-coral"
-                  placeholder="0.00"
+                  type="text"
+                  value={productForm.cClassTrib || ''}
+                  onChange={e => onChange('cClassTrib', e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white text-slate-900"
+                  placeholder="Ex: 01.01.01"
                 />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Este código define a regra de tributação no novo sistema IVA Dual.
+                </p>
               </div>
             </div>
           )}

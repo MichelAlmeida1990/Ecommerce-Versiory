@@ -34,7 +34,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
 
   const handleCancelOrder = async () => {
     if (!orderToCancel) return;
-    
+
     if (!cancelReason.trim()) {
       alert('⚠️ Por favor, informe o motivo do cancelamento.');
       return;
@@ -48,17 +48,17 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
     setIsCancelling(true);
     try {
       const { saveOrder, getProducts, saveProduct, saveInventoryMovement } = await import('../services/firebase');
-      
+
       // Atualizar status do pedido com motivo do cancelamento
-      const updatedOrder = { 
-        ...orderToCancel, 
+      const updatedOrder = {
+        ...orderToCancel,
         status: 'cancelled' as const,
         notes: `CANCELADO PELO CLIENTE: ${cancelReason.trim()}${orderToCancel.notes ? '\n\n' + orderToCancel.notes : ''}`,
         cancelledAt: new Date().toISOString(),
         cancelReason: cancelReason.trim()
       };
       await saveOrder(updatedOrder);
-      
+
       // Devolver estoque e registrar movimentação
       const products = await getProducts();
       for (const item of orderToCancel.items) {
@@ -66,10 +66,10 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
         if (product) {
           const previousStock = product.stock || 0;
           const newStock = previousStock + item.quantity;
-          
+
           // Atualizar estoque
           await saveProduct({ ...product, stock: newStock });
-          
+
           // Registrar movimentação de estoque
           const movement = {
             id: Date.now() + item.productId,
@@ -86,14 +86,14 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
           await saveInventoryMovement(movement);
         }
       }
-      
+
       // Atualizar lista local
       setOrders(orders.map(o => o.id === orderToCancel.id ? updatedOrder : o));
       setSelectedOrder(null);
       setShowCancelModal(false);
       setOrderToCancel(null);
       setCancelReason('');
-      
+
       alert('✅ Pedido cancelado com sucesso!\n\nO estoque foi devolvido e o valor será estornado conforme política da loja.');
     } catch (error) {
       console.error('Erro ao cancelar pedido:', error);
@@ -214,6 +214,11 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                           <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
                             {new Date(order.date).toLocaleDateString('pt-BR')} às {new Date(order.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           </span>
+                          {order.trackingCode && (
+                            <div className="flex items-center gap-2 bg-blue-50 text-blue-600 px-3 py-1.5 rounded-xl border border-blue-100">
+                              <span className="text-[10px] font-black uppercase tracking-widest">🚚 {order.carrier || 'Correios'}: {order.trackingCode}</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Order Items Preview - More expressive like big stores */}
@@ -426,7 +431,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                       </div>
                       <div className="flex-1 flex flex-col justify-center">
                         <h5 className="font-black text-slate-900 text-lg leading-tight mb-1 group-hover:text-versiory-coral transition-colors">{item.name || 'Produto Versiory'}</h5>
-                        <p className="text-xs text-slate-500 font-medium line-clamp-2 mb-3 leading-relaxed">{item.description || 'Este item foi selecionado em nossa coleção premium.'}</p>
+                        <p className="text-xs text-slate-500 font-medium line-clamp-2 mb-3 leading-relaxed whitespace-pre-wrap">{item.description || 'Este item foi selecionado em nossa coleção premium.'}</p>
                         <div className="flex items-center gap-4">
                           <span className="text-xs font-black bg-slate-100 px-4 py-1.5 rounded-full text-slate-600 uppercase tracking-widest">Qtd: {item.quantity}</span>
                           <span className="font-black text-2xl text-versiory-ink">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>

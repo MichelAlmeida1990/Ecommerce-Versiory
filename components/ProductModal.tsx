@@ -168,7 +168,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                         }`}
                     >
                       {trimmedColor}
-                      {isAvailable && selectedSize && <span className="text-xs ml-1">({colorStock})</span>}
+                      {isAvailable && <span className="text-[10px] ml-1 opacity-70">({colorStock})</span>}
                     </button>
                   );
                 })}
