@@ -25,6 +25,24 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [emitNF, setEmitNF] = useState(false);
   const [invoiceStatus, setInvoiceStatus] = useState<'none' | 'generating' | 'ready'>('none');
 
+  // Cálculo robusto de e-mail e endereço efetivos (fallback para localStorage se prop estiver vazio)
+  const { effectiveEmail, effectiveAddress } = React.useMemo(() => {
+    let email = customerEmail;
+    let address = customerAddress;
+    try {
+      const lastUser = localStorage.getItem('versiory_last_user');
+      if (lastUser) {
+        const savedUser = localStorage.getItem(`versiory_user_${lastUser}`);
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          if (!email && parsed.email) email = parsed.email;
+          if (!address && parsed.address) address = parsed.address;
+        }
+      }
+    } catch { }
+    return { effectiveEmail: email, effectiveAddress: address };
+  }, [customerEmail, customerAddress]);
+
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   const generateOrderId = () => {
@@ -34,8 +52,8 @@ const Checkout: React.FC<CheckoutProps> = ({
   };
 
   const handleCheckout = async () => {
-    if (!customerEmail || !customerAddress) {
-      if (onClose) onClose();
+    if (!effectiveEmail || !effectiveAddress || effectiveAddress === 'Endereço não informado') {
+      alert('⚠️ Dados de entrega incompletos. Por favor, verifique seu login e endereço.');
       return;
     }
 
@@ -47,44 +65,47 @@ const Checkout: React.FC<CheckoutProps> = ({
       const orderId = generateOrderId();
       let fullName = '';
       try {
-        const savedUser = localStorage.getItem('versiory_user');
-        if (savedUser) {
-          const parsed = JSON.parse(savedUser);
-          if (parsed && parsed.address) {
-            if (parsed.name) {
+        const lastUser = localStorage.getItem('versiory_last_user');
+        if (lastUser) {
+          const savedUser = localStorage.getItem(`versiory_user_${lastUser}`);
+          if (savedUser) {
+            const parsed = JSON.parse(savedUser);
+            if (parsed && parsed.name) {
               fullName = parsed.name;
-            } else if (parsed.email) {
+            } else if (parsed && parsed.email) {
               fullName = parsed.email.split('@')[0];
             }
-          } else if (parsed && parsed.email) {
-            fullName = parsed.email.split('@')[0];
           }
         }
       } catch { }
-      if (!fullName) fullName = customerEmail.split('@')[0];
+      if (!fullName) fullName = effectiveEmail.split('@')[0];
 
       const orderData: Order = {
         id: orderId,
         customerId: 0,
-        customerEmail: customerEmail,
+        customerEmail: effectiveEmail,
         customerName: fullName,
         date: new Date().toISOString(),
         total: total,
         status: 'pending',
+        address: effectiveAddress,
+        estimatedDelivery: '5 a 10 dias úteis', // Prazo padrão Versiory
         items: items.map(item => ({
           productId: item.id,
           name: item.name,
           quantity: item.quantity,
           price: item.price,
           image: item.image,
-          description: item.description
+          description: item.description,
+          selectedSize: item.selectedSize,
+          selectedColor: item.selectedColor
         })),
         notes: orderNotes
       };
 
       // Atualizar no Firebase
       const customers = await getCustomers();
-      const customerIndex = customers.findIndex((c) => c.email === customerEmail);
+      const customerIndex = customers.findIndex((c) => c.email === effectiveEmail);
 
       let targetCustomer: Customer;
 
@@ -100,7 +121,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         targetCustomer = {
           id: Date.now(),
           name: fullName,
-          email: customerEmail,
+          email: effectiveEmail,
           phone: '',
           totalOrders: 1,
           totalSpent: total,
@@ -122,7 +143,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       }
 
       if (paymentMethod === 'whatsapp' && !emitNF) {
-        const message = buildWhatsAppMessage(orderId, fullName);
+        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, effectiveAddress);
         const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
       } else if (paymentMethod === 'pix') {
@@ -145,14 +166,14 @@ const Checkout: React.FC<CheckoutProps> = ({
     }
   };
 
-  const buildWhatsAppMessage = (orderId: string, fullName: string) => {
+  const buildWhatsAppMessage = (orderId: string, fullName: string, email: string, address: string) => {
     const lines = [
       `🛒 *NOVO PEDIDO - ${orderId}*`,
       '',
       '*DADOS DO CLIENTE:*',
       `👤 Nome: ${fullName}`,
-      `📧 Email: ${customerEmail}`,
-      `📍 Endereço: ${customerAddress}`,
+      `📧 Email: ${email}`,
+      `📍 Endereço: ${address}`,
       '',
       '*ITENS DO PEDIDO:*',
       ...items.map(item => {
@@ -170,6 +191,88 @@ const Checkout: React.FC<CheckoutProps> = ({
       'Por favor, confirmem o pedido e informem os próximos passos para o pagamento. Obrigado! 🙏'
     ];
     return lines.join('\n');
+  };
+
+  const handlePrintReceipt = () => {
+    const orderId = generateOrderId();
+    const dateStr = new Date().toLocaleString('pt-BR');
+
+    const receiptContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Cupom de Venda - ${orderId}</title>
+        <style>
+          body { font-family: 'Courier New', Courier, monospace; width: 80mm; margin: 0 auto; color: #000; padding: 10px; }
+          .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+          .title { font-size: 1.2em; font-weight: bold; margin: 0; }
+          .info { font-size: 0.9em; margin: 5px 0; }
+          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+          th { text-align: left; border-bottom: 1px dashed #000; font-size: 0.9em; }
+          td { padding: 4px 0; font-size: 0.9em; }
+          .total { border-top: 1px dashed #000; padding-top: 10px; font-weight: bold; font-size: 1.1em; display: flex; justify-content: space-between; }
+          .footer { text-align: center; font-size: 0.8em; margin-top: 20px; border-top: 1px dashed #000; padding-top: 10px; }
+          @media print { body { width: 100%; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <p class="title">VERSIORY STORE</p>
+          <p class="info">Transformando Ideias em Sucesso</p>
+          <p class="info">----------------------------</p>
+          <p class="info">PEDIDO: ${orderId}</p>
+          <p class="info">DATA: ${dateStr}</p>
+        </div>
+        
+        <div class="info">
+          <strong>CLIENTE:</strong> ${effectiveEmail ? effectiveEmail.split('@')[0] : 'Não informado'}<br>
+          <strong>ENDEREÇO:</strong> ${effectiveAddress || 'Endereço não informado'}
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>ITEM</th>
+              <th style="text-align:right">QTD</th>
+              <th style="text-align:right">TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(item => `
+              <tr>
+                <td>${item.name}${item.selectedSize ? ' (' + item.selectedSize + ')' : ''}</td>
+                <td style="text-align:right">${item.quantity}</td>
+                <td style="text-align:right">R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="total">
+          <span>TOTAL</span>
+          <span>R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+        </div>
+
+        <div class="footer">
+          <p>ESTE DOCUMENTO NÃO TEM VALOR FISCAL</p>
+          <p>Obrigado pela preferência!</p>
+          <p>www.versiory.store</p>
+        </div>
+
+        <script>
+          window.onload = () => {
+            window.print();
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(receiptContent);
+      printWindow.document.close();
+    }
   };
 
   if (!isOpen) return null;
@@ -245,11 +348,11 @@ const Checkout: React.FC<CheckoutProps> = ({
             <div className="bg-slate-50 rounded-xl p-4">
               <div className="mb-3">
                 <p className="text-sm text-slate-600">Email</p>
-                <p className="font-medium text-slate-900">{customerEmail}</p>
+                <p className="font-medium text-slate-900">{effectiveEmail || 'Não informado'}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-600">Endereço de Entrega</p>
-                <p className="font-medium text-slate-900 whitespace-pre-line">{customerAddress}</p>
+                <p className="font-medium text-slate-900 whitespace-pre-line">{effectiveAddress || 'Endereço não informado'}</p>
               </div>
             </div>
           </div>
@@ -331,12 +434,21 @@ const Checkout: React.FC<CheckoutProps> = ({
               Cancelar
             </button>
             <button
+              onClick={handlePrintReceipt}
+              className="flex-1 border border-slate-300 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Cupom
+            </button>
+            <button
               type="button"
               onClick={() => setEmitNF(true)}
               disabled={emitNF}
               className="flex-1 border border-blue-300 text-blue-700 py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors disabled:opacity-50"
             >
-              {emitNF ? 'Solicitação registrada' : 'Solicitar Nota Fiscal'}
+              {emitNF ? 'NF Solicitada' : 'Nota Fiscal'}
             </button>
             <button
               onClick={handleCheckout}
@@ -364,23 +476,30 @@ const Checkout: React.FC<CheckoutProps> = ({
                 </div>
               </div>
               <div className="flex gap-3">
-                {paymentMethod === 'whatsapp' && (
-                  <button
-                    onClick={() => {
-                      const savedOrders = JSON.parse(localStorage.getItem('versiory_orders') || '[]');
-                      const lastOrder = savedOrders[savedOrders.length - 1];
-                      if (lastOrder) {
-                        const message = buildWhatsAppMessage(lastOrder.id, lastOrder.customerName);
-                        const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
-                        window.open(url, '_blank');
-                      }
-                    }}
-                    className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors shadow-md flex items-center justify-center gap-2"
-                  >
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" /></svg>
-                    Finalizar Pagamento WhatsApp
-                  </button>
-                )}
+                <button
+                  onClick={handlePrintReceipt}
+                  className="flex-1 border border-amber-300 text-amber-800 py-3 rounded-xl font-bold hover:bg-amber-100 transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Imprimir Recibo
+                </button>
+                <button
+                  onClick={() => {
+                    const savedOrders = JSON.parse(localStorage.getItem('versiory_orders') || '[]');
+                    const lastOrder = savedOrders[savedOrders.length - 1];
+                    if (lastOrder) {
+                      const message = buildWhatsAppMessage(lastOrder.id, lastOrder.customerName, effectiveEmail, effectiveAddress);
+                      const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
+                      window.open(url, '_blank');
+                    }
+                  }}
+                  className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors shadow-md flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" /></svg>
+                  WhatsApp
+                </button>
                 <button onClick={onClose} className="px-6 border border-amber-200 text-amber-700 py-3 rounded-xl font-bold hover:bg-amber-100 transition-colors">
                   Fechar
                 </button>

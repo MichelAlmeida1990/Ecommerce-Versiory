@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Order, Customer, Product } from '../types';
 import DanfePreview from './DanfePreview';
+import { fetchAddressByCep } from '../services/cep';
 
 interface CustomerOrdersProps {
   customerEmail: string;
@@ -17,6 +18,18 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [isUpdatingAddress, setIsUpdatingAddress] = useState(false);
+  const [addressForm, setAddressForm] = useState({
+    zipCode: '',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: ''
+  });
+  const [loadingCep, setLoadingCep] = useState(false);
 
   const canCancelOrder = (order: Order) => {
     if (order.status === 'cancelled' || order.status === 'delivered') return false;
@@ -101,6 +114,81 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
     } finally {
       setIsCancelling(false);
     }
+  };
+
+  const handleUpdateAddress = async () => {
+    if (!selectedOrder) return;
+
+    if (!addressForm.zipCode || !addressForm.street || !addressForm.number || !addressForm.city || !addressForm.state) {
+      alert('⚠️ Por favor, preencha todos os campos obrigatórios do endereço.');
+      return;
+    }
+
+    setIsUpdatingAddress(true);
+    try {
+      const { saveOrder } = await import('../services/firebase');
+      const formattedAddress = `${addressForm.street}, ${addressForm.number}${addressForm.complement ? ' - ' + addressForm.complement : ''}, ${addressForm.neighborhood}, ${addressForm.city} - ${addressForm.state}, CEP: ${addressForm.zipCode}`;
+
+      const updatedOrder = {
+        ...selectedOrder,
+        address: formattedAddress
+      };
+
+      await saveOrder(updatedOrder);
+
+      setOrders(orders.map(o => o.id === selectedOrder.id ? updatedOrder : o));
+      setSelectedOrder(updatedOrder);
+      setIsEditingAddress(false);
+      alert('✅ Endereço atualizado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao atualizar endereço:', error);
+      alert('❌ Erro ao atualizar endereço. Tente novamente.');
+    } finally {
+      setIsUpdatingAddress(false);
+    }
+  };
+
+  const handleCepBlur = async () => {
+    if (addressForm.zipCode.length >= 8) {
+      setLoadingCep(true);
+      try {
+        const data = await fetchAddressByCep(addressForm.zipCode);
+        if (data) {
+          setAddressForm(prev => ({
+            ...prev,
+            street: data.logradouro || prev.street,
+            neighborhood: data.bairro || prev.neighborhood,
+            city: data.localidade || prev.city,
+            state: data.uf || prev.state
+          }));
+        }
+      } catch (error) {
+        console.error('Erro ao buscar CEP:', error);
+      } finally {
+        setLoadingCep(false);
+      }
+    }
+  };
+
+  const startEditingAddress = () => {
+    if (!selectedOrder) return;
+
+    // Tentar extrair os dados do endereço formatado
+    const addr = selectedOrder.address || '';
+    const parts = addr.split(',').map(p => p.trim());
+
+    // Fallback simples para preencher o form se possível
+    setAddressForm({
+      zipCode: addr.match(/CEP:\s?(\d{5}-?\d{3})/i)?.[1] || '',
+      street: parts[0] || '',
+      number: parts[1]?.split('-')[0]?.trim() || '',
+      complement: parts[1]?.split('-')[1]?.trim() || '',
+      neighborhood: parts[2] || '',
+      city: parts[3]?.split('-')[0]?.trim() || '',
+      state: parts[3]?.split('-')[1]?.trim() || ''
+    });
+
+    setIsEditingAddress(true);
   };
 
   useEffect(() => {
@@ -221,12 +309,11 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                           )}
                         </div>
 
-                        {/* Order Items Preview - More expressive like big stores */}
                         <div className="space-y-4 mb-6">
                           {order.items.slice(0, 3).map((item, iidx) => (
                             <button
                               key={iidx}
-                              onClick={() => window.location.href = `/product/${item.productId}`}
+                              onClick={() => setSelectedOrder(order)}
                               className="flex items-center gap-4 w-full text-left hover:bg-slate-50 p-2 rounded-2xl transition-all group"
                             >
                               <div className="w-16 h-16 bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 flex-shrink-0 group-hover:scale-105 transition-transform">
@@ -235,7 +322,11 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-black text-slate-900 truncate group-hover:text-versiory-coral transition-colors">{item.name || 'Produto Versiory'}</p>
                                 <p className="text-[10px] text-slate-400 font-medium line-clamp-1 mb-1">{item.description || 'Nenhuma descrição disponível'}</p>
-                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{item.quantity} unidade(s) • R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                                  {item.quantity} unidade(s) • R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  {item.selectedSize && ` • Tam: ${item.selectedSize}`}
+                                  {item.selectedColor && ` • Cor: ${item.selectedColor}`}
+                                </p>
                               </div>
                               <svg className="w-5 h-5 text-slate-300 group-hover:text-versiory-coral transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -387,11 +478,29 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                         <p className="text-sm font-black text-slate-900 mt-1">{selectedOrder.customerName}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Endereço de Entrega</p>
-                        <p className="text-sm font-bold text-slate-600 leading-relaxed mt-1">
-                          {localStorage.getItem('versiory_user') ? JSON.parse(localStorage.getItem('versiory_user')!).address : 'Endereço registrado no pedido.'}
+                        <div className="flex justify-between items-center mb-1">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Endereço de Entrega</p>
+                          {(selectedOrder.status === 'pending' || selectedOrder.status === 'paid' || selectedOrder.status === 'processing') && (
+                            <button
+                              onClick={startEditingAddress}
+                              className="text-[10px] font-bold text-versiory-coral hover:underline"
+                            >
+                              Editar
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-sm font-bold text-slate-600 leading-relaxed">
+                          {selectedOrder.address || 'Endereço registrado no pedido.'}
                         </p>
                       </div>
+                      {selectedOrder.estimatedDelivery && (
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prazo Estimado</p>
+                          <p className="text-sm font-black text-slate-900 mt-1">
+                            🚀 {selectedOrder.estimatedDelivery}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -421,26 +530,24 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                 <h4 className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-4">Produtos Adquiridos</h4>
                 <div className="space-y-4">
                   {selectedOrder.items.map((item, idx) => (
-                    <button
+                    <div
                       key={idx}
-                      onClick={() => window.location.href = `/product/${item.productId}`}
-                      className="flex gap-6 group w-full text-left hover:bg-slate-50 p-4 rounded-3xl transition-all"
+                      className="flex gap-6 group w-full text-left bg-slate-50 p-4 rounded-3xl transition-all"
                     >
-                      <div className="w-24 h-24 rounded-3xl overflow-hidden bg-slate-50 border border-slate-100 flex-shrink-0 group-hover:scale-105 transition-transform">
-                        <img src={item.image || 'https://images.unsplash.com/photo-1560393464-5c69a73c5770?w=200&h=200&fit=crop'} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                      <div className="w-24 h-24 rounded-3xl overflow-hidden bg-white border border-slate-100 flex-shrink-0">
+                        <img src={item.image || 'https://images.unsplash.com/photo-1560393464-5c69a73c5770?w=200&h=200&fit=crop'} alt={item.name} className="w-full h-full object-cover transition-transform duration-700" />
                       </div>
                       <div className="flex-1 flex flex-col justify-center">
                         <h5 className="font-black text-slate-900 text-lg leading-tight mb-1 group-hover:text-versiory-coral transition-colors">{item.name || 'Produto Versiory'}</h5>
                         <p className="text-xs text-slate-500 font-medium line-clamp-2 mb-3 leading-relaxed whitespace-pre-wrap">{item.description || 'Este item foi selecionado em nossa coleção premium.'}</p>
-                        <div className="flex items-center gap-4">
-                          <span className="text-xs font-black bg-slate-100 px-4 py-1.5 rounded-full text-slate-600 uppercase tracking-widest">Qtd: {item.quantity}</span>
-                          <span className="font-black text-2xl text-versiory-ink">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          <span className="text-xs font-black bg-white border border-slate-100 px-4 py-1.5 rounded-full text-slate-600 uppercase tracking-widest">Qtd: {item.quantity}</span>
+                          {item.selectedSize && <span className="text-xs font-black bg-white border border-slate-100 px-4 py-1.5 rounded-full text-slate-600 uppercase tracking-widest">Tam: {item.selectedSize}</span>}
+                          {item.selectedColor && <span className="text-xs font-black bg-white border border-slate-100 px-4 py-1.5 rounded-full text-slate-600 uppercase tracking-widest">Cor: {item.selectedColor}</span>}
+                          <span className="font-black text-2xl text-versiory-ink ml-auto">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
                       </div>
-                      <svg className="w-6 h-6 text-slate-300 group-hover:text-versiory-coral transition-colors self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -485,6 +592,117 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                   Fechar Detalhes
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Edição de Endereço */}
+      {isEditingAddress && selectedOrder && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => !isUpdatingAddress && setIsEditingAddress(false)} />
+          <div className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl p-8 animate-in zoom-in-95 duration-300">
+            <h3 className="text-2xl font-black text-slate-900 mb-6">📍 Editar Endereço</h3>
+
+            <div className="space-y-4">
+              <div className="relative">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">CEP</label>
+                <input
+                  type="text"
+                  placeholder="00000-000"
+                  value={addressForm.zipCode}
+                  onChange={(e) => setAddressForm({ ...addressForm, zipCode: e.target.value })}
+                  onBlur={handleCepBlur}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                />
+                {loadingCep && <span className="absolute right-4 top-10 text-[10px] font-bold text-versiory-coral animate-pulse">Buscando...</span>}
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Rua/Avenida</label>
+                <input
+                  type="text"
+                  placeholder="Nome da rua"
+                  value={addressForm.street}
+                  onChange={(e) => setAddressForm({ ...addressForm, street: e.target.value })}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Número</label>
+                  <input
+                    type="text"
+                    placeholder="123"
+                    value={addressForm.number}
+                    onChange={(e) => setAddressForm({ ...addressForm, number: e.target.value })}
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Complemento</label>
+                  <input
+                    type="text"
+                    placeholder="Apto..."
+                    value={addressForm.complement}
+                    onChange={(e) => setAddressForm({ ...addressForm, complement: e.target.value })}
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Bairro</label>
+                <input
+                  type="text"
+                  placeholder="Bairro"
+                  value={addressForm.neighborhood}
+                  onChange={(e) => setAddressForm({ ...addressForm, neighborhood: e.target.value })}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-bold">
+                <div className="col-span-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Cidade</label>
+                  <input
+                    type="text"
+                    placeholder="Cidade"
+                    value={addressForm.city}
+                    onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">UF</label>
+                  <input
+                    type="text"
+                    placeholder="SP"
+                    value={addressForm.state}
+                    onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value.toUpperCase() })}
+                    maxLength={2}
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold text-center outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 flex gap-3">
+              <button
+                onClick={handleUpdateAddress}
+                disabled={isUpdatingAddress}
+                className="flex-1 bg-versiory-ink hover:bg-slate-800 text-white py-4 rounded-2xl font-black transition-all active:scale-[0.98] disabled:opacity-50"
+              >
+                {isUpdatingAddress ? 'Salvando...' : 'Salvar Alteração'}
+              </button>
+              <button
+                onClick={() => setIsEditingAddress(false)}
+                disabled={isUpdatingAddress}
+                className="flex-1 border-2 border-slate-100 text-slate-400 py-4 rounded-2xl font-black hover:bg-slate-50 transition-all"
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>

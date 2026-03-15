@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { CartItem } from '../types';
 import Checkout from './Checkout';
 
+import { fetchAddressByCep } from '../services/cep';
+
 interface CartProps {
   isOpen: boolean;
   onClose: () => void;
@@ -20,7 +22,16 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const [isCheckoutInfoOpen, setIsCheckoutInfoOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
-  const [addressForm, setAddressForm] = useState('');
+  const [addressForm, setAddressForm] = useState({
+    zipCode: '',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: ''
+  });
+  const [loadingCep, setLoadingCep] = useState(false);
 
   const getMaxStock = (item: CartItem): number => {
     if (item.selectedSize && item.selectedColor && item.stockBySizeColor) {
@@ -34,12 +45,12 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const handleUpdateQuantity = (item: CartItem, delta: number) => {
     const maxStock = getMaxStock(item);
     const newQuantity = item.quantity + delta;
-    
+
     if (newQuantity > maxStock) {
       alert(`⚠️ Estoque disponível: ${maxStock} unidades`);
       return;
     }
-    
+
     onUpdateQuantity(item.id, delta, item.selectedSize, item.selectedColor);
   };
 
@@ -62,44 +73,98 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   };
 
   const handleOpenCheckout = () => {
-    const savedUser = localStorage.getItem('versiory_user');
+    // Usar a mesma lógica do firebase.ts para localizar o usuário logado
+    const lastUserEmail = localStorage.getItem('versiory_last_user');
     let isAuthenticated = false;
     let hasAddress = false;
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        isAuthenticated = !!parsed.email;
-        hasAddress = !!parsed.address && parsed.address !== 'Endereço não informado';
-      } catch {}
+
+    if (lastUserEmail) {
+      const savedUser = localStorage.getItem(`versiory_user_${lastUserEmail}`);
+      if (savedUser) {
+        try {
+          const parsed = JSON.parse(savedUser);
+          isAuthenticated = !!parsed.email;
+          hasAddress = !!parsed.address && parsed.address !== 'Endereço não informado';
+        } catch { }
+      }
     }
-    
+
+    // Fallback para customerEmail (prop do App.tsx) se o localStorage estiver inconsistente
+    if (!isAuthenticated && customerEmail) {
+      isAuthenticated = true;
+      hasAddress = !!customerAddress && customerAddress !== 'Endereço não informado';
+    }
+
     if (!isAuthenticated) {
       window.dispatchEvent(new CustomEvent('openProfileModal'));
       return;
     }
-    
+
     if (!hasAddress) {
       setIsAddressModalOpen(true);
       return;
     }
-    
+
     setIsCheckoutOpen(true);
   };
 
-  const handleSaveAddress = () => {
-    if (!addressForm.trim()) {
-      alert('Por favor, preencha o endereço.');
+  const handleCepBlur = async () => {
+    const cleanCep = addressForm.zipCode.replace(/\D/g, '');
+    if (cleanCep.length === 8) {
+      setLoadingCep(true);
+      const data = await fetchAddressByCep(addressForm.zipCode);
+      setLoadingCep(false);
+
+      if (data) {
+        setAddressForm(prev => ({
+          ...prev,
+          street: data.logradouro,
+          neighborhood: data.bairro,
+          city: data.localidade,
+          state: data.uf,
+        }));
+      }
+    }
+  };
+
+  const handleSaveAddress = async () => {
+    if (!addressForm.street || !addressForm.number || !addressForm.city) {
+      alert('Por favor, preencha os campos obrigatórios do endereço (Rua, Número e Cidade).');
       return;
     }
-    
-    const savedUser = localStorage.getItem('versiory_user');
-    if (savedUser) {
-      const parsed = JSON.parse(savedUser);
-      parsed.address = addressForm;
-      localStorage.setItem('versiory_user', JSON.stringify(parsed));
-      setIsAddressModalOpen(false);
-      alert('Endereço salvo com sucesso!');
-      window.location.reload();
+
+    const formattedAddress = `${addressForm.street}, ${addressForm.number}${addressForm.complement ? ', ' + addressForm.complement : ''} - ${addressForm.neighborhood}, ${addressForm.city}/${addressForm.state} - CEP: ${addressForm.zipCode}`;
+
+    // Salvar na chave correta baseada no usuário atual
+    const emailToUse = customerEmail || localStorage.getItem('versiory_last_user');
+    if (emailToUse) {
+      try {
+        const { saveUserSession } = await import('../services/firebase');
+        const key = `versiory_user_${emailToUse}`;
+        const savedUser = localStorage.getItem(key);
+        let userData: any = { email: emailToUse };
+
+        if (savedUser) {
+          try {
+            userData = JSON.parse(savedUser);
+          } catch { }
+        }
+
+        userData.address = formattedAddress;
+        localStorage.setItem(key, JSON.stringify(userData));
+
+        await saveUserSession(userData);
+
+        setIsAddressModalOpen(false);
+        setIsCheckoutOpen(true);
+
+        window.dispatchEvent(new CustomEvent('addressUpdated', { detail: formattedAddress }));
+      } catch (error) {
+        console.error('Erro ao salvar endereço:', error);
+        alert('Erro ao salvar endereço. Tente novamente.');
+      }
+    } else {
+      alert('Erro: Usuário não identificado. Por favor, faça login.');
     }
   };
 
@@ -116,7 +181,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={onClose} />
-      
+
       <div className="absolute inset-y-0 right-0 max-w-full flex">
         <div className="w-screen max-w-md bg-blue-50 border border-blue-200 shadow-2xl flex flex-col">
           <div className="p-6 border-b border-[#f1e2d5] flex justify-between items-center">
@@ -143,7 +208,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                 </div>
                 <h3 className="text-lg font-bold text-slate-800">Seu carrinho está vazio</h3>
                 <p className="text-slate-500 mt-1">Que tal adicionar alguns itens incríveis?</p>
-                <button 
+                <button
                   onClick={onClose}
                   className="mt-6 text-versiory-coral font-bold hover:text-[#ff8368]"
                 >
@@ -180,7 +245,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                     <p className="text-versiory-coral font-bold mt-1">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                     <div className="flex items-center gap-3 mt-2">
                       <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
-                        <button 
+                        <button
                           onClick={() => handleUpdateQuantity(item, -1)}
                           className="px-4 py-2 bg-slate-50 hover:bg-slate-100 disabled:opacity-50 text-lg font-bold min-w-[44px] h-11"
                           disabled={item.quantity <= 1}
@@ -188,7 +253,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                           -
                         </button>
                         <span className="px-4 py-2 font-bold text-slate-700 min-w-[44px] text-center text-lg">{item.quantity}</span>
-                        <button 
+                        <button
                           onClick={() => handleUpdateQuantity(item, 1)}
                           className="px-4 py-2 bg-slate-50 hover:bg-slate-100 text-lg font-bold min-w-[44px] h-11"
                         >
@@ -283,38 +348,111 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       {isAddressModalOpen && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsAddressModalOpen(false)} />
-          <div className="relative w-full max-w-lg bg-blue-50 border border-blue-200 rounded-3xl shadow-2xl p-8">
-            <div className="flex items-start justify-between mb-4">
-              <h3 className="text-2xl font-black text-slate-900">📍 Cadastre seu endereço</h3>
-              <button onClick={() => setIsAddressModalOpen(false)} className="p-2 hover:bg-blue-100 rounded-full transition-colors">
+          <div className="relative w-full max-w-lg bg-white border border-blue-100 rounded-[32px] shadow-2xl p-8 overflow-y-auto max-h-[90vh] animate-in zoom-in-95 duration-300">
+            <div className="flex items-start justify-between mb-2">
+              <h3 className="text-2xl font-black text-slate-900">📍 Endereço de Entrega</h3>
+              <button onClick={() => setIsAddressModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
+            <p className="text-slate-500 text-sm mb-6">Informe seu endereço para enviarmos seus produtos.</p>
 
-            <p className="text-slate-600 mb-4">
-              Para finalizar seu pedido, precisamos do seu endereço de entrega.
-            </p>
+            <div className="space-y-4">
+              <div className="relative">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">CEP</label>
+                <input
+                  type="text"
+                  placeholder="00000-000"
+                  value={addressForm.zipCode}
+                  onChange={(e) => setAddressForm({ ...addressForm, zipCode: e.target.value })}
+                  onBlur={handleCepBlur}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                />
+                {loadingCep && <span className="absolute right-4 top-10 text-[10px] font-bold text-versiory-coral animate-pulse">Buscando...</span>}
+              </div>
 
-            <textarea
-              value={addressForm}
-              onChange={(e) => setAddressForm(e.target.value)}
-              placeholder="Digite seu endereço completo (Rua, Número, Bairro, Cidade, Estado, CEP)"
-              rows={4}
-              className="w-full border-2 border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
-            />
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Rua/Avenida</label>
+                <input
+                  type="text"
+                  placeholder="Nome da rua"
+                  value={addressForm.street}
+                  onChange={(e) => setAddressForm({ ...addressForm, street: e.target.value })}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                />
+              </div>
 
-            <div className="mt-6 flex gap-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Número</label>
+                  <input
+                    type="text"
+                    placeholder="123"
+                    value={addressForm.number}
+                    onChange={(e) => setAddressForm({ ...addressForm, number: e.target.value })}
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Complemento</label>
+                  <input
+                    type="text"
+                    placeholder="Apto..."
+                    value={addressForm.complement}
+                    onChange={(e) => setAddressForm({ ...addressForm, complement: e.target.value })}
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Bairro</label>
+                <input
+                  type="text"
+                  placeholder="Bairro"
+                  value={addressForm.neighborhood}
+                  onChange={(e) => setAddressForm({ ...addressForm, neighborhood: e.target.value })}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 font-bold">
+                <div className="col-span-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Cidade</label>
+                  <input
+                    type="text"
+                    placeholder="Cidade"
+                    value={addressForm.city}
+                    onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">UF</label>
+                  <input
+                    type="text"
+                    placeholder="SP"
+                    value={addressForm.state}
+                    onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value.toUpperCase() })}
+                    maxLength={2}
+                    className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold text-center outline-none focus:ring-2 ring-versiory-coral/20 transition-all text-slate-900"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 flex gap-3">
               <button
                 onClick={handleSaveAddress}
-                className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white py-3 rounded-2xl font-bold transition-all active:scale-[0.98]"
+                className="flex-3 bg-versiory-ink hover:bg-slate-800 text-white py-4 rounded-2xl font-black transition-all active:scale-[0.98] shadow-xl grow"
               >
-                Salvar e Continuar
+                Salvar Endereço
               </button>
               <button
                 onClick={() => setIsAddressModalOpen(false)}
-                className="flex-1 border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold bg-blue-50/80 hover:bg-blue-100 transition-colors"
+                className="flex-1 border border-slate-200 text-slate-500 py-4 rounded-2xl font-bold bg-slate-50 hover:bg-slate-100 transition-colors"
               >
                 Cancelar
               </button>

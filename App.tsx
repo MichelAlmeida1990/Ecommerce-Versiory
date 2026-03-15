@@ -114,10 +114,21 @@ const App: React.FC = () => {
     const closeHandler = () => setIsProfileOpen(false);
     window.addEventListener('openProfileModal', openHandler);
     window.addEventListener('closeProfileModal', closeHandler as EventListener);
+
+    // Escutar atualizações de endereço vindas do Cart
+    const onAddressUpdated = (e: Event) => {
+      const evt = e as CustomEvent<{ address: string }>;
+      if (evt.detail?.address) {
+        setCurrentUserAddress(evt.detail.address);
+      }
+    };
+    window.addEventListener('addressUpdated', onAddressUpdated as EventListener);
+
     return () => {
       window.removeEventListener('addToCart', onAddToCartEvent as EventListener);
       window.removeEventListener('openProfileModal', openHandler);
       window.removeEventListener('closeProfileModal', closeHandler as EventListener);
+      window.removeEventListener('addressUpdated', onAddressUpdated as EventListener);
     };
   }, []);
 

@@ -82,6 +82,8 @@ export interface Order {
   total: number;
   status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   items: OrderItem[];
+  address?: string;
+  estimatedDelivery?: string;
   trackingCode?: string;
   carrier?: string;
   notes?: string;
