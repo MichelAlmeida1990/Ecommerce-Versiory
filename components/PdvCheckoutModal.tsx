@@ -8,7 +8,7 @@ interface PdvCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
   cart: { product: Product; quantity: number }[];
-  onSubmit: (customerData: { name: string; phone: string; cpf: string; emitNF: boolean }, order: Order) => Promise<void>;
+  onSubmit: (customerData: { name: string; phone: string; cpf: string; emitNF: boolean; notes: string }, order: Order) => Promise<void>;
   isSubmitting: boolean;
 }
 
@@ -19,13 +19,17 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   onSubmit,
   isSubmitting
 }) => {
-  const [customerForm, setCustomerForm] = useState({ name: '', phone: '', cpf: '' });
+  const [customerForm, setCustomerForm] = useState({ name: '', phone: '', cpf: '', notes: '' });
   const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'debito' | 'credito'>('dinheiro');
   const [emitNF, setEmitNF] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [showDanfe, setShowDanfe] = useState(false);
   const [generatedOrder, setGeneratedOrder] = useState<Order | null>(null);
   const [generatedCustomer, setGeneratedCustomer] = useState<Customer | null>(null);
+  const [saleFinished, setSaleFinished] = useState(false);
+  const [lastFinishedOrder, setLastFinishedOrder] = useState<Order | null>(null);
+  const [soldItems, setSoldItems] = useState<{ product: Product; quantity: number }[]>([]);
+  const [soldTotal, setSoldTotal] = useState(0);
 
   const total = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
 
@@ -79,7 +83,8 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         image: item.product.image
       })),
       salesChannel: 'physical',
-      emitNF
+      emitNF,
+      notes: customerForm.notes
     };
 
     if (emitNF) {
@@ -115,10 +120,14 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       }
     }
 
-    await onSubmit(customerForm, order);
-    
+    await onSubmit({ ...customerForm, emitNF }, order);
+
     if (!emitNF) {
-      setCustomerForm({ name: '', phone: '', cpf: '' });
+      setSoldItems([...cart]);
+      setSoldTotal(total);
+      setLastFinishedOrder(order);
+      setSaleFinished(true);
+      setCustomerForm({ name: '', phone: '', cpf: '', notes: '' });
       setEmitNF(false);
       setErrors([]);
     }
@@ -128,7 +137,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     setShowDanfe(false);
     setGeneratedOrder(null);
     setGeneratedCustomer(null);
-    setCustomerForm({ name: '', phone: '', cpf: '' });
+    setCustomerForm({ name: '', phone: '', cpf: '', notes: '' });
     setEmitNF(false);
     setErrors([]);
     onClose();
@@ -138,6 +147,63 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
 
   if (showDanfe && generatedOrder && generatedCustomer) {
     return <DanfePreview order={generatedOrder} customer={generatedCustomer} onClose={handleCloseDanfe} />;
+  }
+
+
+
+  const handlePrintReceipt = async () => {
+    if (!lastFinishedOrder) return;
+    const { generateReceiptHTML } = await import('../utils/receiptGenerator');
+
+    const receiptContent = generateReceiptHTML({
+      orderId: lastFinishedOrder.id,
+      date: new Date(lastFinishedOrder.date).toLocaleString('pt-BR'),
+      customerName: lastFinishedOrder.customerName,
+      customerAddress: '', // PDV geralmente não tem endereço
+      notes: lastFinishedOrder.notes,
+      items: soldItems.map(item => ({ ...item.product, quantity: item.quantity })),
+      total: soldTotal
+    });
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(receiptContent);
+      printWindow.document.close();
+    }
+  };
+
+  if (saleFinished) {
+    return (
+      <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-3xl max-w-sm w-full p-8 text-center shadow-2xl animate-in zoom-in duration-300">
+          <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-6">✓</div>
+          <h3 className="text-2xl font-black text-slate-900 mb-2">Venda Finalizada!</h3>
+          <p className="text-slate-500 mb-8">O que deseja fazer agora?</p>
+
+          <div className="space-y-3">
+            <button
+              onClick={handlePrintReceipt}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Imprimir Recibo
+            </button>
+            <button
+              onClick={() => {
+                setSaleFinished(false);
+                setLastFinishedOrder(null);
+                onClose();
+              }}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-all"
+            >
+              Nova Venda
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -195,11 +261,10 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
                   key={method.value}
                   type="button"
                   onClick={() => setPaymentMethod(method.value as any)}
-                  className={`p-3 rounded-xl border-2 transition-all ${
-                    paymentMethod === method.value
-                      ? 'border-versiory-coral bg-versiory-coral/10 text-versiory-coral'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
+                  className={`p-3 rounded-xl border-2 transition-all ${paymentMethod === method.value
+                    ? 'border-versiory-coral bg-versiory-coral/10 text-versiory-coral'
+                    : 'border-gray-200 hover:border-gray-300'
+                    }`}
                 >
                   <span className="text-2xl mb-1 block">{method.icon}</span>
                   <span className="text-sm font-bold">{method.label}</span>

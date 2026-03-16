@@ -193,80 +193,19 @@ const Checkout: React.FC<CheckoutProps> = ({
     return lines.join('\n');
   };
 
-  const handlePrintReceipt = () => {
+  const handlePrintReceipt = async () => {
+    const { generateReceiptHTML } = await import('../utils/receiptGenerator');
     const orderId = generateOrderId();
     const dateStr = new Date().toLocaleString('pt-BR');
 
-    const receiptContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Cupom de Venda - ${orderId}</title>
-        <style>
-          body { font-family: 'Courier New', Courier, monospace; width: 80mm; margin: 0 auto; color: #000; padding: 10px; }
-          .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-          .title { font-size: 1.2em; font-weight: bold; margin: 0; }
-          .info { font-size: 0.9em; margin: 5px 0; }
-          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-          th { text-align: left; border-bottom: 1px dashed #000; font-size: 0.9em; }
-          td { padding: 4px 0; font-size: 0.9em; }
-          .total { border-top: 1px dashed #000; padding-top: 10px; font-weight: bold; font-size: 1.1em; display: flex; justify-content: space-between; }
-          .footer { text-align: center; font-size: 0.8em; margin-top: 20px; border-top: 1px dashed #000; padding-top: 10px; }
-          @media print { body { width: 100%; } }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <p class="title">VERSIORY STORE</p>
-          <p class="info">Transformando Ideias em Sucesso</p>
-          <p class="info">----------------------------</p>
-          <p class="info">PEDIDO: ${orderId}</p>
-          <p class="info">DATA: ${dateStr}</p>
-        </div>
-        
-        <div class="info">
-          <strong>CLIENTE:</strong> ${effectiveEmail ? effectiveEmail.split('@')[0] : 'Não informado'}<br>
-          <strong>ENDEREÇO:</strong> ${effectiveAddress || 'Endereço não informado'}
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th>ITEM</th>
-              <th style="text-align:right">QTD</th>
-              <th style="text-align:right">TOTAL</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${items.map(item => `
-              <tr>
-                <td>${item.name}${item.selectedSize ? ' (' + item.selectedSize + ')' : ''}</td>
-                <td style="text-align:right">${item.quantity}</td>
-                <td style="text-align:right">R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-
-        <div class="total">
-          <span>TOTAL</span>
-          <span>R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-        </div>
-
-        <div class="footer">
-          <p>ESTE DOCUMENTO NÃO TEM VALOR FISCAL</p>
-          <p>Obrigado pela preferência!</p>
-          <p>www.versiory.store</p>
-        </div>
-
-        <script>
-          window.onload = () => {
-            window.print();
-          };
-        </script>
-      </body>
-      </html>
-    `;
+    const receiptContent = generateReceiptHTML({
+      orderId,
+      date: dateStr,
+      customerName: effectiveEmail ? effectiveEmail.split('@')[0] : 'Não informado',
+      customerAddress: effectiveAddress,
+      items: items,
+      total: total
+    });
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');
     if (printWindow) {

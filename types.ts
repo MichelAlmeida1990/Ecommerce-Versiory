@@ -35,6 +35,7 @@ export interface Product {
   aliquotaIbs?: number; // Imposto sobre Bens e Serviços (Estadual/Municipal)
   aliquotaIs?: number; // Imposto Seletivo (Específico)
   cClassTrib?: string; // Código de Classificação Tributária (Reforma 2026)
+  installments?: number; // Parcelamento máximo sem juros
 }
 
 
@@ -52,7 +53,7 @@ export interface CartItem extends Product {
   selectedColor?: string;
 }
 
-export type Category = 'Todos' | 'Eletrônicos' | 'Moda' | 'Casa' | 'Esportes' | 'Cama, Mesa e Banho';
+export type Category = 'Todos' | 'Eletrônicos' | 'Moda' | 'Casa' | 'Esportes' | 'Cama, Mesa e Banho' | 'Serviços';
 
 export interface CategoryItem {
   id: string;

@@ -90,7 +90,7 @@ const TRACKING_LABELS: Record<TrackingStatus, string> = {
   delayed: 'Atrasado'
 };
 
-const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes', 'Cama, Mesa e Banho'];
+const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes', 'Cama, Mesa e Banho', 'Serviços'];
 
 const BEDDING_SIZES = {
   'Lençol': 'Solteiro (88x188cm), Casal (138x188cm), Queen (158x198cm), King (186x198cm)',
@@ -191,7 +191,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     aliquotaCbs: 0,
     aliquotaIbs: 0,
     aliquotaIs: 0,
-    cClassTrib: ''
+    cClassTrib: '',
+    installments: 1
   });
 
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -354,7 +355,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ERRCOM035: Clientes filtrados por busca
   const filteredCustomers = useMemo(() => {
     if (!customerSearch.trim()) return customers;
-    
+
     const search = customerSearch.toLowerCase();
     return customers.filter(customer =>
       customer.name.toLowerCase().includes(search) ||
@@ -1134,7 +1135,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsPdvCheckoutModalOpen(true);
   };
 
-  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; cpf: string }, order: Order) => {
+  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; cpf: string; notes: string }, order: Order) => {
     if (!cashRegister.isOpen) {
       window.alert('⚠️ O Caixa está fechado. Abra o caixa antes de realizar vendas.');
       setIsPdvCheckoutModalOpen(false);
@@ -1209,10 +1210,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onUpdateOrders([...orders, order]);
       onUpdateProducts(updatedProducts);
       setPdvCart([]);
-      setIsPdvCheckoutModalOpen(false);
-      if (!order.emitNF) {
-        window.alert(`Venda finalizada!\n\nCliente: ${customerData.name}\nTotal: ${formatCurrency(order.total)}`);
-      }
+
+      // A modal agora controla o próprio fechamento através do estado de venda finalizada
 
       // Atualizar saldo do caixa
       setCashRegister(prev => ({
@@ -1303,7 +1302,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     // Salvar no histórico
     setCashRegisterHistory(prev => [...prev, closedRegister]);
-    
+
     // Resetar caixa atual
     setCashRegister({
       isOpen: false,
@@ -1600,6 +1599,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="flex justify-between items-end mt-2">
                           <div>
                             <p className="font-black text-white text-lg">{formatCurrency(product.price)}</p>
+                            {product.category === 'Serviços' && product.installments && product.installments > 1 && (
+                              <p className="text-[10px] text-versiory-coral font-bold -mt-1">
+                                {product.installments}x de {formatCurrency(product.price / product.installments)}
+                              </p>
+                            )}
                             <p className="text-xs text-green-400">
                               {product.stock || 0} em estoque
                             </p>
@@ -2092,11 +2096,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
                   <p className="text-slate-300 text-sm mb-4">{category.description}</p>
-                  <div className="text-sm text-slate-400">
-                    <span className="font-semibold">
-                      {products.filter(product => product.category === category.name).length}
-                    </span>{' '}
-                    produtos
+                  <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-2">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Produtos nesta categoria:</p>
+                    {products.filter(product => product.category === category.name).map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => openProductModal(p)}
+                        className="w-full text-left p-2 rounded-lg bg-white/5 border border-white/5 hover:border-versiory-coral/50 hover:bg-white/10 transition-all group flex items-center gap-3"
+                      >
+                        <img src={p.image} alt="" className="w-8 h-8 rounded object-cover bg-white shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-white truncate group-hover:text-versiory-coral transition-colors">{p.name}</p>
+                          <p className="text-[10px] text-slate-400">{formatCurrency(p.price)} • {p.stock || 0} un</p>
+                        </div>
+                        <svg className="w-3 h-3 text-slate-500 group-hover:text-versiory-coral transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    ))}
+                    {products.filter(product => product.category === category.name).length === 0 && (
+                      <p className="text-xs text-slate-500 italic pl-2">Nenhum produto cadastrado.</p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -2952,7 +2972,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             />
                           </div>
                         </div>
-                        <div>
+                        <div className="col-span-1">
                           <label className="block text-sm font-bold text-slate-700 mb-2">Quantidade em Estoque *</label>
                           <input
                             type="number"
@@ -2962,6 +2982,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
                             required
                           />
+                        </div>
+                        <div className="col-span-1">
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Parcelamento Máx. (x)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="12"
+                            value={productForm.installments || 1}
+                            onChange={event => setProductForm(prev => ({ ...prev, installments: parseInt(event.target.value, 10) }))}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
+                            disabled={productForm.category !== 'Serviços' && !isCustomCategory}
+                          />
+                          <p className="text-[10px] text-slate-500 mt-1">Apenas para Serviços.</p>
                         </div>
                         <div className="col-span-2">
                           <label className="block text-sm font-bold text-slate-700 mb-2">Estoque Mínimo (alerta) <span className="text-slate-400 font-normal">— padrão: 10</span></label>
@@ -4005,11 +4038,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
                 <button
                   onClick={handleCashMovement}
-                  className={`flex-1 px-6 py-3 rounded-xl font-black text-lg transition-all shadow-xl ${
-                    cashMovementForm.type === 'withdrawal' 
-                      ? 'bg-orange-500 hover:bg-orange-600' 
-                      : 'bg-blue-500 hover:bg-blue-600'
-                  } text-white`}
+                  className={`flex-1 px-6 py-3 rounded-xl font-black text-lg transition-all shadow-xl ${cashMovementForm.type === 'withdrawal'
+                    ? 'bg-orange-500 hover:bg-orange-600'
+                    : 'bg-blue-500 hover:bg-blue-600'
+                    } text-white`}
                 >
                   {cashMovementForm.type === 'withdrawal' ? '💸 Sangria' : '💰 Suprimento'}
                 </button>
@@ -4023,7 +4055,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {isCashReportOpen && cashRegisterHistory.length > 0 && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCashReportOpen(false)} />
-          
+
           <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-8 border-b border-gray-200 flex justify-between items-center print:border-black">
               <div>
