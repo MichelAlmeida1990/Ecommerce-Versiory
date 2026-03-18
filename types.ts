@@ -72,6 +72,7 @@ export interface OrderItem {
   description?: string;
   selectedSize?: string;
   selectedColor?: string;
+  installments?: number;
 }
 
 export interface Order {
@@ -92,6 +93,8 @@ export interface Order {
   paymentMethod?: string;
   emitNF?: boolean;
   nfeXml?: string;
+  isBudget?: boolean; // Orçamento
+  customPolicies?: string; // Garantia / Políticas customizadas para esta venda
 }
 
 export interface Address {
@@ -178,6 +181,7 @@ export interface FiscalConfig {
   ambiente: 'homologacao' | 'producao';
   serie: string;
   numeroAtual: number;
+  storePolicies?: string;
 }
 
 export interface CashWithdrawal {

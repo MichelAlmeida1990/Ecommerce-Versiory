@@ -5,13 +5,18 @@ interface ReceiptData {
   date: string;
   customerName: string;
   customerAddress?: string;
+  customerPhone?: string;
+  customerEmail?: string;
   items: CartItem[];
   total: number;
   notes?: string;
+  storePolicies?: string;
+  isBudget?: boolean;
 }
 
 export const generateReceiptHTML = (data: ReceiptData): string => {
-  const { orderId, date, customerName, customerAddress, items, total, notes } = data;
+  const { orderId, date, customerName, customerAddress, customerPhone, customerEmail, items, total, notes, storePolicies, isBudget } = data;
+
 
   // Verificar se há serviços no pedido
   const hasServices = items.some(item => item.category === 'Serviços');
@@ -20,7 +25,7 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Cupom de Venda - ${orderId}</title>
+      <title>${isBudget ? 'Orçamento' : 'Cupom de Venda'} - ${orderId}</title>
       <meta charset="UTF-8">
       <style>
         body { 
@@ -55,16 +60,18 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
     </head>
     <body>
       <div class="header">
-        <p class="title">VERSIORY STORE</p>
-        <p class="info">Transformando Ideias em Sucesso</p>
+        <p class="title">${isBudget ? 'ORÇAMENTO' : 'VERSIORY STORE'}</p>
+        ${isBudget ? '<p class="info">Versiory Store</p>' : '<p class="info">Transformando Ideias em Sucesso</p>'}
         <p class="info">----------------------------</p>
-        <p class="info">PEDIDO: ${orderId}</p>
+        <p class="info">${isBudget ? 'ORÇAMENTO' : 'PEDIDO'}: ${orderId}</p>
         <p class="info">DATA: ${date}</p>
       </div>
       
       <div class="info">
         <strong>CLIENTE:</strong> ${customerName}<br>
-        <strong>ENDEREÇO:</strong> ${customerAddress || 'Não informado'}
+        ${customerPhone ? `<strong>TELEFONE:</strong> ${customerPhone}<br>` : ''}
+        ${customerEmail ? `<strong>E-MAIL:</strong> ${customerEmail}<br>` : ''}
+        ${customerAddress ? `<strong>ENDEREÇO:</strong> ${customerAddress}` : ''}
       </div>
 
       <table>
@@ -110,9 +117,11 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
       
       ${hasServices ? `
         <div class="service-details">
-          <div class="service-title">DETALHAMENTO DE SERVIÇOS</div>
-          <p>Este cupom inclui prestação de serviços. Os detalhes técnicos, garantias e condições de execução seguem o contrato padrão da oficina/loja.</p>
+          <div class="service-title">${isBudget ? 'POLÍTICAS E GARANTIA' : 'DETALHAMENTO DE SERVIÇOS'}</div>
+          ${storePolicies ? `<p>${storePolicies.replace(/\\n/g, '<br>')}</p>` : `
+          <p>Este documento inclui prestação de serviços. Os detalhes técnicos, garantias e condições de execução seguem o contrato padrão da oficina/loja.</p>
           <p><strong>Garantia de Serviço:</strong> 90 dias (conforme CDC) para mão de obra, exceto mau uso ou desgaste natural.</p>
+          `}
         </div>
       ` : ''}
 

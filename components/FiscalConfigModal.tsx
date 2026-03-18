@@ -66,7 +66,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.cnpj}
-                onChange={e => setConfig({...config, cnpj: e.target.value})}
+                onChange={e => setConfig({ ...config, cnpj: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
                 placeholder="00.000.000/0000-00"
                 required
@@ -77,7 +77,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.razaoSocial}
-                onChange={e => setConfig({...config, razaoSocial: e.target.value})}
+                onChange={e => setConfig({ ...config, razaoSocial: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
                 required
               />
@@ -87,7 +87,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.nomeFantasia}
-                onChange={e => setConfig({...config, nomeFantasia: e.target.value})}
+                onChange={e => setConfig({ ...config, nomeFantasia: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
               />
             </div>
@@ -96,7 +96,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.inscricaoEstadual}
-                onChange={e => setConfig({...config, inscricaoEstadual: e.target.value})}
+                onChange={e => setConfig({ ...config, inscricaoEstadual: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
               />
             </div>
@@ -105,7 +105,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.codigoIbgeMunicipio}
-                onChange={e => setConfig({...config, codigoIbgeMunicipio: e.target.value})}
+                onChange={e => setConfig({ ...config, codigoIbgeMunicipio: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
               />
             </div>
@@ -114,7 +114,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.endereco}
-                onChange={e => setConfig({...config, endereco: e.target.value})}
+                onChange={e => setConfig({ ...config, endereco: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
               />
             </div>
@@ -123,7 +123,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.cidade}
-                onChange={e => setConfig({...config, cidade: e.target.value})}
+                onChange={e => setConfig({ ...config, cidade: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
               />
             </div>
@@ -132,7 +132,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.estado}
-                onChange={e => setConfig({...config, estado: e.target.value})}
+                onChange={e => setConfig({ ...config, estado: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
                 maxLength={2}
               />
@@ -142,7 +142,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.cep}
-                onChange={e => setConfig({...config, cep: e.target.value})}
+                onChange={e => setConfig({ ...config, cep: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
               />
             </div>
@@ -150,7 +150,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <label className="block text-sm font-black text-gray-700 mb-2">Ambiente</label>
               <select
                 value={config.ambiente}
-                onChange={e => setConfig({...config, ambiente: e.target.value as 'homologacao' | 'producao'})}
+                onChange={e => setConfig({ ...config, ambiente: e.target.value as 'homologacao' | 'producao' })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
               >
                 <option value="homologacao">Homologação</option>
@@ -162,7 +162,7 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="text"
                 value={config.serie}
-                onChange={e => setConfig({...config, serie: e.target.value})}
+                onChange={e => setConfig({ ...config, serie: e.target.value })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
               />
             </div>
@@ -171,8 +171,19 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
               <input
                 type="number"
                 value={config.numeroAtual}
-                onChange={e => setConfig({...config, numeroAtual: parseInt(e.target.value) || 1})}
+                onChange={e => setConfig({ ...config, numeroAtual: parseInt(e.target.value) || 1 })}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-black text-gray-700 mb-2">Políticas da Loja (Serviços)</label>
+              <p className="text-xs text-gray-500 mb-2">Texto exibido em recibos de produtos de categoria "Serviços". Se deixado em branco, será usado o texto padrão (90 dias). Use ENTER para quebras de linha.</p>
+              <textarea
+                value={config.storePolicies || ''}
+                onChange={e => setConfig({ ...config, storePolicies: e.target.value })}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                rows={4}
+                placeholder="Ex: Garantia de 3 meses para mão de obra..."
               />
             </div>
           </div>

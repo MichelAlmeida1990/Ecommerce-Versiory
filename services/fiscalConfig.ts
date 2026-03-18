@@ -24,7 +24,8 @@ export const getDefaultFiscalConfig = (): FiscalConfig => ({
   codigoIbgeMunicipio: '',
   ambiente: 'homologacao',
   serie: '1',
-  numeroAtual: 1
+  numeroAtual: 1,
+  storePolicies: ''
 });
 
 export const incrementNFeNumber = (): number => {

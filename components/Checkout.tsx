@@ -196,13 +196,30 @@ const Checkout: React.FC<CheckoutProps> = ({
   const handlePrintReceipt = async () => {
     const { generateReceiptHTML } = await import('../utils/receiptGenerator');
     const orderId = generateOrderId();
+    const { getFiscalConfig } = await import('../services/fiscalConfig');
+    const fiscalConfig = getFiscalConfig();
     const dateStr = new Date().toLocaleString('pt-BR');
+
+    let customerPhone = undefined;
+    try {
+      const lastUser = localStorage.getItem('versiory_last_user');
+      if (lastUser) {
+        const savedUser = localStorage.getItem(`versiory_user_${lastUser}`);
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          if (parsed.phone) customerPhone = parsed.phone;
+        }
+      }
+    } catch { }
 
     const receiptContent = generateReceiptHTML({
       orderId,
       date: dateStr,
       customerName: effectiveEmail ? effectiveEmail.split('@')[0] : 'Não informado',
       customerAddress: effectiveAddress,
+      customerPhone,
+      notes: orderNotes,
+      storePolicies: fiscalConfig?.storePolicies,
       items: items,
       total: total
     });

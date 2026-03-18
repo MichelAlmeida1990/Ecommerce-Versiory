@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState, useEffect } from 'react';
 import {
   Product,
   CategoryItem,
@@ -139,6 +139,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<TabKey>(userRole === 'seller' ? 'pdv' : 'dashboard');
   const [orderFilter, setOrderFilter] = useState<OrderStatus | 'all'>('all');
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
 
   const handleDownloadNFXml = (orderId?: string) => {
     const key = orderId ? `versiory_nf_xml_${orderId}` : 'versiory_nf_xml';
@@ -211,19 +213,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedSizes, setSelectedSizes] = useState<{ [productId: number]: string }>({});
   const [pdvProductModal, setPdvProductModal] = useState<{ isOpen: boolean; product: Product | null }>({ isOpen: false, product: null });
   const [pdvModalSelection, setPdvModalSelection] = useState<{ size: string; color: string }>({ size: '', color: '' });
-  const [cashRegister, setCashRegister] = useState<{ isOpen: boolean; openingAmount: number; currentBalance: number; openedAt: string | null }>({
-    isOpen: false,
-    openingAmount: 0,
-    currentBalance: 0,
-    openedAt: null
+  const [cashRegister, setCashRegister] = useState<{ isOpen: boolean; openingAmount: number; currentBalance: number; openedAt: string | null }>(() => {
+    const saved = localStorage.getItem('versiory_cash_register');
+    return saved ? JSON.parse(saved) : {
+      isOpen: false,
+      openingAmount: 0,
+      currentBalance: 0,
+      openedAt: null
+    };
   });
 
   // Sistema de caixa completo
-  const [cashWithdrawals, setCashWithdrawals] = useState<Array<{ id: string; amount: number; reason: string; timestamp: string }>>([]);
-  const [cashDeposits, setCashDeposits] = useState<Array<{ id: string; amount: number; reason: string; timestamp: string }>>([]);
+  const [cashWithdrawals, setCashWithdrawals] = useState<Array<{ id: string; amount: number; reason: string; timestamp: string }>>(() => {
+    const saved = localStorage.getItem('versiory_cash_withdrawals');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [cashDeposits, setCashDeposits] = useState<Array<{ id: string; amount: number; reason: string; timestamp: string }>>(() => {
+    const saved = localStorage.getItem('versiory_cash_deposits');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isCashMovementModalOpen, setIsCashMovementModalOpen] = useState(false);
   const [cashMovementForm, setCashMovementForm] = useState({ type: 'withdrawal', amount: 0, reason: '' });
-  const [cashRegisterHistory, setCashRegisterHistory] = useState<Array<any>>([]);
+  const [cashRegisterHistory, setCashRegisterHistory] = useState<Array<any>>(() => {
+    const saved = localStorage.getItem('versiory_cash_history');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isCashReportOpen, setIsCashReportOpen] = useState(false);
   const [isCashRegisterModalOpen, setIsCashRegisterModalOpen] = useState(false);
   const [cashRegisterForm, setCashRegisterForm] = useState({ amount: 0 });
@@ -303,16 +317,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return Array.from(new Set(merged));
   }, [categories, products]);
 
+  // Persistência do Caixa (Salvamento)
+  useEffect(() => {
+    localStorage.setItem('versiory_cash_register', JSON.stringify(cashRegister));
+  }, [cashRegister]);
+
+  useEffect(() => {
+    localStorage.setItem('versiory_cash_withdrawals', JSON.stringify(cashWithdrawals));
+  }, [cashWithdrawals]);
+
+  useEffect(() => {
+    localStorage.setItem('versiory_cash_deposits', JSON.stringify(cashDeposits));
+  }, [cashDeposits]);
+
+  useEffect(() => {
+    localStorage.setItem('versiory_cash_history', JSON.stringify(cashRegisterHistory));
+  }, [cashRegisterHistory]);
+
   const stats = useMemo(() => {
-    const paidOrders = orders.filter(order => ['paid', 'processing', 'shipped', 'delivered'].includes(order.status));
-    const totalRevenue = paidOrders.reduce((sum, order) => sum + order.total, 0);
+    const validOrders = orders.filter(order =>
+      !order.isBudget &&
+      ['paid', 'processing', 'shipped', 'delivered'].includes(order.status)
+    );
+    // Filtrar faturamento: orçamentos nunca contam, serviços só contam se 'delivered'
+    const revenueOrders = orders.filter(order => {
+      if (order.isBudget) return false;
+      const hasService = order.items?.some(item => {
+        const product = products.find(p => p.id === item.productId);
+        return product?.category === 'Serviços';
+      });
+      if (hasService) return order.status === 'delivered';
+      return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
+    });
+
+    const totalRevenue = revenueOrders.reduce((sum, order) => sum + order.total, 0);
     return {
       totalProducts: products.length,
-      totalOrders: orders.length,
+      totalOrders: orders.filter(o => !o.isBudget).length,
       totalCustomers: customers.length,
       totalRevenue
     };
   }, [products, orders, customers]);
+
 
   const recentOrders = useMemo(() =>
     [...orders]
@@ -387,16 +433,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [products, inventorySearch, stockFilter]);
 
   const financialStats = useMemo(() => {
-    const paidOrders = orders.filter(order => ['paid', 'processing', 'shipped', 'delivered'].includes(order.status));
-    const totalRevenue = paidOrders.reduce((sum, order) => sum + order.total, 0);
-    const pdvRevenue = paidOrders.filter(o => o.salesChannel === 'physical').reduce((sum, order) => sum + order.total, 0);
-    const onlineRevenue = paidOrders.filter(o => !o.salesChannel || o.salesChannel === 'online').reduce((sum, order) => sum + order.total, 0);
+    const revenueOrders = orders.filter(order => {
+      if (order.isBudget) return false;
+      const hasService = order.items?.some(item => {
+        const product = products.find(p => p.id === item.productId);
+        return product?.category === 'Serviços';
+      });
+      if (hasService) return order.status === 'delivered';
+      return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
+    });
+
+    const totalRevenue = revenueOrders.reduce((sum, order) => sum + order.total, 0);
+    const pdvRevenue = revenueOrders.filter(o => o.salesChannel === 'physical').reduce((sum, order) => sum + order.total, 0);
+    const onlineRevenue = revenueOrders.filter(o => !o.salesChannel || o.salesChannel === 'online').reduce((sum, order) => sum + order.total, 0);
     const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
     const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
-  }, [orders, expenses]);
+  }, [orders, expenses, products]);
+
 
   const recentTransactions = useMemo(() => {
     const revenue = orders.map(order => ({
@@ -437,14 +493,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // ERRCOM033: Estatísticas de clientes
   const customerStats = useMemo(() => {
+    const activeOrders = orders.filter(o => !o.isBudget);
     const pdvCustomerIds = new Set(
-      orders.filter(o => o.salesChannel === 'physical').map(o => o.customerId)
+      activeOrders.filter(o => o.salesChannel === 'physical').map(o => o.customerId)
     );
     const onlineCustomerIds = new Set(
-      orders.filter(o => !o.salesChannel || o.salesChannel === 'online').map(o => o.customerId)
+      activeOrders.filter(o => !o.salesChannel || o.salesChannel === 'online').map(o => o.customerId)
     );
-    const paidOrders = orders.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status));
-    const totalRevenue = paidOrders.reduce((s, o) => s + o.total, 0);
+
+    // Revenue logic should match stats calc
+    const revenueOrders = orders.filter(order => {
+      if (order.isBudget) return false;
+      const hasService = order.items?.some(item => {
+        const product = products.find(p => p.id === item.productId);
+        return product?.category === 'Serviços';
+      });
+      if (hasService) return order.status === 'delivered';
+      return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
+    });
+
+    const totalRevenue = revenueOrders.reduce((s, o) => s + o.total, 0);
     const avgTicket = customers.length > 0 ? totalRevenue / customers.length : 0;
     return {
       total: customers.length,
@@ -452,7 +520,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       online: onlineCustomerIds.size,
       avgTicket
     };
-  }, [customers, orders]);
+  }, [customers, orders, products]);
+
 
   const lowStockProducts = useMemo(() =>
     products.filter(product => {
@@ -467,7 +536,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const top5Products = useMemo(() => {
     const salesCount: Record<number, number> = {};
     orders.forEach(order => {
-      if (['paid', 'processing', 'shipped', 'delivered'].includes(order.status)) {
+      if (!order.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(order.status)) {
         order.items?.forEach(item => {
           salesCount[item.productId] = (salesCount[item.productId] || 0) + item.quantity;
         });
@@ -823,6 +892,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const updatedOrders = orders.map(order =>
         order.id === orderStatusForm.orderId ? updatedOrder : order
       );
+
+      // Gatilho Financeiro: Se passou para 'delivered' e era um pedido físico/PDV que ainda não tinha entrado no caixa
+      // (ex: Orçamentos ou Serviços que ficam em 'pending' até a entrega)
+      if (updatedOrder.status === 'delivered' && orderToUpdate.status !== 'delivered' && updatedOrder.salesChannel === 'physical' && !updatedOrder.isBudget) {
+        setCashRegister(prev => ({
+          ...prev,
+          currentBalance: prev.currentBalance + updatedOrder.total
+        }));
+      }
+
       onUpdateOrders(updatedOrders);
       setIsOrderStatusModalOpen(false);
     } catch (err) {
@@ -1135,7 +1214,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsPdvCheckoutModalOpen(true);
   };
 
-  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; cpf: string; notes: string }, order: Order) => {
+  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; email: string; cpf: string; notes: string; isBudget?: boolean }, order: Order) => {
+    const isBudget = order.isBudget || false;
+
     if (!cashRegister.isOpen) {
       window.alert('⚠️ O Caixa está fechado. Abra o caixa antes de realizar vendas.');
       setIsPdvCheckoutModalOpen(false);
@@ -1144,10 +1225,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsSubmitting(true);
     try {
       const { saveOrder, saveProduct, saveCustomer, getCustomers } = await import('../services/firebase');
-      const customers = await getCustomers();
-      let customer = customers.find(c => c.phone === customerData.phone && customerData.phone);
 
-      if (customer) {
+      // Se estivermos editando, preservamos o ID original
+      const orderId = editingOrder ? editingOrder.id : (order.isBudget ? `ORC-${Date.now()}` : `PDV-${Date.now()}`);
+      order.id = orderId;
+
+      const customers = await getCustomers();
+
+      let customer = customers.find(c => (c.phone === customerData.phone && customerData.phone) || (c.email === customerData.email && customerData.email));
+
+      if (customer && !isBudget) {
         customer.totalOrders = (customer.totalOrders || 0) + 1;
         customer.totalSpent = (customer.totalSpent || 0) + order.total;
         customer.cpfCnpj = customerData.cpf || customer.cpfCnpj;
@@ -1172,52 +1259,73 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       await saveOrder(order);
-      const updatedProducts = [...products];
-      for (const item of pdvCart) {
-        const productIndex = updatedProducts.findIndex(p => p.id === item.product.id);
-        if (productIndex !== -1) {
-          const p = updatedProducts[productIndex];
-          const newStock = Math.max(0, (p.stock || 0) - item.quantity);
 
-          let newStockBySize = { ...(p.stockBySize || {}) };
-          let newStockBySizeColor = { ...(p.stockBySizeColor || {}) };
+      // Só atualiza estoque se NÃO for orçamento
+      if (!isBudget) {
+        const updatedProducts = [...products];
+        for (const item of pdvCart) {
+          const productIndex = updatedProducts.findIndex(p => p.id === item.product.id);
+          if (productIndex !== -1) {
+            const p = updatedProducts[productIndex];
+            const newStock = Math.max(0, (p.stock || 0) - item.quantity);
 
-          // ERRCOM021: Respeitar estoque individual por cor/tamanho
-          if (item.selectedSize && item.selectedColor && p.colors && p.stockBySizeColor) {
-            const key = `${item.selectedSize}-${item.selectedColor}`;
-            const currentVariantStock = newStockBySizeColor[key] || 0;
-            newStockBySizeColor[key] = Math.max(0, currentVariantStock - item.quantity);
+            let newStockBySize = { ...(p.stockBySize || {}) };
+            let newStockBySizeColor = { ...(p.stockBySizeColor || {}) };
 
-            // Também atualizar o estoque geral por tamanho para consistência
-            const currentSizeStock = newStockBySize[item.selectedSize] || 0;
-            newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
-          } else if (item.selectedSize && p.sizes && p.stockBySize) {
-            const currentSizeStock = newStockBySize[item.selectedSize] || 0;
-            newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+            // ERRCOM021: Respeitar estoque individual por cor/tamanho
+            if (item.selectedSize && item.selectedColor && p.colors && p.stockBySizeColor) {
+              const key = `${item.selectedSize}-${item.selectedColor}`;
+              const currentVariantStock = newStockBySizeColor[key] || 0;
+              newStockBySizeColor[key] = Math.max(0, currentVariantStock - item.quantity);
+
+              // Também atualizar o estoque geral por tamanho para consistência
+              const currentSizeStock = newStockBySize[item.selectedSize] || 0;
+              newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+            } else if (item.selectedSize && p.sizes && p.stockBySize) {
+              const currentSizeStock = newStockBySize[item.selectedSize] || 0;
+              newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+            }
+
+            const productToSave = {
+              ...p,
+              stock: newStock,
+              stockBySize: (p.sizes && Object.keys(newStockBySize).length > 0) ? newStockBySize : p.stockBySize,
+              stockBySizeColor: (p.colors && Object.keys(newStockBySizeColor).length > 0) ? newStockBySizeColor : p.stockBySizeColor
+            };
+
+            const saved = await saveProduct(productToSave);
+            updatedProducts[productIndex] = saved;
           }
+        }
+        onUpdateProducts(updatedProducts);
+      }
 
-          const productToSave = {
-            ...p,
-            stock: newStock,
-            stockBySize: (p.sizes && Object.keys(newStockBySize).length > 0) ? newStockBySize : p.stockBySize,
-            stockBySizeColor: (p.colors && Object.keys(newStockBySizeColor).length > 0) ? newStockBySizeColor : p.stockBySizeColor
-          };
+      const updated = editingOrder
+        ? orders.map(o => o.id === order.id ? order : o)
+        : [...orders, order];
 
-          const saved = await saveProduct(productToSave);
-          updatedProducts[productIndex] = saved;
+      onUpdateOrders(updated);
+      setPdvCart([]);
+      setEditingOrder(null);
+
+
+      // Atualizar saldo do caixa (Somente se não for orçamento E não for serviço pendente)
+      const hasService = pdvCart.some(item => item.product.category === 'Serviços');
+
+      if (!isBudget) {
+        if (hasService) {
+          // Se tem serviço, status inicial é pending/processing e não entra no caixa agora
+          // O usuário pediu: "Deve ir para os pedidos com o status Aguardando Pagamento, somente quando acionar o status entregue computar no financeiro"
+          // Já definimos status no PdvCheckoutModal ou podemos forçar aqui
+          order.status = 'pending';
+          await saveOrder(order); // Atualiza com status correto
+        } else {
+          setCashRegister(prev => ({
+            ...prev,
+            currentBalance: prev.currentBalance + order.total
+          }));
         }
       }
-      onUpdateOrders([...orders, order]);
-      onUpdateProducts(updatedProducts);
-      setPdvCart([]);
-
-      // A modal agora controla o próprio fechamento através do estado de venda finalizada
-
-      // Atualizar saldo do caixa
-      setCashRegister(prev => ({
-        ...prev,
-        currentBalance: prev.currentBalance + order.total
-      }));
     } catch (error) {
       console.error('Erro:', error);
       window.alert('Erro ao finalizar venda.');
@@ -1276,6 +1384,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const expected = cashRegister.currentBalance;
     const difference = actual - expected;
 
+    // Calcular vendas reais por forma de pagamento
+    const registerOpenedAt = new Date(cashRegister.openedAt!).getTime();
+    const registerOrders = orders.filter(o =>
+      o.salesChannel === 'physical' &&
+      new Date(o.date).getTime() >= registerOpenedAt &&
+      (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing')
+    );
+
+    const salesByPayment = {
+      dinheiro: 0,
+      pix: 0,
+      debito: 0,
+      credito: 0
+    };
+
+    registerOrders.forEach(o => {
+      const method = (o.paymentMethod || 'dinheiro').toLowerCase() as keyof typeof salesByPayment;
+      if (salesByPayment[method] !== undefined) {
+        salesByPayment[method] += o.total;
+      }
+    });
+
     const closedRegister = {
       id: Date.now().toString(),
       openedAt: cashRegister.openedAt!,
@@ -1288,13 +1418,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       actualAmount: actual,
       difference: difference,
       totalSales: expected - cashRegister.openingAmount,
-      totalOrders: orders.filter(o => o.status === 'paid' || o.status === 'processing').length,
-      salesByPayment: {
-        dinheiro: expected * 0.6, // Simulação
-        pix: expected * 0.3,
-        debito: expected * 0.08,
-        credito: expected * 0.02
-      },
+      totalOrders: registerOrders.length,
+      salesByPayment,
       withdrawals: cashWithdrawals,
       deposits: cashDeposits,
       notes: difference !== 0 ? `${difference > 0 ? 'Sobra' : 'Falta'} de R$ ${Math.abs(difference).toFixed(2)}` : undefined
@@ -1377,6 +1502,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       console.error(error);
       window.alert("Erro ao salvar despesa");
     }
+  };
+
+  const handleEditOrder = (order: Order) => {
+    // Reconstruir o carrinho do PDV a partir dos itens do pedido
+    const newCart = order.items.map(item => {
+      const product = products.find(p => p.id === item.productId);
+      if (product) {
+        return {
+          product,
+          quantity: item.quantity,
+          selectedSize: item.selectedSize,
+          selectedColor: item.selectedColor
+        };
+      }
+      return null;
+    }).filter(Boolean) as { product: Product; quantity: number; selectedSize?: string; selectedColor?: string }[];
+
+    if (newCart.length === 0) {
+      window.alert('Não foi possível carregar os produtos deste pedido para edição (podem ter sido excluídos).');
+      return;
+    }
+
+    setPdvCart(newCart);
+    setEditingOrder(order);
+    setActiveTab('pdv');
+    setSelectedOrderDetail(null);
+    window.alert(`Editando Pedido ${order.id}. Você foi redirecionado para o PDV para alterar os itens.`);
   };
 
   const handleExpenseDelete = async (id: number) => {
@@ -1599,9 +1751,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="flex justify-between items-end mt-2">
                           <div>
                             <p className="font-black text-white text-lg">{formatCurrency(product.price)}</p>
-                            {product.category === 'Serviços' && product.installments && product.installments > 1 && (
+                            {product.installments && product.installments > 1 && (
                               <p className="text-[10px] text-versiory-coral font-bold -mt-1">
-                                {product.installments}x de {formatCurrency(product.price / product.installments)}
+                                ou {product.installments}x de {formatCurrency(product.price / product.installments)}
                               </p>
                             )}
                             <p className="text-xs text-green-400">
@@ -3807,7 +3959,54 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <p><span className="font-bold text-white">Data:</span> {formatDate(selectedOrderDetail.date)}</p>
               <p><span className="font-bold text-white">Status:</span> <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[selectedOrderDetail.status]}`}>{STATUS_LABELS[selectedOrderDetail.status]}</span></p>
               <p><span className="font-bold text-white">Canal:</span> {selectedOrderDetail.salesChannel === 'physical' ? 'PDV' : 'Online'}</p>
+              {selectedOrderDetail.address && <p><span className="font-bold text-white">Endereço:</span> {selectedOrderDetail.address}</p>}
               {selectedOrderDetail.notes && <p><span className="font-bold text-white">Observação:</span> {selectedOrderDetail.notes}</p>}
+
+              <div className="pt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    const phone = selectedOrderDetail.customerEmail?.includes('@pdv.local')
+                      ? selectedOrderDetail.customerEmail.replace('@pdv.local', '')
+                      : (selectedOrderDetail.customerPhone || '');
+
+                    const cleanPhone = phone.replace(/\D/g, '');
+                    if (!cleanPhone) {
+                      window.alert('Telefone do cliente não disponível.');
+                      return;
+                    }
+
+                    const message = `Olá ${selectedOrderDetail.customerName}, o status do seu pedido ${selectedOrderDetail.id} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`;
+                    window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                  </svg>
+                  Notificar Cliente
+                </button>
+
+                <button
+                  onClick={() => handleEditOrder(selectedOrderDetail)}
+                  className="bg-versiory-ink hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+                >
+                  ✏️ Editar Pedido
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (window.confirm('Deseja cancelar este pedido?')) {
+                      orderStatusForm.orderId = selectedOrderDetail.id;
+                      orderStatusForm.status = 'cancelled';
+                      handleOrderStatusSubmit(new Event('submit') as any);
+                      setSelectedOrderDetail(null);
+                    }
+                  }}
+                  className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+                >
+                  🗑️ Cancelar
+                </button>
+              </div>
             </div>
             <h4 className="font-bold text-white mb-2">Itens</h4>
             <div className="space-y-2 mb-4">
@@ -4056,124 +4255,162 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCashReportOpen(false)} />
 
-          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-8 border-b border-gray-200 flex justify-between items-center print:border-black">
+          <div className="relative w-full max-w-2xl bg-white rounded-[32px] shadow-2xl max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="p-8 pb-4 flex justify-between items-start">
               <div>
-                <h3 className="text-2xl font-black text-gray-900">Relatório de Fechamento de Caixa</h3>
-                <p className="text-sm text-gray-500 mt-1">Caixa #{cashRegisterHistory[cashRegisterHistory.length - 1]?.id?.slice(0, 8)}</p>
+                <h3 className="text-2xl font-black text-slate-800">Relatório de Fechamento de Caixa</h3>
+                <p className="text-slate-400 font-bold text-sm">Caixa #{cashRegisterHistory[cashRegisterHistory.length - 1]?.id?.slice(-8)}</p>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                  🖨 Imprimir
+              <div className="flex gap-3">
+                <button
+                  onClick={() => window.print()}
+                  className="bg-[#2563eb] hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shadow-lg shadow-blue-200"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Imprimir
                 </button>
-                <button onClick={() => setIsCashReportOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <button onClick={() => setIsCashReportOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                  <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
             </div>
 
-            <div className="p-8 space-y-6">
+            <div className="px-8 pb-8 space-y-6">
               {cashRegisterHistory.slice(-1).map(register => (
-                <div key={register.id} className="bg-gray-50 rounded-2xl p-6 space-y-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-500 font-medium">Abertura:</p>
-                      <p className="font-bold text-gray-900">{new Date(register.openedAt).toLocaleString('pt-BR')}</p>
+                <div key={register.id} className="space-y-6">
+                  {/* Info Grid */}
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-12 border-t border-slate-100 pt-6">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 font-bold text-sm">Abertura:</span>
+                      <span className="text-slate-800 font-black text-sm">{new Date(register.openedAt).toLocaleString('pt-BR')}</span>
                     </div>
-                    <div>
-                      <p className="text-gray-500 font-medium">Fechamento:</p>
-                      <p className="font-bold text-gray-900">{new Date(register.closedAt).toLocaleString('pt-BR')}</p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 font-bold text-sm">Fechamento:</span>
+                      <span className="text-slate-800 font-black text-sm">{new Date(register.closedAt).toLocaleString('pt-BR')}</span>
                     </div>
-                    <div>
-                      <p className="text-gray-500 font-medium">Operador:</p>
-                      <p className="font-bold text-gray-900">{register.openedBy}</p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 font-bold text-sm">Operador:</span>
+                      <span className="text-slate-800 font-black text-sm">{register.openedBy}</span>
                     </div>
-                    <div>
-                      <p className="text-gray-500 font-medium">Status:</p>
-                      <p className="font-bold text-gray-900">{register.status === 'open' ? 'Aberto' : 'Fechado'}</p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 font-bold text-sm">Status:</span>
+                      <span className="text-[#34d399] font-black text-sm uppercase">Fechado</span>
                     </div>
                   </div>
 
-                  <div className="border-t border-gray-200 pt-4 space-y-3">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="bg-blue-50 p-4 rounded-xl">
-                        <p className="text-blue-600 font-bold text-lg">{formatCurrency(register.initialAmount)}</p>
-                        <p className="text-blue-500 text-sm">Valor Abertura</p>
+                  {/* Main Metrics */}
+                  <div className="grid grid-cols-3 gap-4 h-24">
+                    <div className="bg-[#eff6ff] rounded-2xl flex flex-col items-center justify-center border border-blue-50">
+                      <span className="text-[#2563eb] font-black text-xl">{formatCurrency(register.initialAmount)}</span>
+                      <span className="text-blue-400 font-bold text-[10px] uppercase">Valor Abertura</span>
+                    </div>
+                    <div className="bg-[#f0fdf4] rounded-2xl flex flex-col items-center justify-center border border-green-50">
+                      <span className="text-[#16a34a] font-black text-xl">{formatCurrency(register.totalSales)}</span>
+                      <span className="text-green-500 font-bold text-[10px] uppercase truncate px-2">Total Vendas ({register.totalOrders})</span>
+                    </div>
+                    <div className="bg-[#f5f5f5] rounded-2xl flex flex-col items-center justify-center border border-gray-100">
+                      <span className="text-[#9333ea] font-black text-xl">{formatCurrency(register.expectedAmount)}</span>
+                      <span className="text-purple-400 font-bold text-[10px] uppercase">Valor total apurado</span>
+                    </div>
+                  </div>
+
+                  {/* Sangrias */}
+                  {register.withdrawals.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-slate-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
+                        <div className="h-px bg-slate-100 flex-1 border-dashed border-b border-t-0 border-slate-300"></div>
                       </div>
-                      <div className="bg-green-50 p-4 rounded-xl">
-                        <p className="text-green-600 font-bold text-lg">{formatCurrency(register.totalSales)}</p>
-                        <p className="text-green-500 text-sm">Total Vendas</p>
-                      </div>
-                      <div className={`p-4 rounded-xl ${register.difference > 0 ? 'bg-yellow-50' : register.difference < 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
-                        <p className={`font-bold text-lg ${register.difference > 0 ? 'text-yellow-600' : register.difference < 0 ? 'text-red-600' : 'text-gray-600'}`}>
-                          {register.difference > 0 ? '+' : ''}{formatCurrency(register.difference)}
-                        </p>
-                        <p className={`text-sm ${register.difference > 0 ? 'text-yellow-500' : register.difference < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                          {register.difference > 0 ? 'Sobra' : register.difference < 0 ? 'Falta' : 'Ok'}
-                        </p>
+                      <h4 className="font-black text-slate-700 text-sm">Sangrias</h4>
+                      <div className="space-y-1">
+                        {register.withdrawals.map((withdrawal: any, i: number) => (
+                          <div key={i} className="flex justify-between items-center bg-[#fff1f2] p-3 rounded-xl border border-red-50">
+                            <span className="text-red-800 text-xs font-bold">{withdrawal.reason}</span>
+                            <span className="text-red-700 font-black text-sm">-{formatCurrency(withdrawal.amount)}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
+                  )}
 
-                    {register.withdrawals.length > 0 && (
-                      <div>
-                        <h4 className="font-bold text-gray-700 mb-2">Sangrias</h4>
-                        <div className="space-y-1">
-                          {register.withdrawals.map((withdrawal: any, i: number) => (
-                            <div key={i} className="flex justify-between text-sm bg-red-50 p-2 rounded">
-                              <span>{withdrawal.reason}</span>
-                              <span className="text-red-600 font-bold">-{formatCurrency(withdrawal.amount)}</span>
-                            </div>
-                          ))}
-                        </div>
+                  {/* Suprimentos */}
+                  {register.deposits.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-slate-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
+                        <div className="h-px bg-slate-100 flex-1 border-dashed border-b border-t-0 border-slate-300"></div>
                       </div>
-                    )}
+                      <h4 className="font-black text-slate-700 text-sm">Suprimentos</h4>
+                      <div className="space-y-1">
+                        {register.deposits.map((deposit: any, i: number) => (
+                          <div key={i} className="flex justify-between items-center bg-[#eff6ff] p-3 rounded-xl border border-blue-50">
+                            <span className="text-blue-800 text-xs font-bold">{deposit.reason}</span>
+                            <span className="text-blue-700 font-black text-sm">+{formatCurrency(deposit.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-                    {register.deposits.length > 0 && (
-                      <div>
-                        <h4 className="font-bold text-gray-700 mb-2">Suprimentos</h4>
-                        <div className="space-y-1">
-                          {register.deposits.map((deposit: any, i: number) => (
-                            <div key={i} className="flex justify-between text-sm bg-blue-50 p-2 rounded">
-                              <span>{deposit.reason}</span>
-                              <span className="text-blue-600 font-bold">+{formatCurrency(deposit.amount)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                  {/* Divider Dash */}
+                  <div className="h-px w-full border-dashed border-b border-t-0 border-slate-300"></div>
 
-                    {register.salesByPayment && (
-                      <div>
-                        <h4 className="font-bold text-gray-700 mb-2">Vendas por Forma de Pagamento</h4>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="bg-gray-50 p-3 rounded">
-                            <span className="text-sm text-gray-600">Dinheiro:</span>
-                            <span className="font-bold text-gray-900">{formatCurrency(register.salesByPayment.dinheiro)}</span>
-                          </div>
-                          <div className="bg-gray-50 p-3 rounded">
-                            <span className="text-sm text-gray-600">PIX:</span>
-                            <span className="font-bold text-gray-900">{formatCurrency(register.salesByPayment.pix)}</span>
-                          </div>
-                          <div className="bg-gray-50 p-3 rounded">
-                            <span className="text-sm text-gray-600">Débito:</span>
-                            <span className="font-bold text-gray-900">{formatCurrency(register.salesByPayment.debito)}</span>
-                          </div>
-                          <div className="bg-gray-50 p-3 rounded">
-                            <span className="text-sm text-gray-600">Crédito:</span>
-                            <span className="font-bold text-gray-900">{formatCurrency(register.salesByPayment.credito)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {register.notes && (
-                      <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-xl">
-                        <p className="text-sm font-bold text-yellow-800">{register.notes}</p>
-                      </div>
-                    )}
+                  {/* Informado Metrics */}
+                  <div className="grid grid-cols-4 gap-3 h-20">
+                    <div className="bg-[#f3e8ff] rounded-2xl flex flex-col items-center justify-center border border-purple-50">
+                      <span className="text-[#a855f7] font-black text-sm">{formatCurrency(register.actualAmount)}</span>
+                      <span className="text-purple-400 font-bold text-[8px] uppercase">Valor informado</span>
+                    </div>
+                    <div className="bg-[#fef2f2] rounded-2xl flex flex-col items-center justify-center border border-red-50">
+                      <span className="text-red-600 font-black text-sm">{register.difference < 0 ? formatCurrency(Math.abs(register.difference)) : 'R$ 0,00'}</span>
+                      <span className="text-red-400 font-bold text-[8px] uppercase">Falta</span>
+                    </div>
+                    <div className="bg-[#ecfeff] rounded-2xl flex flex-col items-center justify-center border border-cyan-50">
+                      <span className="text-cyan-600 font-black text-sm">{register.difference > 0 ? formatCurrency(register.difference) : 'R$ 0,00'}</span>
+                      <span className="text-cyan-400 font-bold text-[8px] uppercase">Sobra</span>
+                    </div>
+                    <div className="bg-[#fefce8] rounded-2xl flex flex-col items-center justify-center border border-yellow-50">
+                      <span className="text-yellow-600 font-black text-sm">{formatCurrency(register.actualAmount)}</span>
+                      <span className="text-yellow-500 font-bold text-[8px] uppercase px-1 text-center leading-tight">Valor total Geral</span>
+                    </div>
                   </div>
+
+                  {/* Payment Breakdown */}
+                  <div className="space-y-4 pt-4">
+                    <div className="h-px w-full border-dashed border-b border-t-0 border-slate-300"></div>
+                    <h4 className="font-black text-slate-700 text-sm">Vendas por Forma de Pagamento</h4>
+                    <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-700 font-bold text-sm">Dinheiro:</span>
+                        <span className="text-slate-900 font-black text-sm">{formatCurrency(register.salesByPayment.dinheiro)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-700 font-bold text-sm">PIX:</span>
+                        <span className="text-slate-900 font-black text-sm">{formatCurrency(register.salesByPayment.pix)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-700 font-bold text-sm">Débito:</span>
+                        <span className="text-slate-900 font-black text-sm">{formatCurrency(register.salesByPayment.debito)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-700 font-bold text-sm">Crédito:</span>
+                        <span className="text-slate-900 font-black text-sm">{formatCurrency(register.salesByPayment.credito)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Final Status Warning */}
+                  {register.difference !== 0 && (
+                    <div className="pt-4">
+                      <div className="h-px w-full border-dashed border-b border-t-0 border-slate-300 mb-6"></div>
+                      <div className={`${register.difference < 0 ? 'bg-[#fffbeb] border-[#fef3c7] text-[#92400e]' : 'bg-blue-50 border-blue-100 text-blue-800'} border p-4 rounded-2xl text-center font-black text-sm shadow-sm animate-pulse`}>
+                        {register.difference < 0 ? `Falta de ${formatCurrency(Math.abs(register.difference))}` : `Sobra de ${formatCurrency(register.difference)}`}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -4190,7 +4427,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             Sair
           </button>
-          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados.</p>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 1.1.0</span></p>
         </div>
       </footer>
     </div >

@@ -84,7 +84,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
           <div className="text-5xl font-black text-versiory-coral mb-6">
             R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
-          {product.category === 'Serviços' && product.installments && product.installments > 1 && (
+          {product.installments && product.installments > 1 && (
             <div className="text-xl font-bold text-slate-500 -mt-4 mb-6">
               ou {product.installments}x de R$ {(product.price / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </div>

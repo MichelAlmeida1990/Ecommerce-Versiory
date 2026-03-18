@@ -203,9 +203,15 @@ const ProductDetail: React.FC = () => {
                       ,{Math.round((product.price % 1) * 100).toString().padStart(2, '0')}
                     </span>
                   </div>
-                  <p className="text-slate-600">
-                    Em até <strong className="text-slate-900">12x de R$ {(product.price / 12).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> sem juros
-                  </p>
+                  {(product.installments && product.installments > 1) ? (
+                    <p className="text-slate-600">
+                      Em até <strong className="text-slate-900">{product.installments}x de R$ {(product.price / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> sem juros
+                    </p>
+                  ) : (
+                    <p className="text-slate-600">
+                      À vista
+                    </p>
+                  )}
                 </div>
 
                 {/* Shipping & Stock */}

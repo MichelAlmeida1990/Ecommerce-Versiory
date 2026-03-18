@@ -183,6 +183,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
             <span className="text-2xl font-black text-slate-900">
               R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </span>
+            {product.installments && product.installments > 1 && (
+              <span className="text-[10px] text-slate-500 font-bold mt-1">
+                ou {product.installments}x de R$ {(product.price / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            )}
           </div>
 
           <button

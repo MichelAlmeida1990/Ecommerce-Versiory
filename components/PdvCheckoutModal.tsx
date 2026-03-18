@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { Product, Customer, Order } from '../types';
 import { validateCPFOrCNPJ } from '../utils/validators';
 import { generateInvoice } from '../services/invoice';
+import { getFiscalConfig } from '../services/fiscalConfig';
 import DanfePreview from './DanfePreview';
 
 interface PdvCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
-  cart: { product: Product; quantity: number }[];
-  onSubmit: (customerData: { name: string; phone: string; cpf: string; emitNF: boolean; notes: string }, order: Order) => Promise<void>;
+  cart: { product: Product; quantity: number; selectedSize?: string; selectedColor?: string }[];
+  onSubmit: (customerData: { name: string; phone: string; email: string; cpf: string; emitNF: boolean; notes: string; customPolicies?: string; isBudget?: boolean }, order: Order) => Promise<void>;
   isSubmitting: boolean;
 }
 
@@ -19,9 +20,10 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   onSubmit,
   isSubmitting
 }) => {
-  const [customerForm, setCustomerForm] = useState({ name: '', phone: '', cpf: '', notes: '' });
+  const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
   const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'debito' | 'credito'>('dinheiro');
   const [emitNF, setEmitNF] = useState(false);
+  const [isBudget, setIsBudget] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [showDanfe, setShowDanfe] = useState(false);
   const [generatedOrder, setGeneratedOrder] = useState<Order | null>(null);
@@ -61,33 +63,45 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     return newErrors.length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e: React.FormEvent, forceBudget = false) => {
+    if (e) e.preventDefault();
 
-    if (!validateForm()) return;
+    // Se for orçamento, a validação é mais simples (apenas nome)
+    if (forceBudget) {
+      if (!customerForm.name.trim()) {
+        setErrors(['Nome do cliente é obrigatório mesmo para orçamentos']);
+        return;
+      }
+    } else if (!validateForm()) return;
 
     const order: Order = {
-      id: `PDV-${Date.now()}`,
+      id: forceBudget ? `ORC-${Date.now()}` : `PDV-${Date.now()}`,
       customerId: 0,
       customerName: customerForm.name,
-      customerEmail: customerForm.phone ? `${customerForm.phone}@pdv.local` : 'pdv@versiory.local',
+      customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : 'pdv@versiory.local'),
       date: new Date().toISOString(),
       total,
-      status: 'delivered',
-      paymentMethod,
+      status: forceBudget ? 'pending' : 'delivered',
+      paymentMethod: forceBudget ? undefined : paymentMethod,
       items: cart.map(item => ({
         productId: item.product.id,
         name: item.product.name,
         quantity: item.quantity,
         price: item.product.price,
-        image: item.product.image
+        image: item.product.image,
+        selectedSize: item.selectedSize,
+        selectedColor: item.selectedColor,
+        installments: item.product.installments
       })),
       salesChannel: 'physical',
-      emitNF,
-      notes: customerForm.notes
+      emitNF: forceBudget ? false : emitNF,
+      notes: customerForm.notes,
+      address: customerForm.address,
+      isBudget: forceBudget,
+      customPolicies: customerForm.customPolicies
     };
 
-    if (emitNF) {
+    if (emitNF && !forceBudget) {
       const customer: Customer = {
         id: Date.now(),
         name: customerForm.name,
@@ -120,15 +134,16 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       }
     }
 
-    await onSubmit({ ...customerForm, emitNF }, order);
+    await onSubmit({ ...customerForm, emitNF, isBudget: forceBudget }, order);
 
-    if (!emitNF) {
+    if (!emitNF || forceBudget) {
       setSoldItems([...cart]);
       setSoldTotal(total);
       setLastFinishedOrder(order);
       setSaleFinished(true);
-      setCustomerForm({ name: '', phone: '', cpf: '', notes: '' });
+      setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
       setEmitNF(false);
+      setIsBudget(forceBudget);
       setErrors([]);
     }
   };
@@ -137,7 +152,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     setShowDanfe(false);
     setGeneratedOrder(null);
     setGeneratedCustomer(null);
-    setCustomerForm({ name: '', phone: '', cpf: '', notes: '' });
+    setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
     setEmitNF(false);
     setErrors([]);
     onClose();
@@ -154,20 +169,29 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   const handlePrintReceipt = async () => {
     if (!lastFinishedOrder) return;
     const { generateReceiptHTML } = await import('../utils/receiptGenerator');
+    const fiscalConfig = getFiscalConfig();
 
-    const receiptContent = generateReceiptHTML({
+    const isPdvPhone = lastFinishedOrder.customerEmail && lastFinishedOrder.customerEmail.includes('@pdv.local');
+    const displayPhone = isPdvPhone ? lastFinishedOrder.customerEmail!.replace('@pdv.local', '') : undefined;
+    const displayEmail = isPdvPhone ? undefined : lastFinishedOrder.customerEmail;
+
+    const receiptHTML = generateReceiptHTML({
       orderId: lastFinishedOrder.id,
       date: new Date(lastFinishedOrder.date).toLocaleString('pt-BR'),
       customerName: lastFinishedOrder.customerName,
-      customerAddress: '', // PDV geralmente não tem endereço
+      customerPhone: displayPhone,
+      customerEmail: displayEmail,
+      customerAddress: lastFinishedOrder.address || undefined,
       notes: lastFinishedOrder.notes,
-      items: soldItems.map(item => ({ ...item.product, quantity: item.quantity })),
-      total: soldTotal
+      storePolicies: lastFinishedOrder.customPolicies || fiscalConfig?.storePolicies,
+      items: soldItems.map(item => ({ ...item.product, quantity: item.quantity as any, category: item.product.category })),
+      total: soldTotal,
+      isBudget: lastFinishedOrder.isBudget
     });
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');
     if (printWindow) {
-      printWindow.document.write(receiptContent);
+      printWindow.document.write(receiptHTML);
       printWindow.document.close();
     }
   };
@@ -177,8 +201,8 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-3xl max-w-sm w-full p-8 text-center shadow-2xl animate-in zoom-in duration-300">
           <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-6">✓</div>
-          <h3 className="text-2xl font-black text-slate-900 mb-2">Venda Finalizada!</h3>
-          <p className="text-slate-500 mb-8">O que deseja fazer agora?</p>
+          <h3 className="text-2xl font-black text-slate-900 mb-2">{isBudget ? 'Orçamento Gerado!' : 'Venda Finalizada!'}</h3>
+          <p className="text-slate-500 mb-8">{isBudget ? 'O orçamento foi registrado com sucesso.' : 'O que deseja fazer agora?'}</p>
 
           <div className="space-y-3">
             <button
@@ -188,7 +212,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
-              Imprimir Recibo
+              Imprimir {isBudget ? 'Orçamento' : 'Recibo'}
             </button>
             <button
               onClick={() => {
@@ -244,7 +268,51 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
               value={customerForm.phone}
               onChange={e => setCustomerForm(prev => ({ ...prev, phone: e.target.value }))}
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-              placeholder="(11) 98765-4321"
+              placeholder="(00) 00000-0000"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-black text-gray-700 mb-2">E-mail (opcional)</label>
+            <input
+              type="email"
+              value={customerForm.email}
+              onChange={e => setCustomerForm(prev => ({ ...prev, email: e.target.value }))}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+              placeholder="cliente@email.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-black text-gray-700 mb-2">Endereço (opcional)</label>
+            <input
+              type="text"
+              value={customerForm.address}
+              onChange={e => setCustomerForm(prev => ({ ...prev, address: e.target.value }))}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+              placeholder="Ex: Rua das Flores, 123"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-black text-gray-700 mb-2">Observações / Notas do Serviço (opcional)</label>
+            <textarea
+              value={customerForm.notes}
+              onChange={e => setCustomerForm(prev => ({ ...prev, notes: e.target.value }))}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+              placeholder="Ex: Cliente vai retirar na segunda-feira..."
+              rows={2}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-black text-gray-700 mb-2">Termos e Garantia (Editável para este pedido)</label>
+            <textarea
+              value={customerForm.customPolicies || getFiscalConfig()?.storePolicies || ''}
+              onChange={e => setCustomerForm(prev => ({ ...prev, customPolicies: e.target.value }))}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none text-xs"
+              placeholder="Políticas específicas para esta venda..."
+              rows={3}
             />
           </div>
 
@@ -316,27 +384,37 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 pt-4">
+          <div className="flex flex-col gap-4 pt-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
+                type="button"
+                onClick={() => handleSubmit(null as any, true)}
+                disabled={isSubmitting}
+                className="flex-1 bg-versiory-ink hover:bg-[#1b2a3a] text-white font-black py-4 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                📝 Gerar Orçamento
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-4 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-coral-200"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    {emitNF ? 'Gerando NF-e...' : 'Finalizando...'}
+                  </>
+                ) : (
+                  emitNF ? '✓ Finalizar com NF-e' : 'Confirmar Venda'
+                )}
+              </button>
+            </div>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-black py-3 rounded-xl transition-all"
+              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-all"
             >
               Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-black py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  {emitNF ? 'Gerando NF-e...' : 'Finalizando...'}
-                </>
-              ) : (
-                emitNF ? '✓ Finalizar com NF-e' : 'Confirmar Venda'
-              )}
             </button>
           </div>
         </form>

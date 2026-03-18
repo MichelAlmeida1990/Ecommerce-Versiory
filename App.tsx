@@ -353,7 +353,7 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="border-t border-white/10 pt-8 text-center text-white font-semibold">
-              <p>© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados.</p>
+              <p>© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 1.1.0</span></p>
             </div>
           </div>
         </footer>
