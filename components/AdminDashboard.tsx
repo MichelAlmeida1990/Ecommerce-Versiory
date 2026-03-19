@@ -1,4 +1,5 @@
 ﻿import React, { useMemo, useState, useEffect } from 'react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Product,
   CategoryItem,
@@ -359,6 +360,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
   }, [products, orders, customers]);
 
+  const last30DaysData = useMemo(() => {
+    const data = [];
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const shortDate = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+
+      const dayOrders = orders.filter(o => o.date.startsWith(dateStr) && !o.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status));
+      const faturamento = dayOrders.reduce((sum, o) => sum + o.total, 0);
+
+      data.push({
+        name: shortDate,
+        Pedidos: dayOrders.length,
+        Faturamento: faturamento
+      });
+    }
+    return data;
+  }, [orders]);
+
+  const finalDashboardTop5 = useMemo(() => {
+    const productSales: Record<number, { count: number, revenue: number }> = {};
+    orders.filter(o => !o.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).forEach(order => {
+      order.items?.forEach(item => {
+        if (!productSales[item.productId]) {
+          productSales[item.productId] = { count: 0, revenue: 0 };
+        }
+        productSales[item.productId].count += item.quantity;
+        productSales[item.productId].revenue += item.price * item.quantity;
+      });
+    });
+
+    return Object.entries(productSales)
+      .map(([id, s]) => ({
+        product: products.find(p => p.id === Number(id)),
+        ...s
+      }))
+      .filter(p => p.product)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [orders, products]);
+
 
   const recentOrders = useMemo(() =>
     [...orders]
@@ -532,21 +577,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     [products]
   );
 
-  // ERRCOM031: Top 5 produtos mais vendidos
-  const top5Products = useMemo(() => {
-    const salesCount: Record<number, number> = {};
-    orders.forEach(order => {
-      if (!order.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(order.status)) {
-        order.items?.forEach(item => {
-          salesCount[item.productId] = (salesCount[item.productId] || 0) + item.quantity;
-        });
-      }
-    });
-    return products
-      .map(p => ({ product: p, sold: salesCount[p.id] || 0 }))
-      .sort((a, b) => b.sold - a.sold)
-      .slice(0, 5);
-  }, [orders, products]);
+
 
   const resetProductForm = () => {
     setProductForm({
@@ -1258,7 +1289,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onUpdateCustomers([...customers, newCustomer]);
       }
 
-      await saveOrder(order);
+      // Sanitize order to remove any undefined properties which crash Firestore
+      const sanitizedOrder = JSON.parse(JSON.stringify(order));
+      await saveOrder(sanitizedOrder);
 
       // Só atualiza estoque se NÃO for orçamento
       if (!isBudget) {
@@ -1329,6 +1362,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } catch (error) {
       console.error('Erro:', error);
       window.alert('Erro ao finalizar venda.');
+      throw error;
     } finally {
       setIsSubmitting(false);
     }
@@ -1374,6 +1408,69 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setCashMovementForm({ type: 'withdrawal', amount: 0, reason: '' });
     setIsCashMovementModalOpen(false);
     window.alert(`${cashMovementForm.type === 'withdrawal' ? 'Sangria' : 'Suprimento'} registrado com sucesso!`);
+  };
+
+  const handleShowPartialReport = () => {
+    if (!cashRegister.isOpen) return;
+
+    // Calcular vendas parciais por forma de pagamento
+    const registerOpenedAt = new Date(cashRegister.openedAt!).getTime();
+    const registerOrders = orders.filter(o =>
+      o.salesChannel === 'physical' &&
+      new Date(o.date).getTime() >= registerOpenedAt &&
+      (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing')
+    );
+
+    const salesByPayment = {
+      dinheiro: 0,
+      pix: 0,
+      debito: 0,
+      credito: 0
+    };
+
+    registerOrders.forEach(o => {
+      const method = (o.paymentMethod || 'dinheiro').toLowerCase() as keyof typeof salesByPayment;
+      if (salesByPayment[method] !== undefined) {
+        salesByPayment[method] += o.total;
+      }
+    });
+
+    const partialReport = {
+      id: `PARTIAL-${Date.now()}`,
+      openedAt: cashRegister.openedAt!,
+      closedAt: null,
+      openedBy: 'Operador',
+      status: 'open' as const,
+      initialAmount: cashRegister.openingAmount,
+      currentBalance: cashRegister.currentBalance,
+      totalSales: cashRegister.currentBalance - cashRegister.openingAmount - cashDeposits.reduce((acc, d) => acc + d.amount, 0) + cashWithdrawals.reduce((acc, w) => acc + w.amount, 0), // Ajuste para mostrar apenas vendas
+      totalOrders: registerOrders.length,
+      expectedAmount: cashRegister.currentBalance,
+      actualAmount: cashRegister.currentBalance,
+      difference: 0,
+      withdrawals: cashWithdrawals,
+      deposits: cashDeposits,
+      salesByPayment
+    };
+
+    // Usamos o histórico apenas para exibição no modal
+    setCashRegisterHistory(prev => [...prev, partialReport]);
+    setIsCashReportOpen(true);
+  };
+
+  const handlePrintCashReport = async (report: any) => {
+    try {
+      const { generateCashReportHTML } = await import('../utils/cashReportGenerator');
+      const html = generateCashReportHTML(report);
+      const printWindow = window.open('', '_blank', 'width=400,height=600');
+      if (printWindow) {
+        printWindow.document.write(html);
+        printWindow.document.close();
+      }
+    } catch (error) {
+      console.error('Erro ao imprimir relatório:', error);
+      window.print(); // Fallback
+    }
   };
 
   const handleCashRegisterClose = () => {
@@ -1667,46 +1764,112 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            {/* Top Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-                <div className="text-2xl font-bold text-slate-100">{stats.totalProducts}</div>
-                <div className="text-slate-100 font-medium text-sm">Total Produtos</div>
+              <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
+                <div className="text-3xl font-bold text-white mb-2">{stats.totalProducts}</div>
+                <div className="text-slate-400 font-medium text-sm">Total Produtos</div>
               </div>
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-                <div className="text-2xl font-bold text-slate-100">{stats.totalOrders}</div>
-                <div className="text-slate-100 font-medium text-sm">Total Pedidos</div>
+              <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
+                <div className="text-3xl font-bold text-white mb-2">{stats.totalOrders}</div>
+                <div className="text-slate-400 font-medium text-sm">Total Pedidos</div>
               </div>
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-                <div className="text-2xl font-bold text-slate-100">{formatCurrency(stats.totalRevenue)}</div>
-                <div className="text-slate-100 font-medium text-sm">Faturamento</div>
+              <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
+                <div className="text-3xl font-bold text-white mb-2">{formatCurrency(stats.totalRevenue)}</div>
+                <div className="text-slate-400 font-medium text-sm">Faturamento</div>
               </div>
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20">
-                <div className="text-2xl font-bold text-slate-100">{stats.totalCustomers}</div>
-                <div className="text-slate-100 font-medium text-sm">Clientes</div>
+              <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
+                <div className="text-3xl font-bold text-white mb-2">{stats.totalCustomers}</div>
+                <div className="text-slate-400 font-medium text-sm">Clientes</div>
               </div>
             </div>
 
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-4">
-              <h3 className="text-lg font-bold text-white mb-4">Pedidos Recentes</h3>
-              <div className="space-y-3">
-                {recentOrders.map(order => (
-                  <div key={order.id} className="flex justify-between items-center p-4 bg-white/5 border border-white/15 rounded-xl">
-                    <div>
-                      <div className="font-medium text-white">
-                        {order.id} - {order.customerName}
+            {/* Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-[#17223b] rounded-xl p-6 border border-white/5 shadow-lg">
+                <h3 className="text-white font-bold mb-6">Vendas por Dia (últimos 30 dias)</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={last30DaysData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickMargin={10} />
+                      <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value) => value} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}
+                        itemStyle={{ color: '#fbbf24' }}
+                      />
+                      <Line type="monotone" dataKey="Pedidos" stroke="#fbbf24" strokeWidth={2} dot={{ fill: '#fbbf24', r: 4 }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="bg-[#17223b] rounded-xl p-6 border border-white/5 shadow-lg">
+                <h3 className="text-white font-bold mb-6">Faturamento por Dia (últimos 30 dias)</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={last30DaysData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickMargin={10} />
+                      <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value}`} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}
+                        formatter={(value: number) => [formatCurrency(value), 'Faturamento']}
+                        cursor={{ fill: '#ffffff10' }}
+                      />
+                      <Bar dataKey="Faturamento" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Lists */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-[#243558] rounded-xl p-6 shadow-lg border border-white/5">
+                <div className="flex items-center gap-2 mb-6">
+                  <span className="text-xl">🏆</span>
+                  <h3 className="text-lg font-bold text-white">Top 5 Produtos Mais Vendidos</h3>
+                </div>
+                <div className="space-y-3">
+                  {finalDashboardTop5.map((item, index) => (
+                    <div key={item.product?.id} className="bg-[#1b2a47] rounded-xl p-4 flex items-center justify-between border border-white/5">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-yellow-500 text-white' : index === 1 ? 'bg-slate-300 text-slate-800' : index === 2 ? 'bg-amber-700 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                          {index + 1}º
+                        </div>
+                        <img src={item.product?.image} alt={item.product?.name} className="w-12 h-12 rounded-lg object-cover bg-white" />
+                        <div>
+                          <p className="font-bold text-white text-sm">{item.product?.name}</p>
+                          <p className="text-xs text-slate-400">{item.product?.category}</p>
+                        </div>
                       </div>
-                      <div className="text-sm text-slate-100">
-                        {formatDate(order.date)} - {formatCurrency(order.total)}
+                      <div className="text-right">
+                        <div className="text-versiory-coral font-bold text-sm">{item.count} vendas</div>
+                        <div className="text-xs text-slate-400">{formatCurrency(item.revenue)}</div>
+                        <div className="text-xs text-green-400 mt-1">{item.product?.stock || 0} em estoque</div>
                       </div>
                     </div>
-                    <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${STATUS_COLORS[order.status]}`}>
-                      {STATUS_LABELS[order.status]}
-                    </span>
-                  </div>
-                ))}
-                {recentOrders.length === 0 && (
-                  <p className="text-sm text-slate-200">Nenhum pedido recente.</p>
-                )}
+                  ))}
+                  {finalDashboardTop5.length === 0 && <p className="text-slate-400 text-sm">Nenhuma venda registrada.</p>}
+                </div>
+              </div>
+
+              <div className="bg-[#243558] rounded-xl p-6 shadow-lg border border-white/5">
+                <h3 className="text-lg font-bold text-white mb-6">Pedidos Recentes</h3>
+                <div className="space-y-3">
+                  {recentOrders.map(order => (
+                    <div key={order.id} className="bg-[#1b2a47] rounded-xl p-4 flex items-center justify-between border border-white/5">
+                      <div>
+                        <div className="font-bold text-white text-sm mb-1">{order.id} - {order.customerName}</div>
+                        <div className="text-xs text-slate-400">{formatDate(order.date)} - {formatCurrency(order.total)}</div>
+                      </div>
+                      <span className={`px-4 py-1.5 text-xs font-bold rounded-full ${order.status === 'delivered' ? 'bg-slate-100 text-slate-800' : order.status === 'pending' || order.status === 'processing' ? 'bg-blue-100 text-blue-800' : STATUS_COLORS[order.status] || 'bg-slate-100 text-slate-800'}`}>
+                        {STATUS_LABELS[order.status]}
+                      </span>
+                    </div>
+                  ))}
+                  {recentOrders.length === 0 && <p className="text-slate-400 text-sm">Nenhum pedido recente.</p>}
+                </div>
               </div>
             </div>
           </div>
@@ -1899,6 +2062,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     'Finalizar Venda (PDV)'
                   )}
                 </button>
+
+                <button
+                  onClick={handleShowPartialReport}
+                  disabled={!cashRegister.isOpen}
+                  className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl shadow-versiory-coral/20 mt-3 flex flex-col items-center justify-center gap-0.5"
+                >
+                  <span>Leitura X</span>
+                </button>
+                <div className="mt-2 flex items-start gap-1 justify-center px-2">
+                  <span className="text-yellow-400 text-[10px]">⚠️</span>
+                  <p className="text-[9px] font-bold text-slate-400 text-center leading-tight">
+                    Resumo das vendas realizadas até o momento, para conferência parcial.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -1991,27 +2168,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* ERRCOM031: Top 5 Produtos Mais Vendidos */}
-            {top5Products.some(p => p.sold > 0) && (
+            {finalDashboardTop5.some(p => p.count > 0) && (
               <div className="mb-6 bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-5">
                 <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
                   <span className="text-2xl">🏆</span> Top 5 Produtos Mais Vendidos
                 </h3>
                 <div className="space-y-2">
-                  {top5Products.filter(p => p.sold > 0).map(({ product, sold }, idx) => (
-                    <div key={product.id} className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-xl">
+                  {finalDashboardTop5.filter(p => p.count > 0).map(({ product, count, revenue }, idx) => (
+                    <div key={product?.id} className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-xl">
                       <span className={`w-8 h-8 flex items-center justify-center rounded-full font-black text-sm ${idx === 0 ? 'bg-yellow-500 text-white' :
                         idx === 1 ? 'bg-slate-400 text-white' :
                           idx === 2 ? 'bg-amber-700 text-white' : 'bg-white/20 text-white'
                         }`}>{idx + 1}°</span>
-                      <img src={product.image} alt={product.name} className="w-10 h-10 rounded-lg object-cover bg-white" />
+                      <img src={product?.image} alt={product?.name} className="w-10 h-10 rounded-lg object-cover bg-white" />
                       <div className="flex-1">
-                        <p className="text-sm font-bold text-white line-clamp-1">{product.name}</p>
-                        <p className="text-xs text-slate-400">{product.category}</p>
+                        <p className="text-sm font-bold text-white line-clamp-1">{product?.name}</p>
+                        <p className="text-xs text-slate-400">{product?.category}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-black text-versiory-coral">{sold} vendas</p>
-                        <p className="text-xs text-slate-400">{formatCurrency(product.price)}</p>
-                        <p className="text-xs text-green-400">{product.stock ?? 0} em estoque</p>
+                        <p className="text-sm font-black text-versiory-coral">{count} vendas</p>
+                        <p className="text-xs text-slate-400">{formatCurrency(revenue || (product?.price * count))}</p>
+                        <p className="text-xs text-green-400">{product?.stock ?? 0} em estoque</p>
                       </div>
                     </div>
                   ))}
@@ -3716,6 +3893,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         cart={pdvCart}
         onSubmit={handlePdvCheckoutSubmit}
         isSubmitting={isSubmitting}
+        editingOrder={editingOrder}
       />
 
       {/* Modal Gerenciador de Tamanhos */}
@@ -4253,161 +4431,233 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Modal de Relatório de Caixa */}
       {isCashReportOpen && cashRegisterHistory.length > 0 && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCashReportOpen(false)} />
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md transition-all duration-500" onClick={() => {
+            const last = cashRegisterHistory[cashRegisterHistory.length - 1];
+            if (last?.id?.startsWith('PARTIAL-')) {
+              setCashRegisterHistory(prev => prev.filter(h => h.id !== last.id));
+            }
+            setIsCashReportOpen(false);
+          }} />
 
-          <div className="relative w-full max-w-2xl bg-white rounded-[32px] shadow-2xl max-h-[90vh] overflow-y-auto">
+          {/* Modal Container with Glassmorphism */}
+          <div className="relative w-full max-w-2xl bg-gradient-to-br from-[#0b1f4b]/95 via-[#0a1b3d]/98 to-[#08122b] backdrop-blur-2xl rounded-[40px] shadow-[0_0_100px_rgba(37,99,235,0.2)] border border-white/20 max-h-[92vh] overflow-y-auto custom-scrollbar transform transition-all animate-in fade-in zoom-in duration-300">
+            {/* Animated Background Glows */}
+            <div className="absolute -top-24 -left-24 w-64 h-64 bg-blue-500/20 rounded-full blur-[100px] pointer-events-none"></div>
+            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-versiory-coral/10 rounded-full blur-[100px] pointer-events-none"></div>
+
             {/* Header */}
-            <div className="p-8 pb-4 flex justify-between items-start">
+            <div className="p-10 pb-6 flex justify-between items-start sticky top-0 bg-transparent backdrop-blur-lg z-10">
               <div>
-                <h3 className="text-2xl font-black text-slate-800">Relatório de Fechamento de Caixa</h3>
-                <p className="text-slate-400 font-bold text-sm">Caixa #{cashRegisterHistory[cashRegisterHistory.length - 1]?.id?.slice(-8)}</p>
+                <div className="flex items-center gap-3 mb-1">
+                  <span className="bg-blue-500/20 text-blue-400 p-2 rounded-xl border border-blue-500/30">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </span>
+                  <h3 className="text-3xl font-black text-white tracking-tight">
+                    {cashRegisterHistory[cashRegisterHistory.length - 1]?.id?.startsWith('PARTIAL-') ? 'Leitura X' : 'Fechamento de Caixa'}
+                  </h3>
+                </div>
+                <p className="text-slate-400 font-bold text-sm ml-11 italic opacity-80">
+                  ID: <span className="text-blue-400 font-black">#{cashRegisterHistory[cashRegisterHistory.length - 1]?.id?.slice(-8)}</span>
+                </p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-4">
                 <button
-                  onClick={() => window.print()}
-                  className="bg-[#2563eb] hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shadow-lg shadow-blue-200"
+                  onClick={() => handlePrintCashReport(cashRegisterHistory[cashRegisterHistory.length - 1])}
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-black transition-all shadow-xl shadow-blue-600/20 active:scale-95 group"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 group-hover:rotate-12 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                   </svg>
                   Imprimir
                 </button>
-                <button onClick={() => setIsCashReportOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                  <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <button
+                  onClick={() => {
+                    const last = cashRegisterHistory[cashRegisterHistory.length - 1];
+                    if (last?.id?.startsWith('PARTIAL-')) {
+                      setCashRegisterHistory(prev => prev.filter(h => h.id !== last.id));
+                    }
+                    setIsCashReportOpen(false);
+                  }}
+                  className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition-all text-slate-400 hover:text-white"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
             </div>
 
-            <div className="px-8 pb-8 space-y-6">
+            <div className="px-10 pb-12 space-y-8">
               {cashRegisterHistory.slice(-1).map(register => (
-                <div key={register.id} className="space-y-6">
-                  {/* Info Grid */}
-                  <div className="grid grid-cols-2 gap-y-4 gap-x-12 border-t border-slate-100 pt-6">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-bold text-sm">Abertura:</span>
-                      <span className="text-slate-800 font-black text-sm">{new Date(register.openedAt).toLocaleString('pt-BR')}</span>
+                <div key={register.id} className="space-y-10 animate-in slide-in-from-bottom-4 duration-500">
+                  {/* Info Grid - Modern Glass Style */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-6 bg-white/5 rounded-3xl border border-white/10">
+                    <div className="space-y-1">
+                      <span className="text-slate-500 font-bold text-[10px] uppercase tracking-tighter">Abertura</span>
+                      <p className="text-white font-black text-sm">{new Date(register.openedAt).toLocaleString('pt-BR')}</p>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-bold text-sm">Fechamento:</span>
-                      <span className="text-slate-800 font-black text-sm">{new Date(register.closedAt).toLocaleString('pt-BR')}</span>
+                    <div className="space-y-1">
+                      <span className="text-slate-500 font-bold text-[10px] uppercase tracking-tighter">Fechamento</span>
+                      <p className="text-white font-black text-sm">
+                        {register.closedAt ? new Date(register.closedAt).toLocaleString('pt-BR') : '-'}
+                      </p>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-bold text-sm">Operador:</span>
-                      <span className="text-slate-800 font-black text-sm">{register.openedBy}</span>
+                    <div className="space-y-1">
+                      <span className="text-slate-500 font-bold text-[10px] uppercase tracking-tighter">Operador</span>
+                      <p className="text-white font-black text-sm">{register.openedBy}</p>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-bold text-sm">Status:</span>
-                      <span className="text-[#34d399] font-black text-sm uppercase">Fechado</span>
-                    </div>
-                  </div>
-
-                  {/* Main Metrics */}
-                  <div className="grid grid-cols-3 gap-4 h-24">
-                    <div className="bg-[#eff6ff] rounded-2xl flex flex-col items-center justify-center border border-blue-50">
-                      <span className="text-[#2563eb] font-black text-xl">{formatCurrency(register.initialAmount)}</span>
-                      <span className="text-blue-400 font-bold text-[10px] uppercase">Valor Abertura</span>
-                    </div>
-                    <div className="bg-[#f0fdf4] rounded-2xl flex flex-col items-center justify-center border border-green-50">
-                      <span className="text-[#16a34a] font-black text-xl">{formatCurrency(register.totalSales)}</span>
-                      <span className="text-green-500 font-bold text-[10px] uppercase truncate px-2">Total Vendas ({register.totalOrders})</span>
-                    </div>
-                    <div className="bg-[#f5f5f5] rounded-2xl flex flex-col items-center justify-center border border-gray-100">
-                      <span className="text-[#9333ea] font-black text-xl">{formatCurrency(register.expectedAmount)}</span>
-                      <span className="text-purple-400 font-bold text-[10px] uppercase">Valor total apurado</span>
+                    <div className="space-y-1">
+                      <span className="text-slate-500 font-bold text-[10px] uppercase tracking-tighter">Status Atual</span>
+                      <p className={`font-black text-sm uppercase flex items-center gap-1.5 ${register.status === 'open' ? 'text-blue-400' : 'text-emerald-400'}`}>
+                        <span className={`w-2 h-2 rounded-full animate-pulse ${register.status === 'open' ? 'bg-blue-400' : 'bg-emerald-400'}`}></span>
+                        {register.status === 'open' ? 'Aberto' : 'Fechado'}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Sangrias */}
-                  {register.withdrawals.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-slate-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
-                        <div className="h-px bg-slate-100 flex-1 border-dashed border-b border-t-0 border-slate-300"></div>
+                  {/* Main Metrics Card Container */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Abertura */}
+                    <div className="relative group overflow-hidden bg-gradient-to-br from-blue-600/20 to-blue-900/40 p-6 rounded-[32px] border border-blue-500/30 hover:shadow-[0_0_30px_rgba(37,99,235,0.1)] transition-all">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-blue-500/20 transition-all"></div>
+                      <span className="text-blue-400 font-black text-[11px] uppercase tracking-widest block mb-1">Fundo de Caixa</span>
+                      <span className="text-white font-black text-3xl tracking-tighter">{formatCurrency(register.initialAmount)}</span>
+                      <div className="mt-4 flex items-center gap-2 text-blue-300/60 text-[10px] font-bold">
+                        <span>💰 Capital Inicial</span>
                       </div>
-                      <h4 className="font-black text-slate-700 text-sm">Sangrias</h4>
-                      <div className="space-y-1">
-                        {register.withdrawals.map((withdrawal: any, i: number) => (
-                          <div key={i} className="flex justify-between items-center bg-[#fff1f2] p-3 rounded-xl border border-red-50">
-                            <span className="text-red-800 text-xs font-bold">{withdrawal.reason}</span>
-                            <span className="text-red-700 font-black text-sm">-{formatCurrency(withdrawal.amount)}</span>
+                    </div>
+
+                    {/* Vendas */}
+                    <div className="relative group overflow-hidden bg-gradient-to-br from-emerald-600/20 to-emerald-900/40 p-6 rounded-[32px] border border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.1)] transition-all">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-emerald-500/20 transition-all"></div>
+                      <span className="text-emerald-400 font-black text-[11px] uppercase tracking-widest block mb-1">Total em Vendas</span>
+                      <span className="text-white font-black text-3xl tracking-tighter">{formatCurrency(register.totalSales)}</span>
+                      <div className="mt-4 flex items-center gap-2 text-emerald-300/60 text-[10px] font-bold">
+                        <span>📈 {register.totalOrders} Pedidos</span>
+                      </div>
+                    </div>
+
+                    {/* Apurado */}
+                    <div className="relative group overflow-hidden bg-gradient-to-br from-purple-600/20 to-purple-900/40 p-6 rounded-[32px] border border-purple-500/30 hover:shadow-[0_0_30px_rgba(147,51,234,0.1)] transition-all">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-purple-500/20 transition-all"></div>
+                      <span className="text-purple-400 font-black text-[11px] uppercase tracking-widest block mb-1">Saldo Estimado</span>
+                      <span className="text-white font-black text-3xl tracking-tighter">{formatCurrency(register.expectedAmount)}</span>
+                      <div className="mt-4 flex items-center gap-2 text-purple-300/60 text-[10px] font-bold">
+                        <span>💵 Disponível em Caixa</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Movements Sections */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Sangrias */}
+                    <div className="bg-white/5 rounded-3xl border border-white/10 p-6">
+                      <div className="flex items-center justify-between mb-6">
+                        <h4 className="font-black text-white text-lg flex items-center gap-2">
+                          <span className="p-2 bg-orange-500/20 rounded-xl text-orange-400">💸</span>
+                          Sangrias
+                        </h4>
+                        <span className="px-3 py-1 bg-white/5 rounded-full text-xs font-bold text-slate-400 border border-white/10">
+                          {register.withdrawals.length} itens
+                        </span>
+                      </div>
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        {register.withdrawals.length > 0 ? register.withdrawals.map((withdrawal: any, i: number) => (
+                          <div key={i} className="flex justify-between items-center bg-red-500/5 hover:bg-red-500/10 p-4 rounded-2xl border border-red-500/10 transition-colors group">
+                            <div className="flex flex-col">
+                              <span className="text-red-300 text-xs font-bold">{withdrawal.reason}</span>
+                              <span className="text-[10px] text-slate-500 font-medium">{new Date(withdrawal.timestamp).toLocaleTimeString('pt-BR')}</span>
+                            </div>
+                            <span className="text-red-400 font-black text-base group-hover:scale-110 transition-transform">-{formatCurrency(withdrawal.amount)}</span>
                           </div>
-                        ))}
+                        )) : (
+                          <p className="text-slate-600 text-xs text-center py-4 italic">Nenhuma sangria registrada.</p>
+                        )}
                       </div>
                     </div>
-                  )}
 
-                  {/* Suprimentos */}
-                  {register.deposits.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-slate-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
-                        <div className="h-px bg-slate-100 flex-1 border-dashed border-b border-t-0 border-slate-300"></div>
+                    {/* Suprimentos */}
+                    <div className="bg-white/5 rounded-3xl border border-white/10 p-6">
+                      <div className="flex items-center justify-between mb-6">
+                        <h4 className="font-black text-white text-lg flex items-center gap-2">
+                          <span className="p-2 bg-blue-500/20 rounded-xl text-blue-400">💰</span>
+                          Suprimentos
+                        </h4>
+                        <span className="px-3 py-1 bg-white/5 rounded-full text-xs font-bold text-slate-400 border border-white/10">
+                          {register.deposits.length} itens
+                        </span>
                       </div>
-                      <h4 className="font-black text-slate-700 text-sm">Suprimentos</h4>
-                      <div className="space-y-1">
-                        {register.deposits.map((deposit: any, i: number) => (
-                          <div key={i} className="flex justify-between items-center bg-[#eff6ff] p-3 rounded-xl border border-blue-50">
-                            <span className="text-blue-800 text-xs font-bold">{deposit.reason}</span>
-                            <span className="text-blue-700 font-black text-sm">+{formatCurrency(deposit.amount)}</span>
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        {register.deposits.length > 0 ? register.deposits.map((deposit: any, i: number) => (
+                          <div key={i} className="flex justify-between items-center bg-blue-500/5 hover:bg-blue-500/10 p-4 rounded-2xl border border-blue-500/10 transition-colors group">
+                            <div className="flex flex-col">
+                              <span className="text-blue-300 text-xs font-bold">{deposit.reason}</span>
+                              <span className="text-[10px] text-slate-500 font-medium">{new Date(deposit.timestamp).toLocaleTimeString('pt-BR')}</span>
+                            </div>
+                            <span className="text-blue-400 font-black text-base group-hover:scale-110 transition-transform">+{formatCurrency(deposit.amount)}</span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Divider Dash */}
-                  <div className="h-px w-full border-dashed border-b border-t-0 border-slate-300"></div>
-
-                  {/* Informado Metrics */}
-                  <div className="grid grid-cols-4 gap-3 h-20">
-                    <div className="bg-[#f3e8ff] rounded-2xl flex flex-col items-center justify-center border border-purple-50">
-                      <span className="text-[#a855f7] font-black text-sm">{formatCurrency(register.actualAmount)}</span>
-                      <span className="text-purple-400 font-bold text-[8px] uppercase">Valor informado</span>
-                    </div>
-                    <div className="bg-[#fef2f2] rounded-2xl flex flex-col items-center justify-center border border-red-50">
-                      <span className="text-red-600 font-black text-sm">{register.difference < 0 ? formatCurrency(Math.abs(register.difference)) : 'R$ 0,00'}</span>
-                      <span className="text-red-400 font-bold text-[8px] uppercase">Falta</span>
-                    </div>
-                    <div className="bg-[#ecfeff] rounded-2xl flex flex-col items-center justify-center border border-cyan-50">
-                      <span className="text-cyan-600 font-black text-sm">{register.difference > 0 ? formatCurrency(register.difference) : 'R$ 0,00'}</span>
-                      <span className="text-cyan-400 font-bold text-[8px] uppercase">Sobra</span>
-                    </div>
-                    <div className="bg-[#fefce8] rounded-2xl flex flex-col items-center justify-center border border-yellow-50">
-                      <span className="text-yellow-600 font-black text-sm">{formatCurrency(register.actualAmount)}</span>
-                      <span className="text-yellow-500 font-bold text-[8px] uppercase px-1 text-center leading-tight">Valor total Geral</span>
-                    </div>
-                  </div>
-
-                  {/* Payment Breakdown */}
-                  <div className="space-y-4 pt-4">
-                    <div className="h-px w-full border-dashed border-b border-t-0 border-slate-300"></div>
-                    <h4 className="font-black text-slate-700 text-sm">Vendas por Forma de Pagamento</h4>
-                    <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-700 font-bold text-sm">Dinheiro:</span>
-                        <span className="text-slate-900 font-black text-sm">{formatCurrency(register.salesByPayment.dinheiro)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-700 font-bold text-sm">PIX:</span>
-                        <span className="text-slate-900 font-black text-sm">{formatCurrency(register.salesByPayment.pix)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-700 font-bold text-sm">Débito:</span>
-                        <span className="text-slate-900 font-black text-sm">{formatCurrency(register.salesByPayment.debito)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-700 font-bold text-sm">Crédito:</span>
-                        <span className="text-slate-900 font-black text-sm">{formatCurrency(register.salesByPayment.credito)}</span>
+                        )) : (
+                          <p className="text-slate-600 text-xs text-center py-4 italic">Nenhum suprimento registrado.</p>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Final Status Warning */}
-                  {register.difference !== 0 && (
-                    <div className="pt-4">
-                      <div className="h-px w-full border-dashed border-b border-t-0 border-slate-300 mb-6"></div>
-                      <div className={`${register.difference < 0 ? 'bg-[#fffbeb] border-[#fef3c7] text-[#92400e]' : 'bg-blue-50 border-blue-100 text-blue-800'} border p-4 rounded-2xl text-center font-black text-sm shadow-sm animate-pulse`}>
-                        {register.difference < 0 ? `Falta de ${formatCurrency(Math.abs(register.difference))}` : `Sobra de ${formatCurrency(register.difference)}`}
+                  {/* Payment Methods Section */}
+                  <div className="bg-white/5 rounded-[40px] border border-white/10 p-8 shadow-inner">
+                    <h4 className="font-black text-white text-xl mb-8 flex items-center gap-2">
+                      <span className="p-2 bg-versiory-coral/20 rounded-2xl text-versiory-coral">📊</span>
+                      Divisão por Forma de Pagamento
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                      <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
+                        <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">Dinheiro</span>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.dinheiro)}</p>
+                      </div>
+                      <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
+                        <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">PIX</span>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.pix)}</p>
+                      </div>
+                      <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
+                        <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">Débito</span>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.debito)}</p>
+                      </div>
+                      <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
+                        <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">Crédito</span>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.credito)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Final Reconciliation Section (Only for closed reports or if difference is set) */}
+                  {(register.status === 'closed' || register.difference !== 0) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 bg-black/40 rounded-[40px] border border-white/10">
+                      <div className="flex justify-between items-center p-6 bg-white/5 rounded-[32px] border border-white/10">
+                        <div className="flex flex-col">
+                          <span className="text-slate-500 font-black text-[10px] uppercase tracking-widest">Informado</span>
+                          <span className="text-white font-black text-2xl tracking-tighter">{formatCurrency(register.actualAmount)}</span>
+                        </div>
+                        <div className={`p-4 rounded-3xl font-black text-sm shadow-xl flex flex-col items-center ${register.difference === 0 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                          register.difference < 0 ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' :
+                            'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                          }`}>
+                          <span className="text-[10px] opacity-70 mb-0.5">ESTADO</span>
+                          {register.difference === 0 ? 'COMPLETO' : register.difference < 0 ? 'QUEBRA' : 'SOBRA'}
+                        </div>
+                      </div>
+
+                      <div className={`flex flex-col justify-center items-center p-6 rounded-[32px] border transition-all ${register.difference === 0 ? 'bg-emerald-500/10 border-emerald-500/20' :
+                        register.difference < 0 ? 'bg-red-500/10 border-red-500/20' :
+                          'bg-blue-500/10 border-blue-500/20'
+                        }`}>
+                        <span className="text-slate-500 font-black text-[10px] uppercase tracking-widest mb-1">Divergência Total</span>
+                        <span className={`text-3xl font-black tracking-tighter ${register.difference === 0 ? 'text-emerald-400' :
+                          register.difference < 0 ? 'text-red-400' : 'text-blue-400'
+                          }`}>
+                          {register.difference === 0 ? 'R$ 0,00' : formatCurrency(register.difference)}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -4418,6 +4668,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* Footer */}
       <footer className="bg-gradient-to-r from-versiory-ink to-slate-900 text-white py-8 mt-12 border-t border-white/10 text-center">
         <div className="max-w-7xl mx-auto px-4 flex flex-col items-center gap-4">
           <p className="text-white/80 text-sm font-medium">Área restrita. Acesso exclusivo para administradores. Todas as ações são monitoradas.</p>
@@ -4430,7 +4681,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 1.1.0</span></p>
         </div>
       </footer>
-    </div >
+    </div>
   );
 };
 

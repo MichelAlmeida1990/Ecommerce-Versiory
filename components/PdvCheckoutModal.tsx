@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product, Customer, Order } from '../types';
 import { validateCPFOrCNPJ } from '../utils/validators';
 import { generateInvoice } from '../services/invoice';
@@ -11,6 +11,7 @@ interface PdvCheckoutModalProps {
   cart: { product: Product; quantity: number; selectedSize?: string; selectedColor?: string }[];
   onSubmit: (customerData: { name: string; phone: string; email: string; cpf: string; emitNF: boolean; notes: string; customPolicies?: string; isBudget?: boolean }, order: Order) => Promise<void>;
   isSubmitting: boolean;
+  editingOrder?: Order | null;
 }
 
 const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
@@ -18,7 +19,8 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   onClose,
   cart,
   onSubmit,
-  isSubmitting
+  isSubmitting,
+  editingOrder
 }) => {
   const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
   const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'debito' | 'credito'>('dinheiro');
@@ -32,6 +34,30 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   const [lastFinishedOrder, setLastFinishedOrder] = useState<Order | null>(null);
   const [soldItems, setSoldItems] = useState<{ product: Product; quantity: number }[]>([]);
   const [soldTotal, setSoldTotal] = useState(0);
+
+  useEffect(() => {
+    if (isOpen && editingOrder) {
+      setCustomerForm({
+        name: editingOrder.customerName || '',
+        phone: editingOrder.customerPhone || '',
+        email: editingOrder.customerEmail || '',
+        cpf: '', // CPF is not in Order type, it's on Customer
+        notes: editingOrder.notes || '',
+        address: editingOrder.address || '',
+        customPolicies: editingOrder.customPolicies || ''
+      });
+      setEmitNF(editingOrder.emitNF || false);
+      setIsBudget(editingOrder.isBudget || false);
+      if (editingOrder.paymentMethod) setPaymentMethod(editingOrder.paymentMethod as any);
+    } else if (isOpen) {
+      setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+      setEmitNF(false);
+      setIsBudget(false);
+      setPaymentMethod('dinheiro');
+      setErrors([]);
+      setSaleFinished(false);
+    }
+  }, [isOpen, editingOrder]);
 
   const total = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
 
@@ -79,6 +105,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       customerId: 0,
       customerName: customerForm.name,
       customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : 'pdv@versiory.local'),
+      customerPhone: customerForm.phone || undefined,
       date: new Date().toISOString(),
       total,
       status: forceBudget ? 'pending' : 'delivered',
@@ -134,17 +161,21 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       }
     }
 
-    await onSubmit({ ...customerForm, emitNF, isBudget: forceBudget }, order);
+    try {
+      await onSubmit({ ...customerForm, emitNF, isBudget: forceBudget }, order);
 
-    if (!emitNF || forceBudget) {
-      setSoldItems([...cart]);
-      setSoldTotal(total);
-      setLastFinishedOrder(order);
-      setSaleFinished(true);
-      setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
-      setEmitNF(false);
-      setIsBudget(forceBudget);
-      setErrors([]);
+      if (!emitNF || forceBudget) {
+        setSoldItems([...cart]);
+        setSoldTotal(total);
+        setLastFinishedOrder(order);
+        setSaleFinished(true);
+        setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+        setEmitNF(false);
+        setIsBudget(forceBudget);
+        setErrors([]);
+      }
+    } catch (err: any) {
+      // Error is already alerted by AdminDashboard, we just prevent saleFinished from being set
     }
   };
 
@@ -179,7 +210,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       orderId: lastFinishedOrder.id,
       date: new Date(lastFinishedOrder.date).toLocaleString('pt-BR'),
       customerName: lastFinishedOrder.customerName,
-      customerPhone: displayPhone,
+      customerPhone: displayPhone || lastFinishedOrder.customerPhone || undefined,
       customerEmail: displayEmail,
       customerAddress: lastFinishedOrder.address || undefined,
       notes: lastFinishedOrder.notes,

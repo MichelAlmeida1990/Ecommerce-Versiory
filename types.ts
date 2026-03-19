@@ -80,6 +80,7 @@ export interface Order {
   customerId: number;
   customerEmail: string;
   customerName: string;
+  customerPhone?: string;
   date: string;
   total: number;
   status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
