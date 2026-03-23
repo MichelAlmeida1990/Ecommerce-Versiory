@@ -375,7 +375,7 @@ const App: React.FC = () => {
                   <span style={{ color: '#9ca3af', fontSize: '9px', lineHeight: 1.3, marginTop: '2px' }}>Este site é seguro conforme<br/>Google Transparency Report</span>
                 </div>
               </a>
-              <p>© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 1.1.0</span></p>
+              <p>© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 1.2.0</span></p>
             </div>
           </div>
         </footer>
