@@ -352,7 +352,29 @@ const App: React.FC = () => {
                 </ul>
               </div>
             </div>
-            <div className="border-t border-white/10 pt-8 text-center text-white font-semibold">
+            <div className="border-t border-white/10 pt-8 flex flex-col items-center gap-4 text-center text-white font-semibold">
+              {/* Selo Site Seguro — Google Transparency Report */}
+              <a
+                href="https://transparencyreport.google.com/safe-browsing/search?url=versiory.store"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Verificar segurança deste site no Google Transparency Report"
+                className="inline-flex items-center gap-0 rounded-lg overflow-hidden hover:opacity-90 transition-opacity active:scale-95 drop-shadow-lg"
+                style={{ height: '48px', textDecoration: 'none' }}
+              >
+                {/* Escudo verde */}
+                <div style={{ background: '#22c55e', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2L3 6v5c0 5.25 3.75 10.15 9 11.35C17.25 21.15 21 16.25 21 11V6l-9-4z" fill="white" fillOpacity="0.9"/>
+                    <path d="M9 12l2.5 2.5L15.5 9.5" stroke="#22c55e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                {/* Texto */}
+                <div style={{ background: 'linear-gradient(90deg,#1e1e1e,#2d2d2d)', padding: '0 14px', height: '48px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <span style={{ color: '#ffffff', fontWeight: 800, fontSize: '13px', letterSpacing: '0.04em', lineHeight: 1.2 }}>SITE SEGURO</span>
+                  <span style={{ color: '#9ca3af', fontSize: '9px', lineHeight: 1.3, marginTop: '2px' }}>Este site é seguro conforme<br/>Google Transparency Report</span>
+                </div>
+              </a>
               <p>© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 1.1.0</span></p>
             </div>
           </div>

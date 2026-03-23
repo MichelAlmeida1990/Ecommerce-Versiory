@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Product,
@@ -1245,57 +1245,69 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsPdvCheckoutModalOpen(true);
   };
 
-  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; email: string; cpf: string; notes: string; isBudget?: boolean }, order: Order) => {
+  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; email: string; cpf: string; notes: string; address?: string; isBudget?: boolean }, order: Order) => {
     const isBudget = order.isBudget || false;
 
-    if (!cashRegister.isOpen) {
+    // ERRCOM99: Orçamentos não exigem caixa aberto, pois não geram movimentação financeira imediata
+    if (!isBudget && !cashRegister.isOpen) {
       window.alert('⚠️ O Caixa está fechado. Abra o caixa antes de realizar vendas.');
       setIsPdvCheckoutModalOpen(false);
       return;
     }
+
     setIsSubmitting(true);
     try {
       const { saveOrder, saveProduct, saveCustomer, getCustomers } = await import('../services/firebase');
 
       // Se estivermos editando, preservamos o ID original
-      const orderId = editingOrder ? editingOrder.id : (order.isBudget ? `ORC-${Date.now()}` : `PDV-${Date.now()}`);
+      const orderId = editingOrder ? editingOrder.id : (isBudget ? `ORC-${Date.now()}` : `PDV-${Date.now()}`);
       order.id = orderId;
 
-      const customers = await getCustomers();
+      // BUGFIX: Buscar lista fresca do Firestore para evitar estado stale
+      const freshCustomers = await getCustomers();
+      let customer = freshCustomers.find(c => (c.phone === customerData.phone && customerData.phone) || (c.email === customerData.email && customerData.email));
 
-      let customer = customers.find(c => (c.phone === customerData.phone && customerData.phone) || (c.email === customerData.email && customerData.email));
+      // BUGFIX: Sanitizar customerPhone — Firestore rejeita campos 'undefined'
+      if (!order.customerPhone) delete (order as any).customerPhone;
 
-      if (customer && !isBudget) {
-        customer.totalOrders = (customer.totalOrders || 0) + 1;
-        customer.totalSpent = (customer.totalSpent || 0) + order.total;
+      // 1. Atualizar ou Criar Cliente (Sanitizado para evitar erro de 'undefined' no Firestore)
+      if (customer) {
+        if (!isBudget) {
+          customer.totalOrders = (customer.totalOrders || 0) + 1;
+          customer.totalSpent = (customer.totalSpent || 0) + order.total;
+        }
         customer.cpfCnpj = customerData.cpf || customer.cpfCnpj;
         order.customerId = customer.id;
-        await saveCustomer(customer);
+
+        // Sanitização profunda para evitar crashing no Firestore por campos undefined
+        const sanitizedCustomer = JSON.parse(JSON.stringify(customer));
+        await saveCustomer(sanitizedCustomer);
+        // Atualizar lista local com dados do cliente atualizado
+        onUpdateCustomers(freshCustomers.map(c => c.id === customer!.id ? sanitizedCustomer : c));
       } else {
         const newCustomer: Customer = {
           id: Date.now(),
           name: customerData.name,
           email: order.customerEmail,
-          phone: customerData.phone,
-          cpfCnpj: customerData.cpf,
+          ...(customerData.phone ? { phone: customerData.phone } : {}),
+          ...(customerData.cpf ? { cpfCnpj: customerData.cpf } : {}),
           addresses: [],
-          totalOrders: 1,
-          totalSpent: order.total,
+          totalOrders: isBudget ? 0 : 1,
+          totalSpent: isBudget ? 0 : order.total,
           createdAt: new Date().toISOString(),
           orderHistory: []
         };
         order.customerId = newCustomer.id;
-        await saveCustomer(newCustomer);
-        onUpdateCustomers([...customers, newCustomer]);
+
+        const sanitizedNewCustomer = JSON.parse(JSON.stringify(newCustomer));
+        await saveCustomer(sanitizedNewCustomer);
+        // BUGFIX: Usar freshCustomers (lista do Firestore) em vez de customers (prop stale)
+        onUpdateCustomers([...freshCustomers, newCustomer]);
       }
 
-      // Sanitize order to remove any undefined properties which crash Firestore
-      const sanitizedOrder = JSON.parse(JSON.stringify(order));
-      await saveOrder(sanitizedOrder);
-
-      // Só atualiza estoque se NÃO for orçamento
+      // 2. Atualizar Estoque (Somente se não for orçamento)
+      const updatedProducts = [...products];
       if (!isBudget) {
-        const updatedProducts = [...products];
         for (const item of pdvCart) {
           const productIndex = updatedProducts.findIndex(p => p.id === item.product.id);
           if (productIndex !== -1) {
@@ -1305,13 +1317,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             let newStockBySize = { ...(p.stockBySize || {}) };
             let newStockBySizeColor = { ...(p.stockBySizeColor || {}) };
 
-            // ERRCOM021: Respeitar estoque individual por cor/tamanho
             if (item.selectedSize && item.selectedColor && p.colors && p.stockBySizeColor) {
               const key = `${item.selectedSize}-${item.selectedColor}`;
               const currentVariantStock = newStockBySizeColor[key] || 0;
               newStockBySizeColor[key] = Math.max(0, currentVariantStock - item.quantity);
-
-              // Também atualizar o estoque geral por tamanho para consistência
+              
               const currentSizeStock = newStockBySize[item.selectedSize] || 0;
               newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
             } else if (item.selectedSize && p.sizes && p.stockBySize) {
@@ -1326,42 +1336,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               stockBySizeColor: (p.colors && Object.keys(newStockBySizeColor).length > 0) ? newStockBySizeColor : p.stockBySizeColor
             };
 
-            const saved = await saveProduct(productToSave);
+            // Sanitizar produto antes de salvar
+            const sanitizedProduct = JSON.parse(JSON.stringify(productToSave));
+            const saved = await saveProduct(sanitizedProduct);
             updatedProducts[productIndex] = saved;
           }
         }
         onUpdateProducts(updatedProducts);
       }
 
+      // 3. Salvar Pedido/Orçamento (Sanitizado)
+      // Se tiver serviço, status inicial é pending
+      const hasService = pdvCart.some(item => item.product.category === 'Serviços');
+      if (hasService && !isBudget) {
+        order.status = 'pending';
+      }
+
+      const sanitizedOrder = JSON.parse(JSON.stringify(order));
+      await saveOrder(sanitizedOrder);
+
+      // 4. Atualizar UI e Estado Local
       const updated = editingOrder
         ? orders.map(o => o.id === order.id ? order : o)
         : [...orders, order];
 
       onUpdateOrders(updated);
-      setPdvCart([]);
+      
+      // ERRCOM100: Orçamentos NÃO limpam o carrinho para permitir finalizar a venda em seguida
+      if (!isBudget) {
+        setPdvCart([]);
+      }
+      
       setEditingOrder(null);
 
-
-      // Atualizar saldo do caixa (Somente se não for orçamento E não for serviço pendente)
-      const hasService = pdvCart.some(item => item.product.category === 'Serviços');
-
-      if (!isBudget) {
-        if (hasService) {
-          // Se tem serviço, status inicial é pending/processing e não entra no caixa agora
-          // O usuário pediu: "Deve ir para os pedidos com o status Aguardando Pagamento, somente quando acionar o status entregue computar no financeiro"
-          // Já definimos status no PdvCheckoutModal ou podemos forçar aqui
-          order.status = 'pending';
-          await saveOrder(order); // Atualiza com status correto
-        } else {
-          setCashRegister(prev => ({
-            ...prev,
-            currentBalance: prev.currentBalance + order.total
-          }));
-        }
+      // 5. Atualizar saldo do caixa (Somente se não for orçamento E não for serviço pendente)
+      if (!isBudget && !hasService) {
+        setCashRegister(prev => ({
+          ...prev,
+          currentBalance: prev.currentBalance + order.total
+        }));
       }
-    } catch (error) {
-      console.error('Erro:', error);
-      window.alert('Erro ao finalizar venda.');
+      
+      console.log(`${isBudget ? 'Orçamento' : 'Venda'} finalizada com sucesso:`, order.id);
+
+    } catch (error: any) {
+      console.error('Erro crítico ao finalizar venda:', error);
+      const msg = error?.message || 'Verifique o console ou tente novamente.';
+      window.alert(`Ocorreu um erro ao processar a operação.\n\nDetalhe: ${msg}`);
       throw error;
     } finally {
       setIsSubmitting(false);
@@ -3890,6 +3911,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <PdvCheckoutModal
         isOpen={isPdvCheckoutModalOpen}
         onClose={() => setIsPdvCheckoutModalOpen(false)}
+        onClearCart={() => setPdvCart([])}
         cart={pdvCart}
         onSubmit={handlePdvCheckoutSubmit}
         isSubmitting={isSubmitting}

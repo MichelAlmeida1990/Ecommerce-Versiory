@@ -89,18 +89,22 @@ const Checkout: React.FC<CheckoutProps> = ({
         total: total,
         status: 'pending',
         address: effectiveAddress,
-        estimatedDelivery: '5 a 10 dias úteis', // Prazo padrão Versiory
-        items: items.map(item => ({
-          productId: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          image: item.image,
-          description: item.description,
-          selectedSize: item.selectedSize,
-          selectedColor: item.selectedColor
-        })),
-        notes: orderNotes
+        estimatedDelivery: '5 a 10 dias úteis',
+        items: items.map(item => {
+          // BUGFIX: Omitir campos undefined — Firestore rejeita 'undefined'
+          const orderItem: any = {
+            productId: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            image: item.image
+          };
+          if (item.description) orderItem.description = item.description;
+          if (item.selectedSize) orderItem.selectedSize = item.selectedSize;
+          if (item.selectedColor) orderItem.selectedColor = item.selectedColor;
+          return orderItem;
+        }),
+        notes: orderNotes || ''
       };
 
       // Atualizar no Firebase
@@ -122,7 +126,6 @@ const Checkout: React.FC<CheckoutProps> = ({
           id: Date.now(),
           name: fullName,
           email: effectiveEmail,
-          phone: '',
           totalOrders: 1,
           totalSpent: total,
           addresses: [],
@@ -132,9 +135,13 @@ const Checkout: React.FC<CheckoutProps> = ({
         orderData.customerId = targetCustomer.id;
       }
 
+      // BUGFIX: Sanitizar objetos antes de salvar — Firestore rejeita campos 'undefined'
+      const sanitizedOrder = JSON.parse(JSON.stringify(orderData));
+      const sanitizedCustomer = JSON.parse(JSON.stringify(targetCustomer));
+
       await Promise.all([
-        saveOrder(orderData),
-        saveCustomer(targetCustomer)
+        saveOrder(sanitizedOrder),
+        saveCustomer(sanitizedCustomer)
       ]);
 
       if (emitNF) {

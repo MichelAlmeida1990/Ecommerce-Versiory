@@ -8,6 +8,7 @@ import DanfePreview from './DanfePreview';
 interface PdvCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onClearCart?: () => void;
   cart: { product: Product; quantity: number; selectedSize?: string; selectedColor?: string }[];
   onSubmit: (customerData: { name: string; phone: string; email: string; cpf: string; emitNF: boolean; notes: string; customPolicies?: string; isBudget?: boolean }, order: Order) => Promise<void>;
   isSubmitting: boolean;
@@ -17,6 +18,7 @@ interface PdvCheckoutModalProps {
 const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   isOpen,
   onClose,
+  onClearCart,
   cart,
   onSubmit,
   isSubmitting,
@@ -169,10 +171,15 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         setSoldTotal(total);
         setLastFinishedOrder(order);
         setSaleFinished(true);
-        setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
-        setEmitNF(false);
+        
+        // ERRCOM101: Mantemos os dados do cliente para orçamentos para que possam ser convertidos em venda facilmente
+        if (!forceBudget) {
+          setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+          setEmitNF(false);
+          setErrors([]);
+        }
+        
         setIsBudget(forceBudget);
-        setErrors([]);
       }
     } catch (err: any) {
       // Error is already alerted by AdminDashboard, we just prevent saleFinished from being set
@@ -245,16 +252,53 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
               </svg>
               Imprimir {isBudget ? 'Orçamento' : 'Recibo'}
             </button>
-            <button
-              onClick={() => {
-                setSaleFinished(false);
-                setLastFinishedOrder(null);
-                onClose();
-              }}
-              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-all"
-            >
-              Nova Venda
-            </button>
+            
+            {/* ERRCOM102: Novas opções de fluxo para orçamentos */}
+            {isBudget ? (
+              <>
+                <button
+                  onClick={() => {
+                    setSaleFinished(false);
+                    onClose();
+                  }}
+                  className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-bold transition-all shadow-md shadow-coral-100"
+                >
+                  Confirmar Venda
+                </button>
+                <button
+                  onClick={() => {
+                    if (onClearCart) onClearCart();
+                    setSaleFinished(false);
+                    setLastFinishedOrder(null);
+                    onClose();
+                  }}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-all"
+                >
+                  Nova Venda
+                </button>
+                <button
+                  onClick={() => {
+                    setSaleFinished(false);
+                    onClose();
+                  }}
+                  className="w-full text-slate-400 hover:text-slate-600 font-bold py-2 transition-all text-sm"
+                >
+                  Cancelar
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => {
+                  if (onClearCart) onClearCart();
+                  setSaleFinished(false);
+                  setLastFinishedOrder(null);
+                  onClose();
+                }}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-all"
+              >
+                Nova Venda
+              </button>
+            )}
           </div>
         </div>
       </div>
