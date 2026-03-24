@@ -355,7 +355,7 @@ const App: React.FC = () => {
             <div className="border-t border-white/10 pt-8 flex flex-col items-center gap-4 text-center text-white font-semibold">
               {/* Selo Site Seguro — Google Transparency Report */}
               <a
-                href="https://transparencyreport.google.com/safe-browsing/search?url=versiory.store"
+                href={`https://transparencyreport.google.com/safe-browsing/search?url=${typeof window !== 'undefined' ? window.location.hostname : 'versiory.store'}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Verificar segurança deste site no Google Transparency Report"

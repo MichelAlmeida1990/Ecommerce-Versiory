@@ -51,12 +51,11 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       setEmitNF(editingOrder.emitNF || false);
       setIsBudget(editingOrder.isBudget || false);
       if (editingOrder.paymentMethod) setPaymentMethod(editingOrder.paymentMethod as any);
-    } else if (isOpen) {
-      setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
-      setEmitNF(false);
-      setIsBudget(false);
-      setPaymentMethod('dinheiro');
+    } else if (isOpen && !saleFinished) {
+      // ERRCOM106: Não resetar o formulário ao abrir se já houver dados (persiste do Orçamento para Venda)
+      // A limpeza agora ocorre apenas em handleSubmit (após venda) ou explicitamente em Nova Venda
       setErrors([]);
+      // Apenas resetar estados de controle, mantendo os dados do cliente
       setSaleFinished(false);
     }
   }, [isOpen, editingOrder]);
@@ -106,7 +105,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       id: forceBudget ? `ORC-${Date.now()}` : `PDV-${Date.now()}`,
       customerId: 0,
       customerName: customerForm.name,
-      customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : 'pdv@versiory.local'),
+      customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''), // ERRCOM107: Evitar e-mail genérico pdv@versiory para não colidir histórico
       customerPhone: customerForm.phone || undefined,
       date: new Date().toISOString(),
       total,

@@ -347,6 +347,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const product = products.find(p => p.id === item.productId);
         return product?.category === 'Serviços';
       });
+      // ERRCOM108: Vendas PDV (físicas) devem contar como receita imediatamente, mesmo se tiverem serviço pendente
+      if (order.salesChannel === 'physical') {
+        return ['paid', 'processing', 'shipped', 'delivered', 'pending'].includes(order.status);
+      }
       if (hasService) return order.status === 'delivered';
       return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
     });
@@ -363,14 +367,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const last30DaysData = useMemo(() => {
     const data = [];
     const today = new Date();
+    // Ajustar para o final do dia local para garantir que pegamos as últimas 24h corretamente no loop
     today.setHours(23, 59, 59, 999);
+
     for (let i = 29; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      
+      // ERRCOM105: Usar data local (YYYY-MM-DD) em vez de UTC para o bucket do gráfico
+      const dateStr = d.toLocaleDateString('en-CA'); // en-CA retorna YYYY-MM-DD
       const shortDate = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
 
-      const dayOrders = orders.filter(o => o.date.startsWith(dateStr) && !o.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status));
+      const dayOrders = orders.filter(o => {
+        // Converter a data do pedido (que pode estar em ISO UTC) para data local YYYY-MM-DD
+        const orderLocalDate = new Date(o.date).toLocaleDateString('en-CA');
+        const isPDV = o.salesChannel === 'physical';
+        const statuses = isPDV ? ['paid', 'processing', 'shipped', 'delivered', 'pending'] : ['paid', 'processing', 'shipped', 'delivered'];
+        return orderLocalDate === dateStr && !o.isBudget && statuses.includes(o.status);
+      });
+
       const faturamento = dayOrders.reduce((sum, o) => sum + o.total, 0);
 
       data.push({
@@ -2638,7 +2653,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <button
                             onClick={() => {
-                              const custOrders = orders.filter(o => o.customerId === customer.id || o.customerEmail === customer.email);
+                              // ERRCOM109: Filtrar histórico por ID se disponível, email apenas se não for vazio
+                              const custOrders = orders.filter(o => 
+                                (o.customerId && o.customerId === customer.id) || 
+                                (customer.email && customer.email.length > 5 && o.customerEmail === customer.email)
+                              );
                               setCustomerOrderHistory({ customer, orders: custOrders });
                             }}
                             className="text-versiory-coral hover:underline font-bold"
