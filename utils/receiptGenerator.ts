@@ -9,14 +9,14 @@ interface ReceiptData {
   customerEmail?: string;
   items: CartItem[];
   total: number;
+  paymentMethod?: string;
   notes?: string;
   storePolicies?: string;
   isBudget?: boolean;
 }
 
 export const generateReceiptHTML = (data: ReceiptData): string => {
-  const { orderId, date, customerName, customerAddress, customerPhone, customerEmail, items, total, notes, storePolicies, isBudget } = data;
-
+  const { orderId, date, customerName, customerAddress, customerPhone, customerEmail, items, total, paymentMethod, notes, storePolicies, isBudget } = data;
 
   // Verificar se há serviços no pedido
   const hasServices = items.some(item => item.category === 'Serviços');
@@ -48,6 +48,7 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         th { text-align: left; border-bottom: 1px dashed #000; font-size: 0.9em; padding-bottom: 2px; }
         td { padding: 3px 0; font-size: 0.9em; vertical-align: top; }
         .total { border-top: 2px solid #000; padding-top: 5px; margin-top: 5px; font-weight: bold; font-size: 1.2em; display: flex; justify-content: space-between; }
+        .payment-method { margin-top: 5px; font-weight: bold; font-size: 1em; display: flex; justify-content: space-between; }
         .service-details { margin-top: 10px; border: 1px solid #000; padding: 5px; font-size: 0.8em; }
         .service-title { font-weight: bold; text-align: center; border-bottom: 1px solid #000; margin-bottom: 3px; }
         .footer { text-align: center; font-size: 0.8em; margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px; padding-bottom: 20px; }
@@ -107,6 +108,13 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         <span>TOTAL</span>
         <span>R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
       </div>
+
+      ${paymentMethod && !isBudget ? `
+      <div class="payment-method">
+        <span>FORMA PAGTO:</span>
+        <span>${paymentMethod.toUpperCase()}</span>
+      </div>
+      ` : ''}
 
       ${notes ? `
         <div class="info" style="margin-top: 10px; border-top: 1px dashed #000; padding-top: 5px;">

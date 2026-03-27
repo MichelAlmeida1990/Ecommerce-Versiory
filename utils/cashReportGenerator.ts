@@ -30,6 +30,12 @@ interface CashRegisterData {
     debito: number;
     credito: number;
   };
+  salesByPaymentCount: {
+    dinheiro: number;
+    pix: number;
+    debito: number;
+    credito: number;
+  };
 }
 
 export const generateCashReportHTML = (data: CashRegisterData): string => {
@@ -121,11 +127,11 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
       ` : ''}
 
       <div class="section">
-        <div class="section-title">TOTAL POR FORMA DE PAGTO</div>
-        <div class="row"><span>DINHEIRO:</span> <span>${formatCurrency(data.salesByPayment.dinheiro)}</span></div>
-        <div class="row"><span>PIX:</span> <span>${formatCurrency(data.salesByPayment.pix)}</span></div>
-        <div class="row"><span>DÉBITO:</span> <span>${formatCurrency(data.salesByPayment.debito)}</span></div>
-        <div class="row"><span>CRÉDITO:</span> <span>${formatCurrency(data.salesByPayment.credito)}</span></div>
+        <div class="section-title">TOTAL POR FORMA DE PAGTO (QTD / VALOR)</div>
+        <div class="row"><span>DINHEIRO:</span> <span>(${data.salesByPaymentCount?.dinheiro || 0}) ${formatCurrency(data.salesByPayment.dinheiro)}</span></div>
+        <div class="row"><span>PIX:</span> <span>(${data.salesByPaymentCount?.pix || 0}) ${formatCurrency(data.salesByPayment.pix)}</span></div>
+        <div class="row"><span>DÉBITO:</span> <span>(${data.salesByPaymentCount?.debito || 0}) ${formatCurrency(data.salesByPayment.debito)}</span></div>
+        <div class="row"><span>CRÉDITO:</span> <span>(${data.salesByPaymentCount?.credito || 0}) ${formatCurrency(data.salesByPayment.credito)}</span></div>
       </div>
 
       <div class="section" style="border-top: 2px solid #000;">

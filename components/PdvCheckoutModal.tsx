@@ -223,6 +223,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       storePolicies: lastFinishedOrder.customPolicies || fiscalConfig?.storePolicies,
       items: soldItems.map(item => ({ ...item.product, quantity: item.quantity as any, category: item.product.category })),
       total: soldTotal,
+      paymentMethod: lastFinishedOrder.paymentMethod || undefined,
       isBudget: lastFinishedOrder.isBudget
     });
 

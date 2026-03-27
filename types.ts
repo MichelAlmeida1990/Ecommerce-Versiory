@@ -96,6 +96,8 @@ export interface Order {
   nfeXml?: string;
   isBudget?: boolean; // Orçamento
   customPolicies?: string; // Garantia / Políticas customizadas para esta venda
+  accountedInCash?: boolean; // Se o pedido já foi somado ao saldo do caixa atual
+  stockDecremented?: boolean; // Se a baixa de estoque já foi realizada para este pedido
 }
 
 export interface Address {

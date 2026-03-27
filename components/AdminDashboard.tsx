@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Product,
@@ -106,6 +106,8 @@ const BEDDING_SIZES = {
 const formatCurrency = (value: number) =>
   `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
+const formatOrderId = (id: string | number) => `#${id.toString().padStart(4, '0')}`;
+
 // ERRCOM026: Corrigido para usar data local (evita fuso horário UTC -1 dia)
 const formatDate = (value: string) => {
   if (!value) return '';
@@ -142,6 +144,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
+  // BUGFIX #15: Função para parser de valores decimais padrão brasileiro (2.226,89) ou americano (2226.89)
+  const parseBrazilianFloat = (value: string): number => {
+    if (!value) return 0;
+    let clean = value.trim();
+    // Se tiver vírgula, tratamos como formato BR (2.226,89)
+    if (clean.includes(',')) {
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    }
+    // Remove qualquer outro caractere não numérico exceto o ponto
+    clean = clean.replace(/[^\d.]/g, '');
+    return parseFloat(clean) || 0;
+  };
+
 
   const handleDownloadNFXml = (orderId?: string) => {
     const key = orderId ? `versiory_nf_xml_${orderId}` : 'versiory_nf_xml';
@@ -160,6 +175,73 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  // BUGFIX #1 & #11: Função auxiliar para gerenciar baixa de estoque de forma consistente
+  const updateStockProgressively = async (order: Order, type: 'decrement' | 'increment'): Promise<Product[]> => {
+    const { saveProduct, saveInventoryMovement } = await import('../services/firebase');
+    const updatedProductsList = [...products];
+    const movements: InventoryMovement[] = [];
+
+    for (const item of order.items) {
+      const productIndex = updatedProductsList.findIndex(p => p.id === item.productId);
+      if (productIndex === -1) continue;
+
+      const p = updatedProductsList[productIndex];
+      // Ignorar se for item sem estoque (opcional, dependendo se serviços tem estoque)
+      // Mas a regra diz baixar estoque se tiver, então seguimos:
+      
+      const qty = item.quantity;
+      const factor = type === 'decrement' ? -1 : 1;
+      const newTotalStock = Math.max(0, (p.stock || 0) + (qty * factor));
+
+      let newStockBySize = { ...(p.stockBySize || {}) };
+      let newStockBySizeColor = { ...(p.stockBySizeColor || {}) };
+
+      if (item.selectedSize && item.selectedColor && p.stockBySizeColor) {
+        const key = `${item.selectedSize}-${item.selectedColor}`;
+        newStockBySizeColor[key] = Math.max(0, (newStockBySizeColor[key] || 0) + (qty * factor));
+        newStockBySize[item.selectedSize] = Math.max(0, (newStockBySize[item.selectedSize] || 0) + (qty * factor));
+      } else if (item.selectedSize && p.stockBySize) {
+        newStockBySize[item.selectedSize] = Math.max(0, (newStockBySize[item.selectedSize] || 0) + (qty * factor));
+      }
+
+      const updatedProduct: Product = {
+        ...p,
+        stock: newTotalStock,
+        stockBySize: (p.sizes && Object.keys(newStockBySize).length > 0) ? newStockBySize : p.stockBySize,
+        stockBySizeColor: (p.colors && Object.keys(newStockBySizeColor).length > 0) ? newStockBySizeColor : p.stockBySizeColor
+      };
+
+      // Sanitizar e salvar
+      const sanitized = JSON.parse(JSON.stringify(updatedProduct));
+      const saved = await saveProduct(sanitized);
+      updatedProductsList[productIndex] = saved;
+
+      // Registrar movimento de estoque
+      movements.push({
+        id: Date.now() + movements.length,
+        productId: p.id,
+        productName: p.name,
+        type: type === 'decrement' ? 'out' : 'in',
+        quantity: qty,
+        previousStock: p.stock || 0,
+        newStock: newTotalStock,
+        reason: `Pedido ${order.id} - Status ${order.status}`,
+        date: new Date().toISOString(),
+        user: 'Sistema'
+      });
+    }
+
+    if (movements.length > 0) {
+      for (const m of movements) {
+        await saveInventoryMovement(m);
+      }
+      onUpdateInventoryMovements([...inventoryMovements, ...movements]);
+    }
+
+    return updatedProductsList;
+  };
+
   const [inventorySearch, setInventorySearch] = useState('');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
 
@@ -253,6 +335,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+  const [isDrillDownModalOpen, setIsDrillDownModalOpen] = useState(false);
+  const [drillDownData, setDrillDownData] = useState<{ date: string, orderIds: string[] } | null>(null);
+  const lastClickRef = useRef<{ time: number, index: number } | null>(null);
+
+  const handleChartClick = (e: any) => {
+    if (!e || !e.activePayload || !e.activePayload[0]) return;
+    const data = e.activePayload[0].payload;
+    const now = Date.now();
+    const index = e.activeTooltipIndex;
+
+    if (lastClickRef.current && lastClickRef.current.index === index && (now - lastClickRef.current.time) < 400) {
+      setDrillDownData({ date: data.name, orderIds: data.orderIds });
+      setIsDrillDownModalOpen(true);
+      lastClickRef.current = null;
+    } else {
+      lastClickRef.current = { time: now, index };
+    }
+  };
   const [trackingForm, setTrackingForm] = useState({
     orderId: '',
     carrier: '',
@@ -336,29 +436,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [cashRegisterHistory]);
 
   const stats = useMemo(() => {
-    const validOrders = orders.filter(order =>
-      !order.isBudget &&
-      ['paid', 'processing', 'shipped', 'delivered'].includes(order.status)
-    );
-    // Filtrar faturamento: orçamentos nunca contam, serviços só contam se 'delivered'
+    // BUGFIX #4 & #10: Unificar lógica de faturamento para Dashboard, Pedidos e Financeiro
     const revenueOrders = orders.filter(order => {
-      if (order.isBudget) return false;
-      const hasService = order.items?.some(item => {
+      if (order.isBudget || order.status === 'cancelled') return false;
+
+      const hasServiceOnly = order.items?.every(item => {
         const product = products.find(p => p.id === item.productId);
         return product?.category === 'Serviços';
       });
-      // ERRCOM108: Vendas PDV (físicas) devem contar como receita imediatamente, mesmo se tiverem serviço pendente
-      if (order.salesChannel === 'physical') {
-        return ['paid', 'processing', 'shipped', 'delivered', 'pending'].includes(order.status);
-      }
-      if (hasService) return order.status === 'delivered';
-      return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
+
+      // Regra Unificada:
+      // 1. Produtos físicos (PDV ou Online com pagamento) contam se não for cancelado e tiver pagamento (ou for PDV imediato)
+      // 2. Serviços só contam quando entregues (delivered)
+      if (hasServiceOnly) return order.status === 'delivered';
+      
+      const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
+      const isPdvImmediate = order.salesChannel === 'physical' && order.status !== 'pending';
+      
+      return isConfirmed || isPdvImmediate;
     });
 
     const totalRevenue = revenueOrders.reduce((sum, order) => sum + order.total, 0);
     return {
       totalProducts: products.length,
-      totalOrders: orders.filter(o => !o.isBudget).length,
+      // BUGFIX #6: Excluir cancelados da contagem total de pedidos do Dashboard
+      totalOrders: orders.filter(o => !o.isBudget && o.status !== 'cancelled').length,
       totalCustomers: customers.length,
       totalRevenue
     };
@@ -379,19 +481,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const shortDate = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
 
       const dayOrders = orders.filter(o => {
-        // Converter a data do pedido (que pode estar em ISO UTC) para data local YYYY-MM-DD
         const orderLocalDate = new Date(o.date).toLocaleDateString('en-CA');
-        const isPDV = o.salesChannel === 'physical';
-        const statuses = isPDV ? ['paid', 'processing', 'shipped', 'delivered', 'pending'] : ['paid', 'processing', 'shipped', 'delivered'];
-        return orderLocalDate === dateStr && !o.isBudget && statuses.includes(o.status);
+        if (orderLocalDate !== dateStr || o.isBudget || o.status === 'cancelled') return false;
+
+        // BUGFIX #10: Aplicar a mesma regra de receita do stats para o gráfico
+        const hasServiceOnly = o.items?.every(item => {
+          const product = products.find(p => p.id === item.productId);
+          return product?.category === 'Serviços';
+        });
+
+        if (hasServiceOnly) return o.status === 'delivered';
+        
+        const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
+        const isPdvImmediate = o.salesChannel === 'physical' && o.status !== 'pending';
+        
+        return isConfirmed || isPdvImmediate;
       });
 
       const faturamento = dayOrders.reduce((sum, o) => sum + o.total, 0);
 
       data.push({
         name: shortDate,
+        fullDate: dateStr,
         Pedidos: dayOrders.length,
-        Faturamento: faturamento
+        Faturamento: faturamento,
+        orderIds: dayOrders.map(o => o.id)
       });
     }
     return data;
@@ -686,6 +800,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             combinations.forEach((key, index) => {
               stockBySizeColor[key] = stockPerComb + (index < remainder ? 1 : 0);
             });
+          } else {
+            // BUGFIX #2: Se já existem, garantir que o stock total seja a soma das variações
+            // Ou se o usuário editou o total manualmente, avisar ou redistribuir.
+            // Aqui vamos assumir que a soma das variações manda se elas já existirem.
+            const totalFromVariants = Object.values(productForm.stockBySizeColor).reduce((s, q) => s + (Number(q) || 0), 0);
+            if (totalFromVariants !== productForm.stock) {
+               // Se o usuário mudou o total manualmente no campo principal, limpamos para forçar redistribuição
+               // OU matemos a soma. Vamos manter a soma para evitar perda de dados acidental.
+               productForm.stock = totalFromVariants;
+            }
           }
           stockBySize = {}; // Limpar stockBySize simples se tem cores
         } else {
@@ -698,6 +822,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             sizeArray.forEach((size, index) => {
               stockBySize[size] = stockPerSize + (index < remainder ? 1 : 0);
             });
+          } else {
+            const totalFromVariants = Object.values(productForm.stockBySize).reduce((s, q) => s + (Number(q) || 0), 0);
+            if (totalFromVariants !== productForm.stock) {
+               productForm.stock = totalFromVariants;
+            }
           }
           stockBySizeColor = {}; // Limpar stockBySizeColor se não tem cores
         }
@@ -932,22 +1061,76 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const orderToUpdate = orders.find(o => o.id === orderStatusForm.orderId);
       if (!orderToUpdate) return;
 
-      const updatedOrder = { ...orderToUpdate, status: orderStatusForm.status, notes: orderStatusForm.notes };
+      const updatedOrder: Order = { ...orderToUpdate, status: orderStatusForm.status, notes: orderStatusForm.notes };
+      let finalProducts = products;
+
+      // BUGFIX #12: Evitar loop de soma duplicada e garantir exclusão do saldo ao cancelar/voltar para pendente
+      if (updatedOrder.salesChannel === 'physical' && !updatedOrder.isBudget) {
+        const isAccountingStatus = ['delivered', 'paid', 'processing', 'shipped'].includes(updatedOrder.status);
+        const wasAccountingStatus = ['delivered', 'paid', 'processing', 'shipped'].includes(orderToUpdate.status);
+
+        if (isAccountingStatus && !orderToUpdate.accountedInCash) {
+          setCashRegister(prev => ({ ...prev, currentBalance: prev.currentBalance + updatedOrder.total }));
+          updatedOrder.accountedInCash = true;
+        } else if (!isAccountingStatus && orderToUpdate.accountedInCash) {
+          setCashRegister(prev => ({ ...prev, currentBalance: Math.max(0, prev.currentBalance - updatedOrder.total) }));
+          updatedOrder.accountedInCash = false;
+        }
+      }
+
+      // BUGFIX #1 & #11: Baixa de estoque somente ao acionar "Entregue" para Online e Serviços
+      const isDelivered = updatedOrder.status === 'delivered';
+      const wasDelivered = orderToUpdate.status === 'delivered';
+
+      if (isDelivered && !wasDelivered && !updatedOrder.stockDecremented) {
+        // Momento do decremento: Se PDV Products já baixou, adjustStock cuidará de não baixar duplicado se gerenciado corretamente
+        // Mas a regra diz: baixa instantânea no PDV (produtos) vs No Pedido (Serviços/Online).
+        // Vamos filtrar os itens que DEVEM baixar agora.
+        const itemsToDecrement = updatedOrder.items.filter(item => {
+          const product = products.find(p => p.id === item.productId);
+          const isService = product?.category === 'Serviços';
+          const isOnline = updatedOrder.salesChannel === 'online' || !updatedOrder.salesChannel;
+          return isService || isOnline;
+        });
+
+        if (itemsToDecrement.length > 0) {
+          finalProducts = await updateStockProgressively({ ...updatedOrder, items: itemsToDecrement }, 'decrement');
+        }
+        updatedOrder.stockDecremented = true;
+      } else if (!isDelivered && wasDelivered && updatedOrder.stockDecremented) {
+        // Estorno de estoque se saiu de Entregue para qualquer outro status (incluindo Cancelado)
+        const itemsToIncrement = updatedOrder.items.filter(item => {
+          const product = products.find(p => p.id === item.productId);
+          const isService = product?.category === 'Serviços';
+          const isOnline = updatedOrder.salesChannel === 'online' || !updatedOrder.salesChannel;
+          return isService || isOnline;
+        });
+
+        if (itemsToIncrement.length > 0) {
+          finalProducts = await updateStockProgressively({ ...updatedOrder, items: itemsToIncrement }, 'increment');
+        }
+        updatedOrder.stockDecremented = false;
+      } else if (updatedOrder.status === 'cancelled' && !wasDelivered) {
+        // Se cancelou mas nunca foi entregue, precisamos devolver o que baixou NO CHECKOUT (PDV Produtos)
+        const isPdv = updatedOrder.salesChannel === 'physical';
+        if (isPdv) {
+          const itemsToIncrement = updatedOrder.items.filter(item => {
+            const product = products.find(p => p.id === item.productId);
+            return product?.category !== 'Serviços';
+          });
+          if (itemsToIncrement.length > 0) {
+            finalProducts = await updateStockProgressively({ ...updatedOrder, items: itemsToIncrement }, 'increment');
+          }
+        }
+      }
+
       await saveOrder(updatedOrder);
 
       const updatedOrders = orders.map(order =>
         order.id === orderStatusForm.orderId ? updatedOrder : order
       );
 
-      // Gatilho Financeiro: Se passou para 'delivered' e era um pedido físico/PDV que ainda não tinha entrado no caixa
-      // (ex: Orçamentos ou Serviços que ficam em 'pending' até a entrega)
-      if (updatedOrder.status === 'delivered' && orderToUpdate.status !== 'delivered' && updatedOrder.salesChannel === 'physical' && !updatedOrder.isBudget) {
-        setCashRegister(prev => ({
-          ...prev,
-          currentBalance: prev.currentBalance + updatedOrder.total
-        }));
-      }
-
+      onUpdateProducts(finalProducts);
       onUpdateOrders(updatedOrders);
       setIsOrderStatusModalOpen(false);
     } catch (err) {
@@ -1323,7 +1506,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // 2. Atualizar Estoque (Somente se não for orçamento)
       const updatedProducts = [...products];
       if (!isBudget) {
-        for (const item of pdvCart) {
+        const itemsToDecrement = pdvCart.filter(item => item.product.category !== 'Serviços');
+        
+        for (const item of itemsToDecrement) {
           const productIndex = updatedProducts.findIndex(p => p.id === item.product.id);
           if (productIndex !== -1) {
             const p = updatedProducts[productIndex];
@@ -1334,14 +1519,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             if (item.selectedSize && item.selectedColor && p.colors && p.stockBySizeColor) {
               const key = `${item.selectedSize}-${item.selectedColor}`;
-              const currentVariantStock = newStockBySizeColor[key] || 0;
-              newStockBySizeColor[key] = Math.max(0, currentVariantStock - item.quantity);
-              
-              const currentSizeStock = newStockBySize[item.selectedSize] || 0;
-              newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+              newStockBySizeColor[key] = Math.max(0, (newStockBySizeColor[key] || 0) - item.quantity);
+              newStockBySize[item.selectedSize] = Math.max(0, (newStockBySize[item.selectedSize] || 0) - item.quantity);
             } else if (item.selectedSize && p.sizes && p.stockBySize) {
-              const currentSizeStock = newStockBySize[item.selectedSize] || 0;
-              newStockBySize[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+              newStockBySize[item.selectedSize] = Math.max(0, (newStockBySize[item.selectedSize] || 0) - item.quantity);
             }
 
             const productToSave = {
@@ -1351,12 +1532,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               stockBySizeColor: (p.colors && Object.keys(newStockBySizeColor).length > 0) ? newStockBySizeColor : p.stockBySizeColor
             };
 
-            // Sanitizar produto antes de salvar
             const sanitizedProduct = JSON.parse(JSON.stringify(productToSave));
             const saved = await saveProduct(sanitizedProduct);
             updatedProducts[productIndex] = saved;
           }
         }
+        // Se houve itens decrementados (produtos físicos), marcar no pedido
+        if (itemsToDecrement.length > 0) {
+          order.stockDecremented = itemsToDecrement.length === pdvCart.length; // Se todos baixaram, marca true. Se tem serviço pendente, false.
+        }
+
         onUpdateProducts(updatedProducts);
       }
 
@@ -1457,17 +1642,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing')
     );
 
-    const salesByPayment = {
-      dinheiro: 0,
-      pix: 0,
-      debito: 0,
-      credito: 0
-    };
+    const salesByPayment = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
+    const salesByPaymentCount = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
 
     registerOrders.forEach(o => {
       const method = (o.paymentMethod || 'dinheiro').toLowerCase() as keyof typeof salesByPayment;
       if (salesByPayment[method] !== undefined) {
         salesByPayment[method] += o.total;
+        salesByPaymentCount[method] += 1;
       }
     });
 
@@ -1486,7 +1668,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       difference: 0,
       withdrawals: cashWithdrawals,
       deposits: cashDeposits,
-      salesByPayment
+      salesByPayment,
+      salesByPaymentCount
     };
 
     // Usamos o histórico apenas para exibição no modal
@@ -1510,14 +1693,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleCashRegisterClose = () => {
-    const actualAmount = window.prompt('Informe o valor total em dinheiro no caixa:');
-    if (!actualAmount) return;
+    const actualAmountStr = window.prompt('Informe o valor total em dinheiro no caixa:');
+    if (actualAmountStr === null) return;
 
-    const actual = parseFloat(actualAmount);
+    // BUGFIX #15: Usar o parser brasileiro para garantir centavos
+    const actual = parseBrazilianFloat(actualAmountStr);
     const expected = cashRegister.currentBalance;
     const difference = actual - expected;
 
-    // Calcular vendas reais por forma de pagamento
+    // Calcular vendas reais por forma de pagamento no período deste caixa
     const registerOpenedAt = new Date(cashRegister.openedAt!).getTime();
     const registerOrders = orders.filter(o =>
       o.salesChannel === 'physical' &&
@@ -1525,17 +1709,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing')
     );
 
-    const salesByPayment = {
-      dinheiro: 0,
-      pix: 0,
-      debito: 0,
-      credito: 0
-    };
+    const salesByPayment = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
+    const salesByPaymentCount = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
 
     registerOrders.forEach(o => {
       const method = (o.paymentMethod || 'dinheiro').toLowerCase() as keyof typeof salesByPayment;
       if (salesByPayment[method] !== undefined) {
         salesByPayment[method] += o.total;
+        salesByPaymentCount[method] += 1;
       }
     });
 
@@ -1550,9 +1731,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       expectedAmount: expected,
       actualAmount: actual,
       difference: difference,
-      totalSales: expected - cashRegister.openingAmount,
+      // BUGFIX #7: Cálculo correto de Vendas Totais (Subtrai abertura e suprimentos, soma sangrias para isolar faturamento)
+      // Vendas = Saldo Final - Abertura - Suprimentos + Sangrias
+      totalSales: expected - cashRegister.openingAmount - cashDeposits.reduce((acc, d) => acc + d.amount, 0) + cashWithdrawals.reduce((acc, w) => acc + w.amount, 0),
       totalOrders: registerOrders.length,
       salesByPayment,
+      salesByPaymentCount,
       withdrawals: cashWithdrawals,
       deposits: cashDeposits,
       notes: difference !== 0 ? `${difference > 0 ? 'Sobra' : 'Falta'} de R$ ${Math.abs(difference).toFixed(2)}` : undefined
@@ -1826,7 +2010,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <h3 className="text-white font-bold mb-6">Vendas por Dia (últimos 30 dias)</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={last30DaysData}>
+                    <LineChart data={last30DaysData} onClick={handleChartClick}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                       <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickMargin={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value) => value} />
@@ -1843,7 +2027,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <h3 className="text-white font-bold mb-6">Faturamento por Dia (últimos 30 dias)</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={last30DaysData}>
+                    <BarChart data={last30DaysData} onClick={handleChartClick}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                       <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickMargin={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value}`} />
@@ -1896,7 +2080,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {recentOrders.map(order => (
                     <div key={order.id} className="bg-[#1b2a47] rounded-xl p-4 flex items-center justify-between border border-white/5">
                       <div>
-                        <div className="font-bold text-white text-sm mb-1">{order.id} - {order.customerName}</div>
+                        <div className="font-bold text-white text-sm mb-1">{formatOrderId(order.id)} - {order.customerName}</div>
                         <div className="text-xs text-slate-400">{formatDate(order.date)} - {formatCurrency(order.total)}</div>
                       </div>
                       <span className={`px-4 py-1.5 text-xs font-bold rounded-full ${order.status === 'delivered' ? 'bg-slate-100 text-slate-800' : order.status === 'pending' || order.status === 'processing' ? 'bg-blue-100 text-blue-800' : STATUS_COLORS[order.status] || 'bg-slate-100 text-slate-800'}`}>
@@ -2559,7 +2743,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {/* ERRCOM046: Clicar no número do pedido abre detalhe */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-versiory-coral">
                           <button onClick={() => setSelectedOrderDetail(order)} className="hover:underline font-bold">
-                            {order.id}
+                            {formatOrderId(order.id)}
                           </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{order.customerName}</td>
@@ -2798,6 +2982,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 Exportar CSV
               </button>
+            </div>
+
+            {/* BUGFIX #14: Filtros de Status de Estoque */}
+            <div className="flex flex-wrap gap-2 mb-6">
+              {[
+                { id: 'all', label: 'Todos os Produtos', icon: '📦' },
+                { id: 'low', label: 'Estoque Baixo', icon: '⚠️' },
+                { id: 'out', label: 'Sem Estoque', icon: '❌' },
+                { id: 'normal', label: 'Estoque Normal', icon: '✅' }
+              ].map(filter => (
+                <button
+                  key={filter.id}
+                  onClick={() => setStockFilter(filter.id as StockFilter)}
+                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${stockFilter === filter.id
+                    ? 'bg-versiory-coral text-white shadow-lg'
+                    : 'bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10'
+                    }`}
+                >
+                  <span>{filter.icon}</span>
+                  {filter.label}
+                </button>
+              ))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -3152,7 +3358,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <tbody className="divide-y divide-white/10">
                     {orders.filter(o => o.emitNF).map(order => (
                       <tr key={order.id} className="hover:bg-white/5">
-                        <td className="px-6 py-4 text-sm font-medium text-slate-100">{order.id}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-slate-100">{formatOrderId(order.id)}</td>
                         <td className="px-6 py-4 text-sm text-slate-100">{order.customerName}</td>
                         <td className="px-6 py-4 text-sm text-slate-100">{formatDate(order.date)}</td>
                         <td className="px-6 py-4 text-sm font-medium text-slate-100">{formatCurrency(order.total)}</td>
@@ -3583,7 +3789,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
               <div className="p-6 border-b border-gray-200">
-                <h3 className="text-xl font-black text-gray-900">Atualizar Status do Pedido</h3>
+                <h3 className="text-xl font-black text-gray-900">Atualizar Status - {formatOrderId(orderStatusForm.orderId)}</h3>
               </div>
               <form onSubmit={handleOrderStatusSubmit} className="p-6 space-y-4">
                 <div>
@@ -3650,7 +3856,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value="">Selecione um pedido</option>
                     {orders.map(order => (
                       <option key={order.id} value={order.id}>
-                        {order.id} - {order.customerName}
+                        {formatOrderId(order.id)} - {order.customerName}
                       </option>
                     ))}
                   </select>
@@ -4169,7 +4375,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setSelectedOrderDetail(null)}>
           <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-black text-white">Pedido {selectedOrderDetail.id}</h3>
+              <h3 className="text-xl font-black text-white">Pedido {formatOrderId(selectedOrderDetail.id)}</h3>
               <button onClick={() => setSelectedOrderDetail(null)} className="text-white/60 hover:text-white">✕</button>
             </div>
             <div className="space-y-2 text-sm text-slate-300 mb-4">
@@ -4194,7 +4400,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       return;
                     }
 
-                    const message = `Olá ${selectedOrderDetail.customerName}, o status do seu pedido ${selectedOrderDetail.id} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`;
+                    const message = `Olá ${selectedOrderDetail.customerName}, o status do seu pedido ${formatOrderId(selectedOrderDetail.id)} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`;
                     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
                   }}
                   className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
@@ -4266,7 +4472,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {customerOrderHistory.orders.map(o => (
                   <div key={o.id} className="p-3 bg-white/5 border border-white/10 rounded-xl flex justify-between items-center">
                     <div>
-                      <p className="text-white font-bold">{o.id}</p>
+                      <p className="text-white font-bold">{formatOrderId(o.id)}</p>
                       <p className="text-slate-400 text-xs">{formatDate(o.date)}</p>
                     </div>
                     <div className="text-right">
@@ -4310,6 +4516,90 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalhamento de Vendas (Drill-down) */}
+      {isDrillDownModalOpen && drillDownData && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+          <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 max-w-2xl w-full max-h-[90vh] overflow-y-auto p-8 relative">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-2xl font-black text-white">Pedidos do Dia {drillDownData.date}</h3>
+                <p className="text-white/60 text-sm">{drillDownData.orderIds.length} pedidos encontrados</p>
+              </div>
+              <button 
+                onClick={() => setIsDrillDownModalOpen(false)} 
+                className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-5 gap-4 px-4 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10">
+                <div className="col-span-1">ID</div>
+                <div className="col-span-1">Origem</div>
+                <div className="col-span-2">Cliente</div>
+                <div className="col-span-1 text-right">Total</div>
+              </div>
+              
+              <div className="max-h-[50vh] overflow-y-auto custom-scrollbar pr-2 space-y-2">
+                {drillDownData.orderIds.length > 0 ? (
+                  drillDownData.orderIds.map(id => {
+                    const order = orders.find(o => o.id === id);
+                    if (!order) return null;
+                    
+                    const hasService = order.items?.some(item => {
+                      const p = products.find(prod => prod.id === item.productId);
+                      return p?.category === 'Serviços';
+                    });
+
+                    return (
+                      <div 
+                        key={id} 
+                        onClick={() => {
+                          setSelectedOrderDetail(order);
+                          setIsDrillDownModalOpen(false);
+                        }}
+                        className="grid grid-cols-5 gap-4 items-center p-4 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 transition-all cursor-pointer group"
+                      >
+                        <div className="col-span-1 font-black text-blue-400 group-hover:text-blue-300">
+                          {formatOrderId(order.id)}
+                        </div>
+                        <div className="col-span-1">
+                          {order.isBudget ? (
+                            <span className="text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full font-bold border border-purple-500/30">Orçamento</span>
+                          ) : order.salesChannel === 'physical' ? (
+                            <span className="text-[10px] px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full font-bold border border-blue-500/30">Loja/PDV</span>
+                          ) : (
+                            <span className="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full font-bold border border-emerald-500/30">Site</span>
+                          )}
+                          {hasService && (
+                            <span className="ml-1 text-[10px] px-2 py-0.5 bg-orange-500/20 text-orange-400 rounded-full font-bold border border-orange-500/30">🛠️</span>
+                          )}
+                        </div>
+                        <div className="col-span-2 text-white font-medium truncate text-sm">
+                          {order.customerName}
+                        </div>
+                        <div className="col-span-1 text-right text-versiory-coral font-black">
+                          {formatCurrency(order.total)}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-center py-8 text-slate-500 italic">Nenhum pedido encontrado para esta data.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-white/10 text-center">
+              <p className="text-[10px] text-slate-500 font-medium">Clique em um pedido para ver os detalhes completos.</p>
+            </div>
           </div>
         </div>
       )}
@@ -4655,19 +4945,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                       <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
                         <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">Dinheiro</span>
-                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.dinheiro)}</p>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.dinheiro)} <span className="text-[10px] text-slate-400 font-bold opacity-70">({register.salesByPaymentCount?.dinheiro || 0})</span></p>
                       </div>
                       <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
                         <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">PIX</span>
-                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.pix)}</p>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.pix)} <span className="text-[10px] text-slate-400 font-bold opacity-70">({register.salesByPaymentCount?.pix || 0})</span></p>
                       </div>
                       <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
                         <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">Débito</span>
-                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.debito)}</p>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.debito)} <span className="text-[10px] text-slate-400 font-bold opacity-70">({register.salesByPaymentCount?.debito || 0})</span></p>
                       </div>
                       <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
                         <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">Crédito</span>
-                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.credito)}</p>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.credito)} <span className="text-[10px] text-slate-400 font-bold opacity-70">({register.salesByPaymentCount?.credito || 0})</span></p>
                       </div>
                     </div>
                   </div>

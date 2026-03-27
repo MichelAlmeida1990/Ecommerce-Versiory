@@ -64,6 +64,7 @@ const Checkout: React.FC<CheckoutProps> = ({
 
       const orderId = generateOrderId();
       let fullName = '';
+      let customerPhone = '';
       try {
         const lastUser = localStorage.getItem('versiory_last_user');
         if (lastUser) {
@@ -75,6 +76,9 @@ const Checkout: React.FC<CheckoutProps> = ({
             } else if (parsed && parsed.email) {
               fullName = parsed.email.split('@')[0];
             }
+            if (parsed && parsed.phone) {
+              customerPhone = parsed.phone;
+            }
           }
         }
       } catch { }
@@ -85,6 +89,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         customerId: 0,
         customerEmail: effectiveEmail,
         customerName: fullName,
+        customerPhone: customerPhone || undefined,
         date: new Date().toISOString(),
         total: total,
         status: 'pending',
