@@ -134,14 +134,44 @@ export const getOrders = async (): Promise<Order[]> => {
     return querySnapshot.docs.map(doc => ({ ...doc.data() } as Order));
 };
 export const saveOrder = (order: Order) => setDocument("orders", order.id, order);
+export const getOrder = async (id: string): Promise<Order | null> => {
+    const docRef = doc(db, "orders", id);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        return docSnap.data() as Order;
+    }
+    return null;
+};
 
 // ---- Customers ----
 export const getCustomers = () => getCollection<Customer>("customers");
 export const saveCustomer = (customer: Customer) => setDocument("customers", customer.id, customer);
 
+// ---- Cart Persistence ----
+export const saveCart = async (email: string, items: any[]) => {
+    await setDocument("carts", email, { items, updatedAt: Date.now() });
+};
+
+export const getCart = async (email: string): Promise<any[]> => {
+    const docRef = doc(db, "carts", email);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        return docSnap.data().items || [];
+    }
+    return [];
+};
+
 // ---- Tracking ----
 export const getTracking = () => getCollection<TrackingItem>("tracking");
 export const saveTrackingItem = (tracking: TrackingItem) => setDocument("tracking", tracking.orderId, tracking);
+export const getTrackingItem = async (orderId: string): Promise<TrackingItem | null> => {
+    const docRef = doc(db, "tracking", orderId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        return docSnap.data() as TrackingItem;
+    }
+    return null;
+};
 
 // ---- Inventory Movements ----
 export const getInventoryMovements = async (): Promise<InventoryMovement[]> => {

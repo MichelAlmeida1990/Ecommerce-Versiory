@@ -65,7 +65,12 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         ${isBudget ? '<p class="info">Versiory Store</p>' : '<p class="info">Transformando Ideias em Sucesso</p>'}
         <p class="info">----------------------------</p>
         <p class="info">${isBudget ? 'ORÇAMENTO' : 'PEDIDO'}: ${orderId}</p>
-        <p class="info">DATA: ${date}</p>
+        <p class="info">DATA: ${date} ${new Date().toLocaleTimeString('pt-BR')}</p>
+        <div class="no-print" style="margin-bottom: 10px; text-align: center;">
+          <button onclick="window.print()" style="background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%;">
+            💾 Baixar PDF / Imprimir
+          </button>
+        </div>
       </div>
       
       <div class="info">

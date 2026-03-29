@@ -1943,8 +1943,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8 tablet-desktop-container">
-        <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 mb-6">
+      <div className="max-w-7xl mx-auto px-4 py-8 tablet-desktop-container relative">
+        <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 mb-6 sticky top-0 z-50">
           <div className="flex flex-wrap gap-1 p-2">
             {(
               userRole === 'admin'
@@ -2099,19 +2099,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="flex flex-col tablet-desktop-flex gap-6">
             {/* Left Column: Product Search & List */}
             <div className="flex-1 space-y-4">
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 tablet-desktop-padding">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-black text-white tablet-desktop-text">Adicionar Produtos</h2>
-                  <input
-                    type="text"
-                    value={pdvSearch}
-                    onChange={e => setPdvSearch(e.target.value)}
-                    placeholder="Buscar por nome ou categoria..."
-                    className="px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none w-64"
-                  />
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 tablet-desktop-padding overflow-hidden flex flex-col h-full max-h-[85vh]">
+                <div className="p-6 pb-4 border-b border-white/10 sticky top-0 bg-[#0a1b3d]/90 backdrop-blur-md z-10">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-black text-white tablet-desktop-text">Adicionar Produtos</h2>
+                    <input
+                      type="text"
+                      value={pdvSearch}
+                      onChange={e => setPdvSearch(e.target.value)}
+                      placeholder="Buscar por nome ou categoria..."
+                      className="px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none w-64"
+                    />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 tablet-desktop-grid gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 tablet-desktop-grid gap-4 p-6 overflow-y-auto custom-scrollbar flex-1">
                   {products
                     .filter(p => p.name.toLowerCase().includes(pdvSearch.toLowerCase()) || p.category.toLowerCase().includes(pdvSearch.toLowerCase()))
                     .map(product => (
@@ -2723,7 +2725,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full">
                   <thead className="bg-white/15 backdrop-blur-md border-b border-white/25">
                     <tr>
@@ -5009,7 +5011,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             Sair
           </button>
-          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 1.3.0</span></p>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.4.5 (Estável)</span></p>
         </div>
       </footer>
     </div>

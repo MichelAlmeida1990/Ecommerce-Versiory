@@ -24,6 +24,14 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [orderNotes, setOrderNotes] = useState('');
   const [emitNF, setEmitNF] = useState(false);
   const [invoiceStatus, setInvoiceStatus] = useState<'none' | 'generating' | 'ready'>('none');
+  const [orderPlaced, setOrderPlaced] = useState(false); // Prevenção de duplicatas (Item 22)
+  const [customerData, setCustomerData] = useState<Customer | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('default');
+  const [customAddress, setCustomAddress] = useState(customerAddress);
+  const [couponCode, setCouponCode] = useState('');
+  const [discount, setDiscount] = useState(0);
+  const [couponError, setCouponError] = useState('');
+  const [couponApplied, setCouponApplied] = useState(false);
 
   // Cálculo robusto de e-mail e endereço efetivos (fallback para localStorage se prop estiver vazio)
   const { effectiveEmail, effectiveAddress } = React.useMemo(() => {
@@ -43,7 +51,59 @@ const Checkout: React.FC<CheckoutProps> = ({
     return { effectiveEmail: email, effectiveAddress: address };
   }, [customerEmail, customerAddress]);
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  // Carregar dados do cliente ao abrir
+  React.useEffect(() => {
+    if (isOpen && effectiveEmail) {
+      const loadCustomer = async () => {
+        try {
+          const { getCustomers } = await import('../services/firebase');
+          const customers = await getCustomers();
+          const found = customers.find(c => c.email === effectiveEmail);
+          if (found) {
+            setCustomerData(found);
+            // Se tiver endereços, seleciona o primeiro por padrão
+            if (found.addresses && found.addresses.length > 0) {
+              setSelectedAddressId(found.addresses[0].id || '0');
+              const addr = found.addresses[0];
+              const fullAddr = `${addr.street}, ${addr.number}${addr.complement ? ` - ${addr.complement}` : ''}, ${addr.neighborhood}, ${addr.city} - ${addr.state}, CEP: ${addr.zipCode}`;
+              setCustomAddress(fullAddr);
+            } else {
+              setSelectedAddressId('manual');
+              setCustomAddress(customerAddress || '');
+            }
+          } else {
+            setSelectedAddressId('manual');
+            setCustomAddress(customerAddress || '');
+          }
+        } catch (error) {
+          console.error('Erro ao carregar dados do cliente:', error);
+          setSelectedAddressId('manual');
+        }
+      };
+      loadCustomer();
+    }
+  }, [isOpen, effectiveEmail, customerAddress]);
+
+  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = Math.max(0, subtotal - discount);
+
+  const applyCoupon = () => {
+    setCouponError('');
+    const code = couponCode.toUpperCase().trim();
+    
+    if (code === 'VERSIORY10') {
+      const d = subtotal * 0.1;
+      setDiscount(d);
+      setCouponApplied(true);
+    } else if (code === 'BEMVINDO') {
+      setDiscount(20);
+      setCouponApplied(true);
+    } else if (!code) {
+      setCouponError('Digite um cupom');
+    } else {
+      setCouponError('Cupom inválido ou expirado');
+    }
+  };
 
   const generateOrderId = () => {
     const timestamp = Date.now();
@@ -52,10 +112,12 @@ const Checkout: React.FC<CheckoutProps> = ({
   };
 
   const handleCheckout = async () => {
-    if (!effectiveEmail || !effectiveAddress || effectiveAddress === 'Endereço não informado') {
-      alert('⚠️ Dados de entrega incompletos. Por favor, verifique seu login e endereço.');
+    if (!effectiveEmail || !customAddress || customAddress === 'Endereço não informado' || customAddress.trim() === '') {
+      alert('⚠️ Dados de entrega incompletos. Por favor, verifique seu endereço.');
       return;
     }
+
+    if (orderPlaced) return; // Segurança extra
 
     setIsProcessing(true);
 
@@ -63,40 +125,36 @@ const Checkout: React.FC<CheckoutProps> = ({
       const { saveOrder, getCustomers, saveCustomer } = await import('../services/firebase');
 
       const orderId = generateOrderId();
-      let fullName = '';
-      let customerPhone = '';
-      try {
-        const lastUser = localStorage.getItem('versiory_last_user');
-        if (lastUser) {
-          const savedUser = localStorage.getItem(`versiory_user_${lastUser}`);
-          if (savedUser) {
-            const parsed = JSON.parse(savedUser);
-            if (parsed && parsed.name) {
-              fullName = parsed.name;
-            } else if (parsed && parsed.email) {
-              fullName = parsed.email.split('@')[0];
-            }
-            if (parsed && parsed.phone) {
-              customerPhone = parsed.phone;
+      let fullName = customerData?.name || '';
+      let customerPhone = customerData?.phone || '';
+      
+      if (!fullName) {
+        try {
+          const lastUser = localStorage.getItem('versiory_last_user');
+          if (lastUser) {
+            const savedUser = localStorage.getItem(`versiory_user_${lastUser}`);
+            if (savedUser) {
+              const parsed = JSON.parse(savedUser);
+              fullName = parsed.name || parsed.email.split('@')[0];
+              if (parsed.phone) customerPhone = parsed.phone;
             }
           }
-        }
-      } catch { }
+        } catch { }
+      }
       if (!fullName) fullName = effectiveEmail.split('@')[0];
 
       const orderData: Order = {
         id: orderId,
-        customerId: 0,
+        customerId: customerData?.id || 0,
         customerEmail: effectiveEmail,
         customerName: fullName,
         customerPhone: customerPhone || undefined,
         date: new Date().toISOString(),
         total: total,
         status: 'pending',
-        address: effectiveAddress,
+        address: customAddress,
         estimatedDelivery: '5 a 10 dias úteis',
         items: items.map(item => {
-          // BUGFIX: Omitir campos undefined — Firestore rejeita 'undefined'
           const orderItem: any = {
             productId: item.id,
             name: item.name,
@@ -109,38 +167,48 @@ const Checkout: React.FC<CheckoutProps> = ({
           if (item.selectedColor) orderItem.selectedColor = item.selectedColor;
           return orderItem;
         }),
-        notes: orderNotes || ''
+        notes: orderNotes || '',
+        salesChannel: 'online'
       };
 
       // Atualizar no Firebase
-      const customers = await getCustomers();
-      const customerIndex = customers.findIndex((c) => c.email === effectiveEmail);
-
       let targetCustomer: Customer;
 
-      if (customerIndex >= 0) {
-        targetCustomer = customers[customerIndex];
+      if (customerData) {
+        targetCustomer = { ...customerData };
         targetCustomer.totalOrders = (targetCustomer.totalOrders || 0) + 1;
         targetCustomer.totalSpent = (targetCustomer.totalSpent || 0) + total;
-        if (fullName) targetCustomer.name = fullName;
         if (!targetCustomer.orderHistory) targetCustomer.orderHistory = [];
         targetCustomer.orderHistory.push({ ...orderData, emitNF } as any);
         orderData.customerId = targetCustomer.id;
       } else {
-        targetCustomer = {
-          id: Date.now(),
-          name: fullName,
-          email: effectiveEmail,
-          totalOrders: 1,
-          totalSpent: total,
-          addresses: [],
-          createdAt: new Date().toISOString(),
-          orderHistory: [{ ...orderData, emitNF } as any]
-        };
-        orderData.customerId = targetCustomer.id;
+        // Fallback se não carregou customerData (raro)
+        const customers = await getCustomers();
+        const existing = customers.find(c => c.email === effectiveEmail);
+        if (existing) {
+          targetCustomer = { ...existing };
+          targetCustomer.totalOrders = (targetCustomer.totalOrders || 0) + 1;
+          targetCustomer.totalSpent = (targetCustomer.totalSpent || 0) + total;
+          if (!targetCustomer.orderHistory) targetCustomer.orderHistory = [];
+          targetCustomer.orderHistory.push({ ...orderData, emitNF } as any);
+          orderData.customerId = targetCustomer.id;
+        } else {
+          targetCustomer = {
+            id: Date.now(),
+            name: fullName,
+            email: effectiveEmail,
+            phone: customerPhone,
+            totalOrders: 1,
+            totalSpent: total,
+            addresses: [],
+            createdAt: new Date().toISOString(),
+            orderHistory: [{ ...orderData, emitNF } as any]
+          };
+          orderData.customerId = targetCustomer.id;
+        }
       }
 
-      // BUGFIX: Sanitizar objetos antes de salvar — Firestore rejeita campos 'undefined'
+      // BUGFIX: Sanitizar objetos antes de salvar
       const sanitizedOrder = JSON.parse(JSON.stringify(orderData));
       const sanitizedCustomer = JSON.parse(JSON.stringify(targetCustomer));
 
@@ -149,13 +217,15 @@ const Checkout: React.FC<CheckoutProps> = ({
         saveCustomer(sanitizedCustomer)
       ]);
 
+      setOrderPlaced(true); // Evita duplicatas (Item 22)
+
       if (emitNF) {
         setInvoiceStatus('generating');
         setTimeout(() => setInvoiceStatus('none'), 2000);
       }
 
-      if (paymentMethod === 'whatsapp' && !emitNF) {
-        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, effectiveAddress);
+      if (paymentMethod === 'whatsapp') {
+        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, customAddress);
         const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
       } else if (paymentMethod === 'pix') {
@@ -299,8 +369,18 @@ const Checkout: React.FC<CheckoutProps> = ({
                 </div>
               ))}
 
-              <div className="border-t border-slate-200 pt-3 mt-3">
-                <div className="flex justify-between items-center">
+              <div className="border-t border-slate-200 pt-3 mt-3 space-y-2">
+                <div className="flex justify-between items-center text-sm font-medium text-slate-600">
+                  <span>Subtotal</span>
+                  <span>R$ {subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                {discount > 0 && (
+                  <div className="flex justify-between items-center text-sm font-bold text-emerald-600">
+                    <span>Desconto ({couponCode.toUpperCase()})</span>
+                    <span>- R$ {discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center border-t border-slate-200 pt-2">
                   <span className="text-lg font-bold text-slate-900">Total</span>
                   <span className="text-xl font-black text-versiory-coral">
                     R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -308,21 +388,101 @@ const Checkout: React.FC<CheckoutProps> = ({
                 </div>
               </div>
             </div>
+            
+            {/* Campo de Cupom */}
+            <div className="mt-4 flex gap-2">
+              <input
+                type="text"
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value)}
+                disabled={couponApplied}
+                placeholder="Tem um cupom de desconto?"
+                className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-versiory-coral outline-none disabled:bg-slate-100"
+              />
+              <button
+                onClick={couponApplied ? () => { setDiscount(0); setCouponApplied(false); setCouponCode(''); } : applyCoupon}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                  couponApplied ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-versiory-ink text-white hover:brightness-110'
+                }`}
+              >
+                {couponApplied ? 'Remover' : 'Aplicar'}
+              </button>
+            </div>
+            {couponError && <p className="text-xs text-red-500 mt-1 ml-2">{couponError}</p>}
+            {couponApplied && <p className="text-xs text-emerald-600 mt-1 ml-2 font-bold">✓ Cupom aplicado com sucesso!</p>}
           </div>
 
           {/* Dados de Entrega */}
           <div className="mb-6">
             <h4 className="font-bold text-slate-900 mb-4">Dados de Entrega</h4>
-            <div className="bg-slate-50 rounded-xl p-4">
-              <div className="mb-3">
-                <p className="text-sm text-slate-600">Email</p>
-                <p className="font-medium text-slate-900">{effectiveEmail || 'Não informado'}</p>
+            
+            {/* Seleção de Endereços Cadastrados (Item 19) */}
+            {customerData && customerData.addresses && customerData.addresses.length > 0 ? (
+              <div className="space-y-3 mb-4">
+                <p className="text-sm text-slate-600 mb-2">Selecione um endereço:</p>
+                {customerData.addresses.map((addr, idx) => (
+                  <label 
+                    key={addr.id || idx} 
+                    className={`flex items-start p-3 border-2 rounded-xl cursor-pointer transition-all ${
+                      selectedAddressId === (addr.id || String(idx)) 
+                        ? 'border-versiory-coral bg-versiory-coral/5' 
+                        : 'border-slate-100 hover:border-slate-200 bg-white'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="address-selection"
+                      className="mt-1 mr-3"
+                      checked={selectedAddressId === (addr.id || String(idx))}
+                      onChange={() => {
+                        setSelectedAddressId(addr.id || String(idx));
+                        const fullAddr = `${addr.street}, ${addr.number}${addr.complement ? ` - ${addr.complement}` : ''}, ${addr.neighborhood}, ${addr.city} - ${addr.state}, CEP: ${addr.zipCode}`;
+                        setCustomAddress(fullAddr);
+                      }}
+                    />
+                    <div className="flex-1 text-sm">
+                      <p className="font-bold text-slate-900">{addr.street}, {addr.number}</p>
+                      <p className="text-slate-600">{addr.neighborhood}, {addr.city} - {addr.state}</p>
+                      <p className="text-slate-500 text-xs">CEP: {addr.zipCode}</p>
+                    </div>
+                  </label>
+                ))}
+                
+                <label className={`flex items-center p-3 border-2 rounded-xl cursor-pointer transition-all ${
+                  selectedAddressId === 'manual' 
+                    ? 'border-versiory-coral bg-versiory-coral/5' 
+                    : 'border-slate-100 hover:border-slate-200 bg-white'
+                }`}>
+                  <input
+                    type="radio"
+                    name="address-selection"
+                    className="mr-3"
+                    checked={selectedAddressId === 'manual'}
+                    onChange={() => setSelectedAddressId('manual')}
+                  />
+                  <span className="text-sm font-bold text-slate-900">Outro endereço (digitar manual)</span>
+                </label>
               </div>
-              <div>
-                <p className="text-sm text-slate-600">Endereço de Entrega</p>
-                <p className="font-medium text-slate-900 whitespace-pre-line">{effectiveAddress || 'Endereço não informado'}</p>
+            ) : null}
+
+            {(selectedAddressId === 'manual' || !customerData?.addresses?.length) && (
+              <div className="bg-slate-50 rounded-xl p-4">
+                <div className="mb-3">
+                  <p className="text-sm text-slate-600">Email</p>
+                  <p className="font-medium text-slate-900">{effectiveEmail || 'Não informado'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Endereço de Entrega</p>
+                  <textarea
+                    value={customAddress}
+                    onChange={(e) => setCustomAddress(e.target.value)}
+                    placeholder="Digite o endereço completo para entrega..."
+                    rows={3}
+                    className="w-full border border-slate-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-1 focus:ring-versiory-coral"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Método de Pagamento */}
@@ -420,8 +580,10 @@ const Checkout: React.FC<CheckoutProps> = ({
             </button>
             <button
               onClick={handleCheckout}
-              disabled={isProcessing || invoiceStatus === 'ready'}
-              className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isProcessing || orderPlaced}
+              className={`flex-1 text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                orderPlaced ? 'bg-emerald-600' : 'bg-versiory-coral hover:bg-[#ff8368]'
+              }`}
             >
               {isProcessing ? (
                 <span className="flex items-center justify-center gap-2">
@@ -429,7 +591,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                   {invoiceStatus === 'generating' ? 'Gerando NF-e...' : 'Processando...'}
                 </span>
               ) : (
-                invoiceStatus === 'ready' ? 'Pedido Concluído!' : 'Finalizar Pedido'
+                orderPlaced ? 'Pedido Concluído!' : 'Finalizar Pedido'
               )}
             </button>
           </div>
