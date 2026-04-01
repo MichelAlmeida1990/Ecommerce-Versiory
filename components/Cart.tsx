@@ -20,7 +20,13 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const [isCheckoutInfoOpen, setIsCheckoutInfoOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
-  const [addressForm, setAddressForm] = useState('');
+  const [addressZip, setAddressZip] = useState('');
+  const [addressStreet, setAddressStreet] = useState('');
+  const [addressNumber, setAddressNumber] = useState('');
+  const [addressComplement, setAddressComplement] = useState('');
+  const [addressNeighborhood, setAddressNeighborhood] = useState('');
+  const [addressCity, setAddressCity] = useState('');
+  const [addressState, setAddressState] = useState('');
 
   const getMaxStock = (item: CartItem): number => {
     if (item.selectedSize && item.selectedColor && item.stockBySizeColor) {
@@ -35,11 +41,16 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
     const maxStock = getMaxStock(item);
     const newQuantity = item.quantity + delta;
     
+    if (maxStock <= 0) {
+      alert('⚠️ Este produto está temporariamente esgotado.');
+      return;
+    }
+
     if (newQuantity > maxStock) {
       alert(`⚠️ Estoque disponível: ${maxStock} unidades`);
       return;
     }
-    
+
     onUpdateQuantity(item.id, delta, item.selectedSize, item.selectedColor);
   };
 
@@ -79,10 +90,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   };
 
   const handleSaveAddress = () => {
-    if (!addressForm.trim()) {
-      alert('Por favor, preencha o endereço.');
-      return;
-    }
+    const fullAddress = `${addressStreet}, ${addressNumber}${addressComplement ? ` - ${addressComplement}` : ''}, ${addressNeighborhood}, ${addressCity} - ${addressState}, CEP: ${addressZip}`;
     
     const lastUser = localStorage.getItem('versiory_last_user');
     if (lastUser) {
@@ -90,7 +98,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
       const savedUser = localStorage.getItem(sessionKey);
       if (savedUser) {
         const parsed = JSON.parse(savedUser);
-        parsed.address = addressForm;
+        parsed.address = fullAddress;
         localStorage.setItem(sessionKey, JSON.stringify(parsed));
         setIsAddressModalOpen(false);
         alert('Endereço salvo com sucesso!');
@@ -101,7 +109,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
         const oldUser = localStorage.getItem('versiory_user');
         if (oldUser) {
             const parsed = JSON.parse(oldUser);
-            parsed.address = addressForm;
+            parsed.address = fullAddress;
             localStorage.setItem('versiory_user', JSON.stringify(parsed));
             setIsAddressModalOpen(false);
             alert('Endereço salvo com sucesso!');
@@ -304,13 +312,96 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
               Para finalizar seu pedido, precisamos do seu endereço de entrega.
             </p>
 
-            <textarea
-              value={addressForm}
-              onChange={(e) => setAddressForm(e.target.value)}
-              placeholder="Digite seu endereço completo (Rua, Número, Bairro, Cidade, Estado, CEP)"
-              rows={4}
-              className="w-full border-2 border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
-            />
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">CEP</label>
+                  <input
+                    type="text"
+                    value={addressZip}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setAddressZip(val);
+                      if (val.length === 8) {
+                        fetch(`https://viacep.com.br/ws/${val}/json/`)
+                          .then(res => res.json())
+                          .then(data => {
+                            if (!data.erro) {
+                              setAddressStreet(data.logradouro);
+                              setAddressNeighborhood(data.bairro);
+                              setAddressCity(data.localidade);
+                              setAddressState(data.uf);
+                            }
+                          });
+                      }
+                    }}
+                    placeholder="00000-000"
+                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Rua / Logradouro</label>
+                  <input
+                    type="text"
+                    value={addressStreet}
+                    onChange={(e) => setAddressStreet(e.target.value)}
+                    placeholder="Nome da rua"
+                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Número</label>
+                  <input
+                    type="text"
+                    value={addressNumber}
+                    onChange={(e) => setAddressNumber(e.target.value)}
+                    placeholder="123"
+                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Complemento</label>
+                  <input
+                    type="text"
+                    value={addressComplement}
+                    onChange={(e) => setAddressComplement(e.target.value)}
+                    placeholder="Apto, Sala, etc."
+                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Bairro</label>
+                  <input
+                    type="text"
+                    value={addressNeighborhood}
+                    onChange={(e) => setAddressNeighborhood(e.target.value)}
+                    placeholder="Bairro"
+                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cidade</label>
+                  <input
+                    type="text"
+                    value={addressCity}
+                    onChange={(e) => setAddressCity(e.target.value)}
+                    placeholder="Cidade"
+                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Estado (UF)</label>
+                  <input
+                    type="text"
+                    value={addressState}
+                    onChange={(e) => setAddressState(e.target.value.toUpperCase())}
+                    placeholder="UF"
+                    maxLength={2}
+                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-versiory-coral text-slate-900"
+                  />
+                </div>
+              </div>
+            </div>
 
             <div className="mt-6 flex gap-3">
               <button

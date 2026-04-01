@@ -7,9 +7,10 @@ interface CustomerOrdersProps {
   customerEmail: string;
   isOpen: boolean;
   onClose: () => void;
+  initialOrderId?: string; // ERRCOM084
 }
 
-const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, onClose }) => {
+const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, onClose, initialOrderId }) => {
   const [orders, setOrders] = useState<(Order & { emitNF?: boolean })[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<(Order & { emitNF?: boolean }) | null>(null);
   const [isPreviewingDanfe, setIsPreviewingDanfe] = useState(false);
@@ -27,7 +28,10 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
     complement: '',
     neighborhood: '',
     city: '',
-    state: ''
+    state: '',
+    id: '',
+    country: 'Brasil',
+    type: 'shipping' as const
   });
   const [loadingCep, setLoadingCep] = useState(false);
 
@@ -174,18 +178,22 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
     if (!selectedOrder) return;
 
     // Tentar extrair os dados do endereço formatado
-    const addr = selectedOrder.address || '';
-    const parts = addr.split(',').map(p => p.trim());
+    const addressString = selectedOrder.address || '';
+    const cepMatch = addressString.match(/CEP:\s?(\d{5}-?\d{3})/i);
+    const streetMatch = addressString.match(/^([^,]+),?\s*(\d+)?/); // Rua, Número
+    const neighborhoodMatch = addressString.match(/-\s*([^,]+),\s*([^,]+)\/([A-Z]{2})/); // Bairro, Cidade/UF
 
-    // Fallback simples para preencher o form se possível
     setAddressForm({
-      zipCode: addr.match(/CEP:\s?(\d{5}-?\d{3})/i)?.[1] || '',
-      street: parts[0] || '',
-      number: parts[1]?.split('-')[0]?.trim() || '',
-      complement: parts[1]?.split('-')[1]?.trim() || '',
-      neighborhood: parts[2] || '',
-      city: parts[3]?.split('-')[0]?.trim() || '',
-      state: parts[3]?.split('-')[1]?.trim() || ''
+      zipCode: cepMatch ? cepMatch[1] : '',
+      street: streetMatch ? streetMatch[1].trim() : '',
+      number: streetMatch && streetMatch[2] ? streetMatch[2].trim() : '',
+      complement: addressString.match(/complemento:\s*([^,]+)/i)?.[1] || '', // Assuming complement is explicitly mentioned
+      neighborhood: addressString.match(/-\s*([^,]+),\s*[^,]+\/[A-Z]{2}/i)?.[1] || '',
+      city: addressString.match(/,\s*([^,]+)\s*-\s*[A-Z]{2}/i)?.[1] || '',
+      state: addressString.match(/([A-Z]{2})\s*,\s*CEP/i)?.[1] || '',
+      id: selectedOrder.id, // Use order ID as address ID for now
+      country: 'Brasil',
+      type: 'shipping'
     });
 
     setIsEditingAddress(true);
@@ -196,6 +204,16 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
       loadOrders();
     }
   }, [isOpen, customerEmail]);
+
+  // ERRCOM084: Auto-select order if initialOrderId is provided
+  useEffect(() => {
+    if (isOpen && initialOrderId && orders.length > 0) {
+      const found = orders.find(o => o.id === initialOrderId);
+      if (found) {
+        setSelectedOrder(found);
+      }
+    }
+  }, [isOpen, initialOrderId, orders]);
 
   const loadOrders = async () => {
     setLoading(true);
@@ -390,7 +408,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
               <div>
                 <h4 className="text-2xl font-black text-slate-900">Pedido <span className="text-versiory-coral">{selectedOrder.id}</span></h4>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                  Realizado em {new Date(selectedOrder.date).toLocaleDateString('pt-BR')} às {new Date(selectedOrder.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  Realizado em {new Date(selectedOrder.date).toLocaleDateString('pt-BR')} às {selectedOrder.orderTime || new Date(selectedOrder.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </p>
               </div>
               <button onClick={() => setSelectedOrder(null)} className="p-3 hover:bg-slate-100 rounded-2xl transition-all">
@@ -566,6 +584,33 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                       ❌ Cancelar Pedido
                     </button>
                   )}
+                  <button
+                    onClick={async () => {
+                      const { generateReceiptHTML } = await import('../utils/receiptGenerator');
+                      const receiptContent = generateReceiptHTML({
+                        orderId: selectedOrder.id,
+                        date: new Date(selectedOrder.date).toLocaleDateString('pt-BR'),
+                        orderTime: selectedOrder.orderTime || new Date(selectedOrder.date).toLocaleTimeString('pt-BR'),
+                        customerName: selectedOrder.customerName,
+                        customerEmail: selectedOrder.customerEmail,
+                        customerAddress: selectedOrder.address,
+                        customerPhone: selectedOrder.customerPhone,
+                        customerCpfCnpj: selectedOrder.customerCpfCnpj,
+                        items: selectedOrder.items as any,
+                        total: selectedOrder.total,
+                        paymentMethod: selectedOrder.paymentMethod,
+                        salesChannel: selectedOrder.salesChannel || 'online'
+                      });
+                      const printWindow = window.open('', '_blank');
+                      if (printWindow) {
+                        printWindow.document.write(receiptContent);
+                        printWindow.document.close();
+                      }
+                    }}
+                    className="flex-1 md:flex-none border-2 border-slate-200 hover:border-versiory-ink text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                  >
+                    📄 Baixar Recibo
+                  </button>
                   {selectedOrder.emitNF && selectedOrder.status === 'paid' && (
                     <button
                       onClick={() => setIsPreviewingDanfe(true)}
@@ -587,6 +632,47 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                       Rastrear Entrega
                     </button>
                   )}
+                  <button
+                    onClick={() => {
+                      const message = [
+                        `🆘 *SUPORTE AO PEDIDO - ${selectedOrder.id}*`,
+                        '',
+                        `Olá! Preciso de ajuda com meu pedido.`,
+                        `Status Atual: ${getStatusConfig(selectedOrder.status).label}`,
+                        '',
+                        `*DETALHE O PROBLEMA:*`,
+                        '...'
+                      ].join('\n');
+                      const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
+                      window.open(url, '_blank');
+                    }}
+                    className="flex-1 md:flex-none border-2 border-green-200 hover:border-green-500 text-green-700 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                  >
+                    💬 Suporte WhatsApp
+                  </button>
+                  <button
+                    onClick={() => {
+                      const itemsList = selectedOrder.items.map(item => 
+                        `• ${item.name} x${item.quantity}`
+                      ).join('\n');
+                      const message = [
+                        `📦 *DÚVIDA SOBRE PEDIDO - ${selectedOrder.id}*`,
+                        '',
+                        `*DETALHES:*`,
+                        `Status: ${getStatusConfig(selectedOrder.status).label}`,
+                        `Total: R$ ${selectedOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                        '',
+                        `*ITENS:*`,
+                        itemsList,
+                        '',
+                        'Olá! Gostaria de falar sobre este pedido específico. Pode me ajudar?'
+                      ].join('\n');
+                      window.open(`https://wa.me/5511958540171?text=${encodeURIComponent(message)}`, '_blank');
+                    }}
+                    className="flex-1 md:flex-none bg-emerald-50 text-emerald-700 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center justify-center gap-2"
+                  >
+                    ℹ️ Falar do Pedido
+                  </button>
                 </div>
                 <button onClick={() => setSelectedOrder(null)} className="w-full md:w-auto px-8 py-4 font-black text-slate-400 hover:text-slate-900 transition-colors uppercase text-[10px] tracking-widest">
                   Fechar Detalhes

@@ -25,8 +25,16 @@ const ProductSizeSelector: React.FC<ProductSizeSelectorProps> = ({
       </label>
       <div className="grid grid-cols-3 gap-2">
         {availableSizes.map(size => {
-          const stock = product.stockBySize?.[size] || 0;
-          const isAvailable = stock > 0;
+          let currentStock = 0;
+          if (product.colors && product.stockBySizeColor) {
+            // If product has colors, sum up stock across all colors for this size
+            product.colors.split(',').forEach(color => {
+              currentStock += product.stockBySizeColor?.[`${size}-${color.trim()}`] || 0;
+            });
+          } else {
+            currentStock = product.stockBySize?.[size] || 0;
+          }
+          const isAvailable = currentStock > 0;
           const isSelected = selectedSize === size;
           
           return (
@@ -50,7 +58,7 @@ const ProductSizeSelector: React.FC<ProductSizeSelectorProps> = ({
                 <div className={`text-[10px] font-medium mt-0.5 ${
                   isSelected ? 'text-white' : isAvailable ? 'text-green-300' : 'text-red-300'
                 }`}>
-                  {isAvailable ? `${stock} disp` : 'Esgotado'}
+                  {isAvailable ? `${currentStock} disp` : 'Esgotado'}
                 </div>
               </div>
               {isSelected && (

@@ -317,15 +317,24 @@ const ProductDetail: React.FC = () => {
                             key={color}
                             onClick={() => isAvailable && setSelectedColor(color)}
                             disabled={!isAvailable}
-                            className={`px-4 py-2 border-2 rounded-xl font-bold transition-all ${selectedColor === color
+                            className={`px-4 py-2 border-2 rounded-xl font-bold transition-all relative group/color ${selectedColor === color
                               ? 'border-versiory-coral text-versiory-coral bg-[#fff6ef] shadow-sm'
                               : isAvailable
                                 ? 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                                : 'border-slate-100 text-slate-300 bg-slate-50 cursor-not-allowed line-through'
+                                : 'border-slate-100 text-slate-300 bg-slate-50 cursor-not-allowed line-through opacity-60'
                               }`}
                           >
                             {color}
-                            {isAvailable && <span className="text-[10px] ml-1 opacity-70 font-normal">({colorStock})</span>}
+                            {isAvailable && (
+                              <span className={`text-[10px] ml-1 opacity-70 font-normal ${colorStock < 3 ? 'text-red-500 font-black animate-pulse' : ''}`}>
+                                ({colorStock})
+                              </span>
+                            )}
+                            {!isAvailable && selectedSize && (
+                              <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded font-bold opacity-0 group-hover/color:opacity-100 transition-opacity whitespace-nowrap z-10">
+                                INDISPONÍVEL NESTE TAMANHO
+                              </span>
+                            )}
                           </button>
                         );
                       })}

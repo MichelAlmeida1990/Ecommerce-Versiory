@@ -37,6 +37,8 @@ const App: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<Category>('Todos');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentUserPhone, setCurrentUserPhone] = useState('');
+  const [currentUserCpfCnpj, setCurrentUserCpfCnpj] = useState('');
   const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [currentUserAddress, setCurrentUserAddress] = useState('');
   const [isCustomerOrdersOpen, setIsCustomerOrdersOpen] = useState(false);
@@ -74,6 +76,8 @@ const App: React.FC = () => {
         if (session) {
           setIsAuthenticated(true);
           setCurrentUserEmail(session.email);
+          setCurrentUserPhone(session.phone || '');
+          setCurrentUserCpfCnpj(session.cpfCnpj || '');
           setCurrentUserAddress(session.address || '');
         }
       } catch (error) {
@@ -131,6 +135,8 @@ const App: React.FC = () => {
           const { saveUserSession } = await import('./services/firebase');
           await saveUserSession({
             email: currentUserEmail,
+            phone: currentUserPhone,
+            cpfCnpj: currentUserCpfCnpj,
             address: currentUserAddress,
             loginTime: Date.now()
           });
@@ -177,11 +183,13 @@ const App: React.FC = () => {
 
   // Salvar carrinho local E remoto sempre que mudar
   useEffect(() => {
-    localStorage.setItem('versiory_cart', JSON.stringify(cartItems));
-    
+    if (cartItems.length >= 0) {
+      localStorage.setItem('versiory_cart', JSON.stringify(cartItems));
+    }
+
     // Throttle/Debounce seria ideal, mas vamos simplificar
     const timeout = setTimeout(async () => {
-      if (isAuthenticated && currentUserEmail && cartItems.length >= 0) {
+      if (isAuthenticated && currentUserEmail && cartItems.length > 0) {
         try {
           const { saveCart } = await import('./services/firebase');
           await saveCart(currentUserEmail, cartItems);
@@ -199,15 +207,20 @@ const App: React.FC = () => {
     return products.filter(p => {
       const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
       const q = searchQuery.trim().toLowerCase();
-      const matchesSearch = !q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
-      return matchesCategory && matchesSearch;
+      if (!q) return matchesCategory;
+
+      const nameMatch = p.name?.toLowerCase().includes(q);
+      const descMatch = p.description?.toLowerCase().includes(q);
+      const catMatch = p.category?.toLowerCase().includes(q);
+
+      return matchesCategory && (nameMatch || descMatch || catMatch);
     });
   }, [products, activeCategory, searchQuery]);
 
   const addToCart = (product: Product, selectedSize?: string, selectedColor?: string) => {
     // Validação de estoque (Item 17)
     let availableStock = product.stock || 0;
-    
+
     // Se tiver estoque por tamanho/cor, usa essa info mais específica
     if (selectedSize && selectedColor && product.stockBySizeColor) {
       const key = `${selectedSize}-${selectedColor}`;
@@ -224,7 +237,7 @@ const App: React.FC = () => {
       );
 
       const currentQtyInRange = found ? found.quantity : 0;
-      
+
       if (currentQtyInRange + 1 > availableStock) {
         alert(`⚠️ Quantidade máxima disponível em estoque: ${availableStock} unidades.`);
         return prev;
@@ -241,7 +254,7 @@ const App: React.FC = () => {
     });
 
     // Se o estoque for zero ou excedido, não mostramos o toast de "adicionado"
-    const isExceeded = (cartItems.find(i => 
+    const isExceeded = (cartItems.find(i =>
       i.id === product.id && i.selectedSize === selectedSize && i.selectedColor === selectedColor
     )?.quantity || 0) + 1 > availableStock;
 
@@ -257,30 +270,27 @@ const App: React.FC = () => {
   };
 
   const updateQuantity = (id: number, delta: number, selectedSize?: string, selectedColor?: string) => {
-    setCartItems(prev => prev.map(i => {
-      if (i.id === id && i.selectedSize === selectedSize && i.selectedColor === selectedColor) {
-        const newQty = i.quantity + delta;
-        
-        // Se estiver tentando aumentar, checa o estoque
-        if (delta > 0) {
-          let availableStock = i.stock || 0;
-          if (i.selectedSize && i.selectedColor && i.stockBySizeColor) {
-            const key = `${i.selectedSize}-${i.selectedColor}`;
-            availableStock = i.stockBySizeColor[key] || 0;
-          } else if (i.selectedSize && i.stockBySize) {
-            availableStock = i.stockBySize[i.selectedSize] || 0;
-          }
+    setCartItems(prev => prev.map(item => {
+      if (item.id === id && item.selectedSize === selectedSize && item.selectedColor === selectedColor) {
+        const newQuantity = item.quantity + delta;
+        if (newQuantity <= 0) return { ...item, quantity: 0 };
 
-          if (newQty > availableStock) {
-            alert(`⚠️ Quantidade máxima disponível em estoque: ${availableStock} unidades.`);
-            return i;
-          }
+        let maxStock = item.stock || 0;
+        if (item.selectedSize && item.selectedColor && item.stockBySizeColor) {
+          maxStock = item.stockBySizeColor[`${item.selectedSize}-${item.selectedColor}`] || 0;
+        } else if (item.selectedSize && item.stockBySize) {
+          maxStock = item.stockBySize[item.selectedSize] || 0;
         }
-        
-        return { ...i, quantity: Math.max(1, newQty) };
+
+        if (newQuantity > maxStock) {
+          setToastMessage(`Máximo de ${maxStock} unidades disponíveis para ${item.name}.`);
+          setTimeout(() => setToastMessage(''), 3000);
+          return item;
+        }
+        return { ...item, quantity: newQuantity };
       }
-      return i;
-    }));
+      return item;
+    }).filter(item => item.quantity > 0));
   };
 
   const removeFromCart = (id: number, selectedSize?: string, selectedColor?: string) => {
@@ -303,8 +313,8 @@ const App: React.FC = () => {
       <div className="min-h-screen flex flex-col selection:bg-[#ffd7c8]">
         <Header
           cartCount={cartItems.reduce((s, i) => s + i.quantity, 0)}
-          onCartClick={() => setIsCartOpen(true)}
-          onProfileClick={() => window.dispatchEvent(new CustomEvent('openProfileModal'))}
+          onCartClick={() => setIsCartOpen(true)} // Corrected prop name
+          onProfileClick={() => window.dispatchEvent(new CustomEvent('openProfileModal'))} // Corrected prop name
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           isAuthenticated={isAuthenticated}
@@ -446,9 +456,6 @@ const App: React.FC = () => {
                 </ul>
               </div>
             </div>
-            <div className="border-t border-white/10 pt-8 text-center text-white font-semibold">
-              <p>© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. ⎯ v2.4.5 (Estável)</p>
-            </div>
           </div>
         </footer>
         {infoPage && (
@@ -479,11 +486,11 @@ const App: React.FC = () => {
                   <p className="text-slate-600 leading-relaxed">
                     Para informações imediatas sobre {
                       infoPage === 'about' ? 'nossa empresa' :
-                      infoPage === 'privacy' ? 'privacidade' :
-                      infoPage === 'terms' ? 'termos de uso' :
-                      infoPage === 'faq' ? 'perguntas frequentes' :
-                      infoPage === 'returns' ? 'trocas' :
-                      infoPage === 'shipping' ? 'envios' : 'pagamentos'
+                        infoPage === 'privacy' ? 'privacidade' :
+                          infoPage === 'terms' ? 'termos de uso' :
+                            infoPage === 'faq' ? 'perguntas frequentes' :
+                              infoPage === 'returns' ? 'trocas' :
+                                infoPage === 'shipping' ? 'envios' : 'pagamentos'
                     }, por favor entre em contato com nosso suporte via WhatsApp.
                   </p>
                   <div className="mt-8 p-6 bg-blue-50 rounded-2xl border border-blue-100">
@@ -533,10 +540,12 @@ const App: React.FC = () => {
             <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6">
               <LoginRegister
                 onClose={() => setIsProfileOpen(false)}
-                onLoginSuccess={(email, address) => {
+                onLoginSuccess={(email, address, phone, cpfCnpj) => {
                   setIsAuthenticated(true);
                   setCurrentUserEmail(email);
                   setCurrentUserAddress(address);
+                  setCurrentUserPhone(phone || '');
+                  setCurrentUserCpfCnpj(cpfCnpj || '');
                   setIsProfileOpen(false);
                   setToastMessage('Login realizado com sucesso!');
                   setTimeout(() => setToastMessage(''), 3000);

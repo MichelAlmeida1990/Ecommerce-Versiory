@@ -31,6 +31,19 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
 
     if (hasError) return;
 
+    // ERRCOM077: Validação adicional de estoque na vitrine
+    let stock = product.stock || 0;
+    if (selectedSize && selectedColor && product.stockBySizeColor) {
+      stock = product.stockBySizeColor[`${selectedSize}-${selectedColor}`] || 0;
+    } else if (selectedSize && product.stockBySize) {
+      stock = product.stockBySize[selectedSize] || 0;
+    }
+
+    if (stock <= 0) {
+      alert('⚠️ Este item (nesta variação) está temporariamente sem estoque.');
+      return;
+    }
+
     onAddToCart(product, selectedSize || undefined, selectedColor || undefined);
     setSelectedSize('');
     setSelectedColor('');
@@ -192,7 +205,12 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
 
           <button
             onClick={handleAddToCart}
-            className="bg-versiory-ink hover:bg-versiory-coral text-white p-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-90 group/btn"
+            disabled={(product.stock || 0) <= 0}
+            className={`p-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-90 group/btn ${
+              (product.stock || 0) <= 0 
+                ? 'bg-slate-300 cursor-not-allowed' 
+                : 'bg-versiory-ink hover:bg-versiory-coral text-white'
+            }`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover/btn:rotate-90 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />

@@ -217,20 +217,8 @@ const AppContent: React.FC = () => {
 
             <Route
               path="/product/:id"
-              element={
-                <ProductDetail
-                  products={products}
-                  onAddToCart={handleAddToCart}
-                  onBack={() => navigate('/')}
-                />
-                      <ProductCard key={p.id} product={p} onAddToCart={addToCart} onViewDetails={setSelectedProduct} />
-                    ))}
-                  </div>
-                </>
-              }
+              element={<ProductDetail />}
             />
-
-            <Route path="/product/:id" element={<ProductDetail />} />
 
             <Route
               path="/account"

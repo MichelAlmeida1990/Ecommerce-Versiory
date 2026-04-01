@@ -17,7 +17,9 @@ import ImageGallery from './ImageGallery';
 import SizeChartEditor from './SizeChartEditor';
 import SizeStockManager from './SizeStockManager';
 import ProductSizeSelector from './ProductSizeSelector';
+import { sanitizeData } from '../services/utils';
 import ProductMediaShowcase from './ProductMediaShowcase';
+import CashRegisterReport from './CashRegisterReport';
 import { saveProduct } from '../services/firebase';
 
 interface AdminDashboardProps {
@@ -63,7 +65,9 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   processing: 'bg-blue-100 text-blue-800',
   shipped: 'bg-versiory-coral/20 text-versiory-coral',
   delivered: 'bg-slate-200 text-slate-700',
-  cancelled: 'bg-slate-800 text-white'
+  cancelled: 'bg-slate-800 text-white',
+  budget: 'bg-purple-100 text-purple-800',
+  returned: 'bg-orange-100 text-orange-800'
 };
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -72,7 +76,9 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   processing: 'Em Processamento',
   shipped: 'Enviado',
   delivered: 'Entregue',
-  cancelled: 'Cancelado'
+  cancelled: 'Cancelado',
+  budget: 'Orçamento',
+  returned: 'Devolução'
 };
 
 const TRACKING_COLORS: Record<TrackingStatus, string> = {
@@ -142,7 +148,78 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<TabKey>(userRole === 'seller' ? 'pdv' : 'dashboard');
   const [orderFilter, setOrderFilter] = useState<OrderStatus | 'all'>('all');
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  // ERRCOM110: Ferramenta de Resgate Total (Corrigida e Refatorada para ser mais robusta)
+  const handleDeepRescue = async () => {
+    console.log("🚀 [RESCUE] Iniciando busca exaustiva em todas as chaves do navegador...");
+    let keysFound: string[] = [];
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i) || '';
+      // Ignoramos chaves internas do Firebase/Vite/Mixpanel
+      if (key.includes('firebase') || key.includes('session') || key.includes('vite')) continue;
+      
+      try {
+        const value = localStorage.getItem(key);
+        const parsed = JSON.parse(value || '');
+        
+        // Heurística para identificar uma lista de produtos:
+        // 1. É um array
+        // 2. Tem pelo menos um item
+        // 3. O primeiro item tem propriedades comuns de produto (name, price, id)
+        // 4. E, idealmente, tem dados de variação (sizes, colors, stockBySize)
+        const isLikelyProductList = Array.isArray(parsed) && parsed.length > 0 && 
+                                    (parsed[0].name && parsed[0].price !== undefined && parsed[0].id !== undefined);
+        
+        if (isLikelyProductList) {
+          const hasVariationData = parsed.some((p: any) => p.sizes || p.colors || p.stockBySize || p.stockBySizeColor);
+          
+          if (hasVariationData) { // Priorizamos listas com dados de variação
+            keysFound.push(key);
+            console.log(`🎯 [RESCUE] Backup de PRODUTOS DETALHADOS encontrado! Chave: "${key}" com ${parsed.length} itens.`, parsed);
+
+            if (window.confirm(`🚨 DADOS DE PRODUTOS DETALHADOS LOCALIZADOS!\n\nA chave "${key}" contém ${parsed.length} produtos com tamanhos/cores.\n\nDeseja substituir os dados atuais do Firebase por este backup?`)) {
+              setIsSubmitting(true);
+              const { saveProduct } = await import('../services/firebase');
+              for (const p of parsed) {
+                const sanitized = sanitizeData(p);
+                // Garantir campos fiscais básicos se ausentes
+                if (!sanitized.ncm) sanitized.ncm = '00000000';
+                if (!sanitized.unidade) sanitized.unidade = 'UN';
+                await saveProduct(sanitized);
+              }
+              window.alert("✅ SUCESSO! Banco de dados restaurado. A página será atualizada.");
+              window.location.reload();
+              return;
+            }
+          } else { // Listas de produtos sem variação, apenas para log
+            console.log(`💡 [RESCUE] Candidato a lista de produtos (sem variações) encontrado na chave: "${key}" com ${parsed.length} itens.`, parsed);
+          }
+        }
+      } catch (e) {
+        // console.warn(`⚠️ [RESCUE] Falha ao processar chave ${key} (não é JSON ou formato inesperado).`);
+      }
+    }
+
+    if (keysFound.length === 0) {
+      window.alert("❌ Nenhum backup de produtos detalhados (com tamanhos/cores) foi encontrado neste computador.\n\nSugestão: Verifique se você não cadastrou os produtos em aba anônima ou em outro navegador. Se você tiver um backup JSON, use o botão 'Baixar Dump para Análise' e me envie o arquivo.");
+    }
+  };
+
+  // Função auxiliar para baixar tudo do LocalStorage para análise externa
+  const downloadLocalStorageDump = () => {
+    const dump = JSON.stringify(localStorage, null, 2);
+    const blob = new Blob([dump], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup_navegador_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   // BUGFIX #15: Função para parser de valores decimais padrão brasileiro (2.226,89) ou americano (2226.89)
   const parseBrazilianFloat = (value: string): number => {
@@ -213,7 +290,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       };
 
       // Sanitizar e salvar
-      const sanitized = JSON.parse(JSON.stringify(updatedProduct));
+      const sanitized = sanitizeData(updatedProduct);
       const saved = await saveProduct(sanitized);
       updatedProductsList[productIndex] = saved;
 
@@ -340,17 +417,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const lastClickRef = useRef<{ time: number, index: number } | null>(null);
 
   const handleChartClick = (e: any) => {
-    if (!e || !e.activePayload || !e.activePayload[0]) return;
-    const data = e.activePayload[0].payload;
+    if (!e || !e.activeLabel) return;
+    
+    // Encontrar os dados do ponto clicado
+    const data = last30DaysData.find(d => d.name === e.activeLabel);
+    if (!data || !data.orderIds || data.orderIds.length === 0) return;
+
     const now = Date.now();
     const index = e.activeTooltipIndex;
 
-    if (lastClickRef.current && lastClickRef.current.index === index && (now - lastClickRef.current.time) < 400) {
-      setDrillDownData({ date: data.name, orderIds: data.orderIds });
+    // Simulação de Double Click mais robusta
+    if (lastClickRef.current && lastClickRef.current.index === index && (now - lastClickRef.current.time) < 500) {
+      setDrillDownData({ date: data.fullDate || data.name, orderIds: data.orderIds });
       setIsDrillDownModalOpen(true);
       lastClickRef.current = null;
     } else {
       lastClickRef.current = { time: now, index };
+      // Opcional: Feedback visual de primeiro clique
     }
   };
   const [trackingForm, setTrackingForm] = useState({
@@ -445,10 +528,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return product?.category === 'Serviços';
       });
 
-      // Regra Unificada:
-      // 1. Produtos físicos (PDV ou Online com pagamento) contam se não for cancelado e tiver pagamento (ou for PDV imediato)
-      // 2. Serviços só contam quando entregues (delivered)
-      if (hasServiceOnly) return order.status === 'delivered';
+      if (hasServiceOnly) return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
       
       const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
       const isPdvImmediate = order.salesChannel === 'physical' && order.status !== 'pending';
@@ -490,7 +570,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           return product?.category === 'Serviços';
         });
 
-        if (hasServiceOnly) return o.status === 'delivered';
+        if (hasServiceOnly) return ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
         
         const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
         const isPdvImmediate = o.salesChannel === 'physical' && o.status !== 'pending';
@@ -540,6 +620,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .slice(0, 5),
     [orders]
   );
+
+  const filteredProductsList = useMemo(() => {
+    return products
+      .filter(p => {
+        const q = productSearch.toLowerCase();
+        return (
+          p.name?.toLowerCase().includes(q) || 
+          p.description?.toLowerCase().includes(q) ||
+          p.category?.toLowerCase().includes(q) ||
+          String(p.id).includes(productSearch)
+        );
+      })
+      .sort((a, b) => (a.id || 0) - (b.id || 0));
+  }, [products, productSearch]);
 
   const filteredOrders = useMemo(() => {
     let filtered = orderFilter === 'all' ? orders : orders.filter(order => order.status === orderFilter);
@@ -627,6 +721,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
   }, [orders, expenses, products]);
 
+  // ERRCOM114: Validação de sincronização de estoque (diagnóstico)
+  const validateStockConsistency = (product: Product): boolean => {
+    if (!product.sizes && !product.colors) return true; // Only applies to products with variations
+
+    let totalCalculatedStock = 0;
+    if (product.sizes && product.colors && product.stockBySizeColor) {
+      totalCalculatedStock = Object.values(product.stockBySizeColor).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+    } else if (product.sizes && product.stockBySize) {
+      totalCalculatedStock = Object.values(product.stockBySize).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+    } else if (product.colors && product.stockBySizeColor && !product.sizes) { // Only colors, no sizes
+      totalCalculatedStock = Object.values(product.stockBySizeColor).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+    }
+
+    const stockGeneral = product.stock || 0;
+
+    if (totalCalculatedStock !== stockGeneral) {
+      console.warn(`⚠️ Inconsistência de estoque detectada no produto ${product.name} (ID: ${product.id}):`, {
+        estoqueGeral: stockGeneral,
+        somaPorVariacao: totalCalculatedStock,
+        diferenca: Math.abs(totalCalculatedStock - stockGeneral)
+      });
+      return false;
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    // Run consistency check on products load, for diagnostic purposes
+    products.forEach(validateStockConsistency);
+  }, [products]);
 
   const recentTransactions = useMemo(() => {
     const revenue = orders.map(order => ({
@@ -871,7 +995,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         payload.id = editingProductId;
       }
 
-      const savedProduct = await saveProduct(payload, payload.image);
+      const savedProduct = await saveProduct(sanitizeData(payload), payload.image);
 
       if (editingProductId) {
         const updatedProducts = products.map(product =>
@@ -1329,7 +1453,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       await Promise.all([
         saveInventoryMovement(movement),
-        saveProduct(updatedProduct)
+        saveProduct(sanitizeData(updatedProduct))
       ]);
 
       const updatedProducts = products.map(item =>
@@ -1440,6 +1564,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       window.alert('O carrinho está vazio.');
       return;
     }
+    // ERRCOM050: Bloquear venda com caixa fechado
+    if (!cashRegister.isOpen) {
+      window.alert('⚠️ O Caixa está fechado. Abra o caixa antes de realizar vendas.');
+      setIsCashRegisterModalOpen(true); // Open cash register modal to prompt opening
+      return;
+    }
     setIsPdvCheckoutModalOpen(true);
   };
 
@@ -1478,7 +1608,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         order.customerId = customer.id;
 
         // Sanitização profunda para evitar crashing no Firestore por campos undefined
-        const sanitizedCustomer = JSON.parse(JSON.stringify(customer));
+        const sanitizedCustomer = sanitizeData(customer);
         await saveCustomer(sanitizedCustomer);
         // Atualizar lista local com dados do cliente atualizado
         onUpdateCustomers(freshCustomers.map(c => c.id === customer!.id ? sanitizedCustomer : c));
@@ -1497,7 +1627,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         };
         order.customerId = newCustomer.id;
 
-        const sanitizedNewCustomer = JSON.parse(JSON.stringify(newCustomer));
+        const sanitizedNewCustomer = sanitizeData(newCustomer);
         await saveCustomer(sanitizedNewCustomer);
         // BUGFIX: Usar freshCustomers (lista do Firestore) em vez de customers (prop stale)
         onUpdateCustomers([...freshCustomers, newCustomer]);
@@ -1511,28 +1641,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         for (const item of itemsToDecrement) {
           const productIndex = updatedProducts.findIndex(p => p.id === item.product.id);
           if (productIndex !== -1) {
-            const p = updatedProducts[productIndex];
-            const newStock = Math.max(0, (p.stock || 0) - item.quantity);
+            const p = { ...updatedProducts[productIndex] }; // Create a mutable copy
+            p.stock = Math.max(0, (p.stock || 0) - item.quantity);
 
-            let newStockBySize = { ...(p.stockBySize || {}) };
-            let newStockBySizeColor = { ...(p.stockBySizeColor || {}) };
+            if (item.selectedSize) {
+              if (p.stockBySize) {
+                p.stockBySize = {
+                  ...p.stockBySize,
+                  [item.selectedSize]: Math.max(0, (p.stockBySize[item.selectedSize] || 0) - item.quantity)
+                };
+              }
 
-            if (item.selectedSize && item.selectedColor && p.colors && p.stockBySizeColor) {
-              const key = `${item.selectedSize}-${item.selectedColor}`;
-              newStockBySizeColor[key] = Math.max(0, (newStockBySizeColor[key] || 0) - item.quantity);
-              newStockBySize[item.selectedSize] = Math.max(0, (newStockBySize[item.selectedSize] || 0) - item.quantity);
-            } else if (item.selectedSize && p.sizes && p.stockBySize) {
-              newStockBySize[item.selectedSize] = Math.max(0, (newStockBySize[item.selectedSize] || 0) - item.quantity);
+              if (item.selectedColor && p.stockBySizeColor) {
+                const key = `${item.selectedSize}-${item.selectedColor}`;
+                p.stockBySizeColor = {
+                  ...p.stockBySizeColor,
+                  [key]: Math.max(0, (p.stockBySizeColor[key] || 0) - item.quantity)
+                };
+              }
             }
 
-            const productToSave = {
-              ...p,
-              stock: newStock,
-              stockBySize: (p.sizes && Object.keys(newStockBySize).length > 0) ? newStockBySize : p.stockBySize,
-              stockBySizeColor: (p.colors && Object.keys(newStockBySizeColor).length > 0) ? newStockBySizeColor : p.stockBySizeColor
-            };
-
-            const sanitizedProduct = JSON.parse(JSON.stringify(productToSave));
+            const sanitizedProduct = sanitizeData(p);
             const saved = await saveProduct(sanitizedProduct);
             updatedProducts[productIndex] = saved;
           }
@@ -1552,7 +1681,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         order.status = 'pending';
       }
 
-      const sanitizedOrder = JSON.parse(JSON.stringify(order));
+      const sanitizedOrder = sanitizeData(order);
       await saveOrder(sanitizedOrder);
 
       // 4. Atualizar UI e Estado Local
@@ -1639,7 +1768,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const registerOrders = orders.filter(o =>
       o.salesChannel === 'physical' &&
       new Date(o.date).getTime() >= registerOpenedAt &&
-      (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing')
+      (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing' || o.status === 'shipped')
     );
 
     const salesByPayment = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
@@ -1661,7 +1790,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       status: 'open' as const,
       initialAmount: cashRegister.openingAmount,
       currentBalance: cashRegister.currentBalance,
-      totalSales: cashRegister.currentBalance - cashRegister.openingAmount - cashDeposits.reduce((acc, d) => acc + d.amount, 0) + cashWithdrawals.reduce((acc, w) => acc + w.amount, 0), // Ajuste para mostrar apenas vendas
+      totalSales: Math.max(0, cashRegister.currentBalance - cashRegister.openingAmount - cashDeposits.reduce((acc, d) => acc + d.amount, 0) + cashWithdrawals.reduce((acc, w) => acc + w.amount, 0)),
       totalOrders: registerOrders.length,
       expectedAmount: cashRegister.currentBalance,
       actualAmount: cashRegister.currentBalance,
@@ -1706,7 +1835,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const registerOrders = orders.filter(o =>
       o.salesChannel === 'physical' &&
       new Date(o.date).getTime() >= registerOpenedAt &&
-      (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing')
+      (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing' || o.status === 'shipped')
     );
 
     const salesByPayment = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
@@ -1731,9 +1860,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       expectedAmount: expected,
       actualAmount: actual,
       difference: difference,
-      // BUGFIX #7: Cálculo correto de Vendas Totais (Subtrai abertura e suprimentos, soma sangrias para isolar faturamento)
-      // Vendas = Saldo Final - Abertura - Suprimentos + Sangrias
-      totalSales: expected - cashRegister.openingAmount - cashDeposits.reduce((acc, d) => acc + d.amount, 0) + cashWithdrawals.reduce((acc, w) => acc + w.amount, 0),
+      // BUGFIX #7 (ERRCOM069/092): Cálculo correto de Vendas Totais (Isolando faturamento puro)
+      // Vendas = (Saldo Final - Abertura - Suprimentos + Sangrias)
+      totalSales: Math.max(0, expected - cashRegister.openingAmount - cashDeposits.reduce((acc, d) => acc + d.amount, 0) + cashWithdrawals.reduce((acc, w) => acc + w.amount, 0)),
       totalOrders: registerOrders.length,
       salesByPayment,
       salesByPaymentCount,
@@ -1876,15 +2005,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const generateInventoryReport = () => {
-    const report = products.map(product => ({
-      ID: product.id,
-      Produto: product.name,
-      Categoria: product.category,
-      'Estoque Atual': product.stock || 0,
-      'Estoque Minimo': 10,
-      'Valor Unitario': product.price.toFixed(2),
-      'Valor Total': ((product.stock || 0) * product.price).toFixed(2)
-    }));
+    const report: any[] = [];
+    
+    products.forEach(product => {
+      if (product.sizes && product.stockBySize) {
+        product.sizes.split(',').forEach(size => {
+          const trimmedSize = size.trim();
+          const sizeStock = product.stockBySize?.[trimmedSize] || 0;
+          report.push({
+            ID: product.id,
+            Produto: product.name,
+            Tamanho: trimmedSize,
+            Categoria: product.category,
+            'Estoque Atual': sizeStock,
+            'Estoque Minimo': product.minStock || 10,
+            'Valor Unitario': product.price.toFixed(2),
+            'Valor Total': (sizeStock * product.price).toFixed(2)
+          });
+        });
+      } else {
+        report.push({
+          ID: product.id,
+          Produto: product.name,
+          Tamanho: '-',
+          Categoria: product.category,
+          'Estoque Atual': product.stock || 0,
+          'Estoque Minimo': product.minStock || 10,
+          'Valor Unitario': product.price.toFixed(2),
+          'Valor Total': ((product.stock || 0) * product.price).toFixed(2)
+        });
+      }
+    });
     downloadCsv(`relatorio_estoque_${new Date().toISOString().split('T')[0]}.csv`, report);
   };
 
@@ -1912,29 +2063,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div className="min-h-screen bg-gradient-to-br from-[#0b1f4b] via-[#0a1b3d] to-[#08122b]">
       <div className="bg-versiory-ink/70 backdrop-blur-xl text-white shadow-lg border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-versiory-coral rounded-xl flex items-center justify-center">
+              <div className="w-12 h-12 bg-versiory-coral rounded-xl flex items-center justify-center shrink-0">
                 <svg width="24" height="24" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M36 20 H64 L50 43 L36 20 Z" fill="white" />
                 </svg>
               </div>
               <div>
-                <h1 className="text-2xl font-black">{userRole === 'admin' ? 'Painel Administrativo' : 'Painel do Vendedor'}</h1>
+                <h1 className="text-xl sm:text-2xl font-black truncate max-w-[200px] sm:max-w-none">{userRole === 'admin' ? 'Painel Administrativo' : 'Painel do Vendedor'}</h1>
                 <p className="text-gray-400 text-sm">Versiory Store</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
               {/* ERRCOM038: Botão Suporte WhatsApp */}
               <button
                 onClick={() => window.open('https://wa.me/5511958540171?text=Olá! Preciso de suporte no painel Versiory Store.', '_blank')}
-                className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2"
+                className="bg-green-600 hover:bg-green-700 px-3 sm:px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2 text-sm sm:text-base order-2 sm:order-1"
               >
-                💬 Suporte
+                <span>💬</span> <span className="hidden sm:inline">Suporte</span>
               </button>
               <button
                 onClick={onLogout}
-                className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-xl font-medium transition-all"
+                className="bg-red-500 hover:bg-red-600 px-4 sm:px-6 py-2 rounded-xl font-medium transition-all text-sm sm:text-base order-1 sm:order-2"
               >
                 Sair
               </button>
@@ -1984,6 +2135,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            {/* ERRCOM111: Painel de Resgate de Dados */}
+            <div className="bg-amber-500/10 border-2 border-amber-500/30 p-6 rounded-[32px] flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-amber-500/5">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg">🆘</div>
+                <div>
+                  <h4 className="text-amber-500 font-black text-sm uppercase">Resgate de Dados Perdidos</h4>
+                  <p className="text-slate-400 text-xs mt-1">Recupere tamanhos, cores e estoque salvos no navegador antes do Firebase.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={downloadLocalStorageDump} // Este botão agora funciona
+                  className="bg-white/5 hover:bg-white/10 text-slate-300 px-4 py-3 rounded-2xl font-bold text-xs transition-all border border-white/10"
+                >
+                  📥 Baixar Dump para Análise
+                </button>
+                <button 
+                  onClick={handleDeepRescue} 
+                  className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-2xl font-black text-xs transition-all shadow-xl shadow-amber-500/20 active:scale-95"
+                >
+                Iniciar Varredura Profunda
+                </button>
+              </div>
+            </div>
+
             {/* Top Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
@@ -2027,7 +2203,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <h3 className="text-white font-bold mb-6">Faturamento por Dia (últimos 30 dias)</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={last30DaysData} onClick={handleChartClick}>
+                    <BarChart 
+                      data={last30DaysData} 
+                      onClick={handleChartClick}
+                      onDoubleClick={(data: any) => {
+                        // ERRCOM076: Drill-down suporte clique duplo
+                        if (data && data.activePayload && data.activePayload[0]) {
+                          const payload = data.activePayload[0].payload;
+                          setDrillDownData({
+                            date: payload.name,
+                            orderIds: payload.orderIds || []
+                          });
+                          setIsDrillDownModalOpen(true);
+                        }
+                      }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                       <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickMargin={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value}`} />
@@ -2040,6 +2230,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                <p className="text-[10px] text-slate-500 text-center mt-2 font-bold italic">💡 Clique duplo em um dia para ver os pedidos.</p>
               </div>
             </div>
 
@@ -2147,6 +2338,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                           <button
                             onClick={() => {
+                              if (!cashRegister.isOpen) {
+                                window.alert('🔒 Abra o caixa antes de adicionar produtos.');
+                                setIsCashRegisterModalOpen(true);
+                                return;
+                              }
                               if (product.sizes || product.colors) {
                                 setPdvProductModal({ isOpen: true, product });
                                 setPdvModalSelection({ size: '', color: '' });
@@ -2272,7 +2468,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <button
                   onClick={handlePdvCheckout}
-                  disabled={pdvCart.length === 0 || isSubmitting}
+                  disabled={pdvCart.length === 0 || isSubmitting || !cashRegister.isOpen}
                   className="w-full bg-versiory-coral hover:bg-[#ff8368] disabled:bg-slate-600 disabled:cursor-not-allowed text-white py-4 rounded-xl font-black text-lg shadow-xl shadow-versiory-coral/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
@@ -2280,6 +2476,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                       Finalizando...
                     </>
+                  ) : !cashRegister.isOpen ? (
+                    '🔒 Abra o Caixa para Vender'
                   ) : (
                     'Finalizar Venda (PDV)'
                   )}
@@ -2305,17 +2503,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'products' && (
           <div>
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <h2 className="text-xl font-black text-white">Gerenciar Produtos</h2>
-              <div className="flex gap-3">
-                {/* ERRCOM034: Busca de produtos para vendedor */}
-                <input
-                  type="text"
-                  placeholder="🔍 Buscar produto..."
-                  className="px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none w-64"
-                />
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-80">
+                  <input
+                    type="text"
+                    value={productSearch}
+                    onChange={e => setProductSearch(e.target.value)}
+                    placeholder="Buscar produtos..." // ERRCOM092: Fix busca por descrição
+                    className="w-full px-4 py-2 border border-white/20 bg-white/10 backdrop-blur-md text-white rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                  />
+                  {productSearch && (
+                    <button
+                      onClick={() => setProductSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
                 {userRole === 'admin' && (
-                  <>
+                  <div className="flex gap-2">
                     <button
                       onClick={async () => {
                         if (!window.confirm('Sincronizar estoque por tamanho com estoque geral?\n\nIsso vai distribuir o estoque geral igualmente entre as variações (tamanhos/cores).')) return;
@@ -2373,18 +2582,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           window.alert('Erro ao sincronizar produtos.');
                         }
                       }}
-
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                      className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all text-xs"
                     >
-                      🔄 Sincronizar Estoque por Tamanho
+                      🔄 Sincronizar <span className="hidden lg:inline">Estoque</span>
                     </button>
                     <button
                       onClick={() => openProductModal()}
-                      className="bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
+                      className="flex-1 sm:flex-none bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg text-sm"
                     >
-                      + Novo Produto
+                      + Novo
                     </button>
-                  </>
+                  </div>
                 )}
               </div>
             </div>
@@ -2419,8 +2627,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* ERRCOM009: Ordenar numericamente por ID */}
-              {[...products].sort((a, b) => a.id - b.id).map(product => (
+              {filteredProductsList.map(product => (
                 <div key={product.id} className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden hover:scale-[1.02] transition-transform">
                   <div className="relative h-48 bg-white">
                     <img
@@ -2566,7 +2773,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {/* ERRCOM044: Botão Mais Detalhes */}
                         <button
                           onClick={() => {
-                            alert(`📋 Detalhes Técnicos\n\n${product.name}\n\nCódigo: #${product.id}\nCategoria: ${product.category}\nEstoque: ${product.stock} unidades\nPreço: R$ ${product.price.toFixed(2)}\n\nDescrição:\n${product.description || 'Nenhuma descrição disponível'}\n\nEspecificações:\n- Peso: ${product.peso || 'N/A'} kg\n- Dimensões: ${product.ncm || 'N/A'}\n- Garantia: ${product.gtin || 'N/A'}\n- Material: ${product.unidade || 'N/A'}`);
+                            alert(`📋 Detalhes Técnicos: ${product.name}\n\nID: #${product.id}\nCategoria: ${product.category}\nPreço: ${formatCurrency(product.price)}\nEstoque Total: ${product.stock || 0} unidades\nEstoque Mínimo: ${product.minStock ?? 10} unidades\n\nDescrição:\n${product.description || 'Nenhuma descrição disponível'}\n\nDados Fiscais:\nNCM: ${product.ncm || 'N/A'}\nCFOP: ${product.cfop || 'N/A'}\nCST: ${product.cst || 'N/A'}\nOrigem: ${product.origem ?? 'N/A'}\nUnidade: ${product.unidade || 'N/A'}\nPeso: ${product.peso || 'N/A'} kg\nGTIN: ${product.gtin || 'N/A'}\n\nAlíquotas:\nICMS: ${product.aliquotaIcms || 0}%\nPIS: ${product.aliquotaPis || 0}%\nCOFINS: ${product.aliquotaCofins || 0}%\nIPI: ${product.aliquotaIpi || 0}%`);
                           }}
                           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
                         >
@@ -2724,8 +2931,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
-              <div className="overflow-x-auto custom-scrollbar">
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20">
+              <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)] custom-scrollbar">
                 <table className="w-full">
                   <thead className="bg-white/15 backdrop-blur-md border-b border-white/25">
                     <tr>
@@ -2762,13 +2969,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td className="px-6 py-4 text-sm text-slate-300 max-w-[180px] truncate" title={order.notes || ''}>
                           {order.notes || <span className="text-slate-500 italic text-xs">—</span>}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium flex gap-2">
                           <button
                             onClick={() => openOrderStatusModal(order)}
                             className="bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
                           >
                             Atualizar Status
                           </button>
+                          {order.isBudget && (
+                            <button
+                              onClick={() => handleEditOrder(order)}
+                              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
+                            >
+                              Converter em Venda
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -2825,6 +3040,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Email</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Telefone</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Pedidos</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Cadastro</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Total Gasto</th>
                     </tr>
                   </thead>
@@ -2852,6 +3068,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">
+                          {formatDate(customer.createdAt || '')}
                           {formatCurrency(customer.totalSpent)}
                         </td>
                       </tr>
@@ -3801,12 +4018,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={event => setOrderStatusForm(prev => ({ ...prev, status: event.target.value as OrderStatus }))}
                     className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
                   >
-                    <option value="pending">Aguardando Pagamento</option>
-                    <option value="paid">Pagamento Efetuado</option>
-                    <option value="processing">Em Processamento</option>
-                    <option value="shipped">Enviado</option>
-                    <option value="delivered">Entregue</option>
-                    <option value="cancelled">Cancelado</option>
+                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label || value}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -3965,7 +4181,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </select>
                   </div>
                 )}
-                {inventoryForm.productId && products.find(p => p.id === parseInt(inventoryForm.productId))?.colors && products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes && (
+                {inventoryForm.productId && products.find(p => p.id === parseInt(inventoryForm.productId))?.colors && ( // ERRCOM052: Show color if product has colors, regardless of sizes
                   <div>
                     <label className="block text-sm font-black text-gray-700 mb-2">Cor</label>
                     <select
@@ -3978,8 +4194,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {products.find(p => p.id === parseInt(inventoryForm.productId))?.colors?.split(',').map(color => {
                         const trimmedColor = color.trim();
                         const product = products.find(p => p.id === parseInt(inventoryForm.productId));
-                        const combKey = inventoryForm.selectedSize ? `${inventoryForm.selectedSize}-${trimmedColor}` : '';
-                        const colorStock = combKey ? product?.stockBySizeColor?.[combKey] || 0 : 'Selecione o tamanho para ver estoque';
+                        let combKey = '';
+                        if (inventoryForm.selectedSize) combKey = `${inventoryForm.selectedSize}-${trimmedColor}`;
+                        else if (product && !product.sizes) combKey = trimmedColor; // If product has colors but no sizes, key is just color
+
+                        const colorStock = combKey ? product?.stockBySizeColor?.[combKey] || 0 : (product?.stock || 0); // Fallback to total stock if no size selected
 
                         return (
                           <option key={trimmedColor} value={trimmedColor}>
@@ -4238,134 +4457,118 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Modal de Seleção de Produto PDV */}
       {
         pdvProductModal.isOpen && pdvProductModal.product && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-[#0b1f4b] via-[#0a1b3d] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 p-8 max-w-md w-full">
-              <div className="flex justify-between items-start mb-6">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[200] p-0 sm:p-4">
+            <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-none sm:rounded-[32px] shadow-2xl border-none sm:border border-white/20 w-full max-w-lg h-full sm:max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300">
+              {/* Header com Nome e Botão Fechar */}
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5 shrink-0">
                 <div>
-                  <h3 className="text-2xl font-black text-white mb-2">{pdvProductModal.product.name}</h3>
-                  <p className="text-white/60 text-sm">{pdvProductModal.product.category}</p>
+                  <h3 className="text-xl font-black text-white">{pdvProductModal.product.name}</h3>
+                  <p className="text-white/60 text-xs">{pdvProductModal.product.category}</p>
                 </div>
                 <button
                   onClick={() => setPdvProductModal({ isOpen: false, product: null })}
-                  className="text-white/60 hover:text-white transition-colors"
+                  className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all shadow-lg"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
 
-              <div className="mb-6 lg:bg-white/5 p-2 rounded-2xl border border-white/10">
-                <ProductMediaShowcase
-                  mainImage={pdvProductModal.product.image}
-                  allImages={pdvProductModal.product.images}
-                  productName={pdvProductModal.product.name}
-                />
+              {/* Conteúdo com Scroll */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                <div className="lg:bg-white/5 p-2 rounded-2xl border border-white/10 flex justify-center bg-white shadow-inner">
+                  <img src={pdvProductModal.product.image} className="h-40 sm:h-48 w-auto object-contain" alt="" />
+                </div>
+
+                <div className="space-y-6">
+                  {pdvProductModal.product.sizes && (
+                    <div>
+                      <label className="block text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Tamanho</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {pdvProductModal.product.sizes.split(',').map(size => {
+                          const trimmedSize = size.trim();
+                          let stock = 0;
+                          if (pdvProductModal.product!.colors && pdvProductModal.product!.stockBySizeColor) {
+                            pdvProductModal.product!.colors.split(',').forEach(c => {
+                              stock += pdvProductModal.product!.stockBySizeColor?.[`${trimmedSize}-${c.trim()}`] || 0;
+                            });
+                          } else {
+                            stock = pdvProductModal.product!.stockBySize?.[trimmedSize] || 0;
+                          }
+                          const isSelected = pdvModalSelection.size === trimmedSize;
+                          const isAvailable = stock > 0;
+                          return (
+                            <button
+                              key={trimmedSize}
+                              onClick={() => isAvailable && setPdvModalSelection({ ...pdvModalSelection, size: trimmedSize })}
+                              disabled={!isAvailable}
+                              className={`py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${isSelected ? 'bg-versiory-coral text-white scale-105' : isAvailable ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20 line-through'}`}
+                            >
+                              {trimmedSize}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {pdvProductModal.product.colors && (
+                    <div>
+                      <label className="block text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Cor</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {pdvProductModal.product.colors.split(',').map(color => {
+                          const trimmedColor = color.trim();
+                          let colorStock = 0;
+                          if (pdvModalSelection.size && pdvProductModal.product!.stockBySizeColor) {
+                            colorStock = pdvProductModal.product!.stockBySizeColor[`${pdvModalSelection.size}-${trimmedColor}`] || 0;
+                          } else if (pdvProductModal.product!.sizes && pdvProductModal.product!.stockBySizeColor) {
+                            pdvProductModal.product!.sizes.split(',').forEach(s => {
+                              colorStock += pdvProductModal.product!.stockBySizeColor?.[`${s.trim()}-${trimmedColor}`] || 0;
+                            });
+                          } else {
+                            colorStock = pdvProductModal.product!.stock || 0;
+                          }
+                          const isAvailable = colorStock > 0;
+                          const isSelected = pdvModalSelection.color === trimmedColor;
+                          return (
+                            <button
+                              key={trimmedColor}
+                              onClick={() => isAvailable && setPdvModalSelection({ ...pdvModalSelection, color: trimmedColor })}
+                              disabled={!isAvailable}
+                              className={`py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${isSelected ? 'bg-versiory-coral text-white scale-105' : isAvailable ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20 line-through'}`}
+                            >
+                              <span className="truncate block px-1">{trimmedColor}</span>
+                              {isAvailable && <span className="text-[9px] block opacity-60">({colorStock})</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="space-y-4">
-                {pdvProductModal.product.sizes && (
-                  <div>
-                    <label className="block text-sm font-bold text-white/80 mb-2">Tamanho</label>
-                    <select
-                      value={pdvModalSelection.size}
-                      onChange={(e) => setPdvModalSelection({ ...pdvModalSelection, size: e.target.value })}
-                      className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
-                    >
-                      <option value="" className="bg-slate-800">Selecione o tamanho</option>
-                      {pdvProductModal.product.sizes.split(',').map(size => {
-                        const trimmedSize = size.trim();
-                        let stock = 0;
-                        if (pdvProductModal.product.colors && pdvProductModal.product.stockBySizeColor) {
-                          pdvProductModal.product.colors.split(',').forEach(c => {
-                            stock += pdvProductModal.product.stockBySizeColor?.[`${trimmedSize}-${c.trim()}`] || 0;
-                          });
-                        } else {
-                          stock = pdvProductModal.product.stockBySize?.[trimmedSize] || 0;
-                        }
-
-                        return (
-                          <option
-                            key={trimmedSize}
-                            value={trimmedSize}
-                            disabled={stock <= 0}
-                            className="bg-slate-800"
-                          >
-                            {trimmedSize} - {stock} disponível
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                )}
-
-                {pdvProductModal.product.colors && (
-                  <div>
-                    <label className="block text-sm font-bold text-white/80 mb-2">Cor</label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {pdvProductModal.product.colors.split(',').map(color => {
-                        const trimmedColor = color.trim();
-                        let colorStock = 0;
-                        if (pdvModalSelection.size && pdvProductModal.product.stockBySizeColor) {
-                          colorStock = pdvProductModal.product.stockBySizeColor[`${pdvModalSelection.size}-${trimmedColor}`] || 0;
-                        } else if (pdvProductModal.product.sizes && pdvProductModal.product.stockBySizeColor) {
-                          pdvProductModal.product.sizes.split(',').forEach(s => {
-                            colorStock += pdvProductModal.product.stockBySizeColor?.[`${s.trim()}-${trimmedColor}`] || 0;
-                          });
-                        } else {
-                          colorStock = pdvProductModal.product.stock || 0;
-                        }
-
-                        const isAvailable = colorStock > 0;
-                        const isSelected = pdvModalSelection.color === trimmedColor;
-
-                        return (
-                          <button
-                            key={trimmedColor}
-                            onClick={() => isAvailable && setPdvModalSelection({ ...pdvModalSelection, color: trimmedColor })}
-                            disabled={!isAvailable}
-                            className={`px-3 py-2 rounded-xl text-sm font-bold transition-all ${isSelected
-                              ? 'bg-versiory-coral text-white'
-                              : isAvailable
-                                ? 'bg-white/10 text-white hover:bg-white/20'
-                                : 'bg-white/5 text-white/20 cursor-not-allowed line-through'
-                              }`}
-                          >
-                            {trimmedColor}
-                            {isAvailable && pdvModalSelection.size && <span className="text-[10px] block opacity-70">({colorStock})</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-4 border-t border-white/10">
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-white/60">Preço unitário:</span>
-                    <span className="text-2xl font-black text-white">{formatCurrency(pdvProductModal.product.price)}</span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const product = pdvProductModal.product!;
-                      if (product.sizes && !pdvModalSelection.size) {
-                        alert('⚠️ Selecione um tamanho');
-                        return;
-                      }
-                      if (product.colors && !pdvModalSelection.color) {
-                        alert('⚠️ Selecione uma cor');
-                        return;
-                      }
-                      setSelectedSizes(prev => ({ ...prev, [product.id]: pdvModalSelection.size }));
-                      addToPdvCart(product);
-                      setPdvProductModal({ isOpen: false, product: null });
-                      setPdvModalSelection({ size: '', color: '' });
-                    }}
-                    className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl active:scale-[0.98]"
-                  >
-                    Adicionar ao Carrinho
-                  </button>
+              {/* Footer Fixo */}
+              <div className="p-6 border-t border-white/10 bg-white/5 shrink-0">
+                <div className="flex justify-between items-center mb-4 px-1">
+                  <span className="text-white/40 text-xs font-bold uppercase tracking-widest">Preço Unitário</span>
+                  <span className="text-3xl font-black text-white">{formatCurrency(pdvProductModal.product.price)}</span>
                 </div>
+                <button
+                  onClick={() => {
+                    const product = pdvProductModal.product!;
+                    if (product.sizes && product.sizes.trim() !== '' && !pdvModalSelection.size) return alert('⚠️ Selecione um tamanho');
+                    if (product.colors && !pdvModalSelection.color) return alert('⚠️ Selecione uma cor');
+                    setSelectedSizes(prev => ({ ...prev, [product.id]: pdvModalSelection.size }));
+                    addToPdvCart(product);
+                    setPdvProductModal({ isOpen: false, product: null });
+                    setPdvModalSelection({ size: '', color: '' });
+                  }}
+                  className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-5 rounded-2xl font-black text-lg transition-all active:scale-[0.98] shadow-xl shadow-versiory-coral/20 flex items-center justify-center gap-3"
+                >
+                  <span>🛒</span> Adicionar ao Carrinho
+                </button>
               </div>
             </div>
           </div>
@@ -4383,7 +4586,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="space-y-2 text-sm text-slate-300 mb-4">
               <p><span className="font-bold text-white">Cliente:</span> {selectedOrderDetail.customerName}</p>
               <p><span className="font-bold text-white">E-mail:</span> {selectedOrderDetail.customerEmail}</p>
-              <p><span className="font-bold text-white">Data:</span> {formatDate(selectedOrderDetail.date)}</p>
+              {selectedOrderDetail.customerPhone && <p><span className="font-bold text-white">Telefone:</span> {selectedOrderDetail.customerPhone}</p>}
+              {selectedOrderDetail.customerCpfCnpj && <p><span className="font-bold text-white">CPF/CNPJ:</span> {selectedOrderDetail.customerCpfCnpj}</p>}
+              <p><span className="font-bold text-white">Data:</span> {formatDate(selectedOrderDetail.date)} {selectedOrderDetail.orderTime ? `às ${selectedOrderDetail.orderTime}` : ''}</p>
               <p><span className="font-bold text-white">Status:</span> <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[selectedOrderDetail.status]}`}>{STATUS_LABELS[selectedOrderDetail.status]}</span></p>
               <p><span className="font-bold text-white">Canal:</span> {selectedOrderDetail.salesChannel === 'physical' ? 'PDV' : 'Online'}</p>
               {selectedOrderDetail.address && <p><span className="font-bold text-white">Endereço:</span> {selectedOrderDetail.address}</p>}
@@ -4392,9 +4597,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="pt-4 flex flex-wrap gap-2">
                 <button
                   onClick={() => {
-                    const phone = selectedOrderDetail.customerEmail?.includes('@pdv.local')
-                      ? selectedOrderDetail.customerEmail.replace('@pdv.local', '')
-                      : (selectedOrderDetail.customerPhone || '');
+                    let phone = selectedOrderDetail.customerPhone || '';
+                    
+                    if (!phone && selectedOrderDetail.customerEmail?.includes('@pdv.local')) {
+                      phone = selectedOrderDetail.customerEmail.replace('@pdv.local', '');
+                    }
 
                     const cleanPhone = phone.replace(/\D/g, '');
                     if (!cleanPhone) {
@@ -4998,6 +5205,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ERRCOM051: Modal de Relatório de Caixa */}
+      {isCashReportOpen && cashRegisterHistory.length > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md transition-all duration-500" onClick={() => {
+            const last = cashRegisterHistory[cashRegisterHistory.length - 1];
+            if (last?.id?.startsWith('PARTIAL-')) {
+              setCashRegisterHistory(prev => prev.filter(h => h.id !== last.id));
+            }
+            setIsCashReportOpen(false);
+          }} />
+          <CashRegisterReport
+            cashRegister={cashRegisterHistory[cashRegisterHistory.length - 1]}
+            onClose={() => setIsCashReportOpen(false)}
+          />
         </div>
       )}
 

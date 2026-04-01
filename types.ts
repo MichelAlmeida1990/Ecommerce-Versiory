@@ -81,9 +81,11 @@ export interface Order {
   customerEmail: string;
   customerName: string;
   customerPhone?: string;
+  customerCpfCnpj?: string; // ERRCOM070
   date: string;
+  orderTime?: string; // ERRCOM083
   total: number;
-  status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'budget' | 'returned';
   items: OrderItem[];
   address?: string;
   estimatedDelivery?: string;
@@ -98,6 +100,7 @@ export interface Order {
   customPolicies?: string; // Garantia / Políticas customizadas para esta venda
   accountedInCash?: boolean; // Se o pedido já foi somado ao saldo do caixa atual
   stockDecremented?: boolean; // Se a baixa de estoque já foi realizada para este pedido
+  installments?: number; // Número de parcelas (para crédito)
 }
 
 export interface Address {
@@ -112,6 +115,7 @@ export interface Address {
   country: string;
   ibgeCode?: string; // Código IBGE do município (obrigatório para NF-e)
   type: 'billing' | 'shipping';
+  isDefault?: boolean; // Endereço padrão
 }
 
 export interface Customer {

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { generateInvoice } from '../services/invoice';
 import { CartItem, Order, OrderItem, Customer } from '../types';
 
+
+import { sanitizeData } from '../services/utils';
 interface CheckoutProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,7 +26,12 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [orderNotes, setOrderNotes] = useState('');
   const [emitNF, setEmitNF] = useState(false);
   const [invoiceStatus, setInvoiceStatus] = useState<'none' | 'generating' | 'ready'>('none');
-  const [orderPlaced, setOrderPlaced] = useState(false); // Prevenção de duplicatas (Item 22)
+  const [orderPlaced, setOrderPlaced] = useState(false);
+
+  // Resetar ao fechar
+  React.useEffect(() => {
+    if (!isOpen) setOrderPlaced(false);
+  }, [isOpen]);
   const [customerData, setCustomerData] = useState<Customer | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('default');
   const [customAddress, setCustomAddress] = useState(customerAddress);
@@ -32,6 +39,21 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [discount, setDiscount] = useState(0);
   const [couponError, setCouponError] = useState('');
   const [couponApplied, setCouponApplied] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [isOtpVerified, setIsOtpVerified] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [customerPhone, setCustomerPhone] = useState(''); // ERRCOM070
+  const [customerCpfCnpj, setCustomerCpfCnpj] = useState(''); // ERRCOM070
+  
+  // ERRCOM080: Campos de endereço estruturados
+  const [addressZip, setAddressZip] = useState('');
+  const [addressStreet, setAddressStreet] = useState('');
+  const [addressNumber, setAddressNumber] = useState('');
+  const [addressComplement, setAddressComplement] = useState('');
+  const [addressNeighborhood, setAddressNeighborhood] = useState('');
+  const [addressCity, setAddressCity] = useState('');
+  const [addressState, setAddressState] = useState('');
 
   // Cálculo robusto de e-mail e endereço efetivos (fallback para localStorage se prop estiver vazio)
   const { effectiveEmail, effectiveAddress } = React.useMemo(() => {
@@ -61,16 +83,18 @@ const Checkout: React.FC<CheckoutProps> = ({
           const found = customers.find(c => c.email === effectiveEmail);
           if (found) {
             setCustomerData(found);
-            // Se tiver endereços, seleciona o primeiro por padrão
+            // ERRCOM080/085: Priorizar endereço padrão
             if (found.addresses && found.addresses.length > 0) {
-              setSelectedAddressId(found.addresses[0].id || '0');
-              const addr = found.addresses[0];
-              const fullAddr = `${addr.street}, ${addr.number}${addr.complement ? ` - ${addr.complement}` : ''}, ${addr.neighborhood}, ${addr.city} - ${addr.state}, CEP: ${addr.zipCode}`;
+              const defaultAddr = found.addresses.find(a => a.isDefault) || found.addresses[0];
+              setSelectedAddressId(defaultAddr.id);
+              const fullAddr = `${defaultAddr.street}, ${defaultAddr.number}${defaultAddr.complement ? ` - ${defaultAddr.complement}` : ''}, ${defaultAddr.neighborhood}, ${defaultAddr.city} - ${defaultAddr.state}, CEP: ${defaultAddr.zipCode}`;
               setCustomAddress(fullAddr);
             } else {
               setSelectedAddressId('manual');
               setCustomAddress(customerAddress || '');
             }
+            if (customerData.phone) setCustomerPhone(customerData.phone);
+            if (customerData.cpfCnpj) setCustomerCpfCnpj(customerData.cpfCnpj);
           } else {
             setSelectedAddressId('manual');
             setCustomAddress(customerAddress || '');
@@ -112,13 +136,14 @@ const Checkout: React.FC<CheckoutProps> = ({
   };
 
   const handleCheckout = async () => {
-    if (!effectiveEmail || !customAddress || customAddress === 'Endereço não informado' || customAddress.trim() === '') {
-      alert('⚠️ Dados de entrega incompletos. Por favor, verifique seu endereço.');
-      return;
-    }
+      if (!isOtpVerified) {
+        alert('⚠️ Por favor, valide seu e-mail com o código de segurança antes de finalizar.');
+        return;
+      }
 
-    if (orderPlaced) return; // Segurança extra
+      if (orderPlaced) return; // Segurança extra
 
+    setOrderPlaced(true); // ERRCOM082: bloquear imediatamente antes de qualquer await
     setIsProcessing(true);
 
     try {
@@ -126,7 +151,6 @@ const Checkout: React.FC<CheckoutProps> = ({
 
       const orderId = generateOrderId();
       let fullName = customerData?.name || '';
-      let customerPhone = customerData?.phone || '';
       
       if (!fullName) {
         try {
@@ -136,23 +160,33 @@ const Checkout: React.FC<CheckoutProps> = ({
             if (savedUser) {
               const parsed = JSON.parse(savedUser);
               fullName = parsed.name || parsed.email.split('@')[0];
-              if (parsed.phone) customerPhone = parsed.phone;
             }
           }
         } catch { }
       }
       if (!fullName) fullName = effectiveEmail.split('@')[0];
 
+      // ERRCOM086 / ERRCOM070: Garantir que o telefone e CPF venham do estado atualizado (inputs) ou do customerData
+      const finalPhone = customerPhone || customerData?.phone || '';
+      const finalCpfCnpj = customerCpfCnpj || customerData?.cpfCnpj || '';
+
+      // Consolidar endereço se for manual
+      let finalAddress = customAddress;
+      if (selectedAddressId === 'manual') {
+        finalAddress = `${addressStreet}, ${addressNumber}${addressComplement ? ` - ${addressComplement}` : ''}, ${addressNeighborhood}, ${addressCity} - ${addressState}, CEP: ${addressZip}`;
+      }
+
       const orderData: Order = {
         id: orderId,
         customerId: customerData?.id || 0,
         customerEmail: effectiveEmail,
         customerName: fullName,
-        customerPhone: customerPhone || undefined,
+        customerPhone: finalPhone || undefined,
+        customerCpfCnpj: finalCpfCnpj || undefined, // ERRCOM070 / ERRCOM081
         date: new Date().toISOString(),
         total: total,
         status: 'pending',
-        address: customAddress,
+        address: finalAddress,
         estimatedDelivery: '5 a 10 dias úteis',
         items: items.map(item => {
           const orderItem: any = {
@@ -165,10 +199,13 @@ const Checkout: React.FC<CheckoutProps> = ({
           if (item.description) orderItem.description = item.description;
           if (item.selectedSize) orderItem.selectedSize = item.selectedSize;
           if (item.selectedColor) orderItem.selectedColor = item.selectedColor;
+          if (item.stockBySize) orderItem.stockBySize = item.stockBySize; // Include stockBySize
+          if (item.stockBySizeColor) orderItem.stockBySizeColor = item.stockBySizeColor; // Include stockBySizeColor
           return orderItem;
         }),
         notes: orderNotes || '',
-        salesChannel: 'online'
+        salesChannel: 'online',
+        orderTime: new Date().toLocaleTimeString('pt-BR') // ERRCOM083
       };
 
       // Atualizar no Firebase
@@ -208,16 +245,17 @@ const Checkout: React.FC<CheckoutProps> = ({
         }
       }
 
-      // BUGFIX: Sanitizar objetos antes de salvar
-      const sanitizedOrder = JSON.parse(JSON.stringify(orderData));
-      const sanitizedCustomer = JSON.parse(JSON.stringify(targetCustomer));
+      // ERRCOM082: Prevenção de duplicatas
+      setOrderPlaced(true);
+
+      // BUGFIX: Sanitizar objetos antes de salvar — Firestore rejeita campos 'undefined'
+      const sanitizedOrder = sanitizeData(orderData);
+      const sanitizedCustomer = sanitizeData(targetCustomer);
 
       await Promise.all([
         saveOrder(sanitizedOrder),
         saveCustomer(sanitizedCustomer)
       ]);
-
-      setOrderPlaced(true); // Evita duplicatas (Item 22)
 
       if (emitNF) {
         setInvoiceStatus('generating');
@@ -225,7 +263,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       }
 
       if (paymentMethod === 'whatsapp') {
-        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, customAddress);
+        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, customAddress, paymentMethod);
         const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
       } else if (paymentMethod === 'pix') {
@@ -248,14 +286,21 @@ const Checkout: React.FC<CheckoutProps> = ({
     }
   };
 
-  const buildWhatsAppMessage = (orderId: string, fullName: string, email: string, address: string) => {
+  const buildWhatsAppMessage = (orderId: string, fullName: string, email: string, address: string, paymentMethod: string) => {
     const lines = [
       `🛒 *NOVO PEDIDO - ${orderId}*`,
       '',
       '*DADOS DO CLIENTE:*',
       `👤 Nome: ${fullName}`,
       `📧 Email: ${email}`,
-      `📍 Endereço: ${address}`,
+      `📞 Telefone: ${customerData?.phone || 'Não informado'}`,
+      `🆔 CPF/CNPJ: ${customerData?.cpfCnpj || 'Não informado'}`,
+      `📍 *Endereço de Entrega:* ${address}`,
+      '',
+      '*DETALHES DA VENDA:*',
+      `🕒 Hora: ${new Date().toLocaleTimeString('pt-BR')}`,
+      `💳 Forma de Pagto: ${paymentMethod === 'whatsapp' ? 'A combinar via WhatsApp' : paymentMethod}`,
+      `🏷️ Origem: E-commerce (Site)`,
       '',
       '*ITENS DO PEDIDO:*',
       ...items.map(item => {
@@ -270,7 +315,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       '',
       orderNotes ? `*Observações:* ${orderNotes}` : '',
       '',
-      'Por favor, confirmem o pedido e informem os próximos passos para o pagamento. Obrigado! 🙏'
+      'Olá Versiory! Gostaria de confirmar meu pedido acima e receber as instruções para pagamento. 🙏'
     ];
     return lines.join('\n');
   };
@@ -280,7 +325,8 @@ const Checkout: React.FC<CheckoutProps> = ({
     const orderId = generateOrderId();
     const { getFiscalConfig } = await import('../services/fiscalConfig');
     const fiscalConfig = getFiscalConfig();
-    const dateStr = new Date().toLocaleString('pt-BR');
+    const dateStr = new Date().toLocaleDateString('pt-BR');
+    const timeStr = new Date().toLocaleTimeString('pt-BR'); // ERRCOM081/083
 
     let customerPhone = undefined;
     try {
@@ -297,13 +343,18 @@ const Checkout: React.FC<CheckoutProps> = ({
     const receiptContent = generateReceiptHTML({
       orderId,
       date: dateStr,
-      customerName: effectiveEmail ? effectiveEmail.split('@')[0] : 'Não informado',
+      orderTime: timeStr, // ERRCOM083
+      customerName: customerData?.name || (effectiveEmail ? effectiveEmail.split('@')[0] : 'Não informado'),
+      customerEmail: effectiveEmail,
       customerAddress: effectiveAddress,
-      customerPhone,
+      customerPhone: customerData?.phone || customerPhone,
+      customerCpfCnpj: customerData?.cpfCnpj || undefined, // ERRCOM081
       notes: orderNotes,
       storePolicies: fiscalConfig?.storePolicies,
-      items: items,
-      total: total
+      items: items.map(item => ({ ...item, productId: item.id })), // Map to expected structure
+      total: total,
+      paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod,
+      salesChannel: 'online'
     });
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');
@@ -319,14 +370,28 @@ const Checkout: React.FC<CheckoutProps> = ({
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={() => {
+          if (items.length > 0 && !orderPlaced) {
+            if (window.confirm('Deseja realmente sair? Seu progresso no checkout será perdido.')) {
+              onClose();
+            }
+          } else {
+            onClose();
+          }
+        }}
       />
 
       <div className="relative w-full max-w-2xl bg-blue-50 border border-blue-200 rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-blue-200 flex justify-between items-center">
           <h3 className="text-2xl font-black text-slate-900">Finalizar Pedido</h3>
           <button
-            onClick={onClose}
+            onClick={() => {
+              if (items.length > 0 && !orderPlaced) {
+                if (window.confirm('Deseja realmente sair?')) onClose();
+              } else {
+                onClose();
+              }
+            }}
             className="p-2 hover:bg-slate-50 rounded-full transition-colors"
             aria-label="Fechar"
           >
@@ -471,15 +536,118 @@ const Checkout: React.FC<CheckoutProps> = ({
                   <p className="text-sm text-slate-600">Email</p>
                   <p className="font-medium text-slate-900">{effectiveEmail || 'Não informado'}</p>
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 mb-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefone Celular *</label>
+                    <input
+                      type="tel"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="(00) 00000-0000"
+                      className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">CPF ou CNPJ *</label>
+                    <input
+                      type="text"
+                      value={customerCpfCnpj}
+                      onChange={(e) => setCustomerCpfCnpj(e.target.value)}
+                      placeholder="000.000.000-00"
+                      className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Endereço de Entrega</p>
-                  <textarea
-                    value={customAddress}
-                    onChange={(e) => setCustomAddress(e.target.value)}
-                    placeholder="Digite o endereço completo para entrega..."
-                    rows={3}
-                    className="w-full border border-slate-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-1 focus:ring-versiory-coral"
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">CEP</label>
+                      <input
+                        type="text"
+                        value={addressZip}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '');
+                          setAddressZip(val);
+                          if (val.length === 8) {
+                            fetch(`https://viacep.com.br/ws/${val}/json/`)
+                              .then(res => res.json())
+                              .then(data => {
+                                if (!data.erro) {
+                                  setAddressStreet(data.logradouro);
+                                  setAddressNeighborhood(data.bairro);
+                                  setAddressCity(data.localidade);
+                                  setAddressState(data.uf);
+                                }
+                              });
+                          }
+                        }}
+                        placeholder="00000-000"
+                        className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Rua / Logradouro</label>
+                      <input
+                        type="text"
+                        value={addressStreet}
+                        onChange={(e) => setAddressStreet(e.target.value)}
+                        placeholder="Ex: Av. Paulista"
+                        className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Número</label>
+                      <input
+                        type="text"
+                        value={addressNumber}
+                        onChange={(e) => setAddressNumber(e.target.value)}
+                        placeholder="123"
+                        className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Complemento</label>
+                      <input
+                        type="text"
+                        value={addressComplement}
+                        onChange={(e) => setAddressComplement(e.target.value)}
+                        placeholder="Apt 42"
+                        className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Bairro</label>
+                      <input
+                        type="text"
+                        value={addressNeighborhood}
+                        onChange={(e) => setAddressNeighborhood(e.target.value)}
+                        placeholder="Centro"
+                        className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cidade / UF</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={addressCity}
+                          onChange={(e) => setAddressCity(e.target.value)}
+                          className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                        />
+                        <input
+                          type="text"
+                          value={addressState}
+                          onChange={(e) => setAddressState(e.target.value.toUpperCase())}
+                          className="w-16 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                          maxLength={2}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -553,6 +721,57 @@ const Checkout: React.FC<CheckoutProps> = ({
             />
           </div>
 
+          {/* Validação de Segurança (Item 26 - ERRCOM093) */}
+          <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-2xl">
+            <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+              <span className="text-lg">🛡️</span> Validação de Segurança
+            </h4>
+            <p className="text-xs text-slate-600 mb-3">Para sua segurança e para evitar pedidos falsos, valide seu e-mail.</p>
+            
+            {!otpSent ? (
+              <button
+                onClick={() => setOtpSent(true)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl text-sm font-bold transition-all shadow-md"
+              >
+                Enviar Código para {effectiveEmail || 'seu e-mail'}
+              </button>
+            ) : !isOtpVerified ? (
+              <div className="space-y-3">
+                <div className="bg-amber-100 p-2 rounded-lg text-[10px] text-amber-800 font-bold text-center">
+                  CÓDIGO DE TESTE: <span className="text-sm select-all">1234</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value)}
+                    placeholder="Digite o código de 4 dígitos"
+                    className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-center font-black tracking-[0.5em] focus:ring-2 focus:ring-blue-500 outline-none"
+                    maxLength={4}
+                  />
+                  <button
+                    onClick={() => {
+                      if (otpCode === '1234') {
+                        setIsOtpVerified(true);
+                        setOtpError('');
+                      } else {
+                        setOtpError('Código inválido. Tente "1234" para o teste.');
+                      }
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl text-sm font-bold transition-all"
+                  >
+                    Validar
+                  </button>
+                </div>
+                {otpError && <p className="text-[10px] text-red-500 font-bold">{otpError}</p>}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2 py-2 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-sm">
+                <span>✅ E-mail Validado</span>
+              </div>
+            )}
+          </div>
+
           {/* Botões de Ação */}
           <div className="flex gap-4">
             <button
@@ -620,7 +839,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                     const savedOrders = JSON.parse(localStorage.getItem('versiory_orders') || '[]');
                     const lastOrder = savedOrders[savedOrders.length - 1];
                     if (lastOrder) {
-                      const message = buildWhatsAppMessage(lastOrder.id, lastOrder.customerName, effectiveEmail, effectiveAddress);
+                      const message = buildWhatsAppMessage(lastOrder.id, lastOrder.customerName, effectiveEmail, effectiveAddress, 'whatsapp');
                       const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
                       window.open(url, '_blank');
                     }

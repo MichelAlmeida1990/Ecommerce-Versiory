@@ -3,20 +3,23 @@ import { Order, CartItem } from '../types';
 interface ReceiptData {
   orderId: string;
   date: string;
+  orderTime?: string; // ERRCOM083
   customerName: string;
   customerAddress?: string;
   customerPhone?: string;
   customerEmail?: string;
+  customerCpfCnpj?: string; // ERRCOM070
   items: CartItem[];
   total: number;
   paymentMethod?: string;
   notes?: string;
   storePolicies?: string;
   isBudget?: boolean;
+  salesChannel?: string; // ERRCOM081
 }
 
 export const generateReceiptHTML = (data: ReceiptData): string => {
-  const { orderId, date, customerName, customerAddress, customerPhone, customerEmail, items, total, paymentMethod, notes, storePolicies, isBudget } = data;
+  const { orderId, date, orderTime, customerName, customerAddress, customerPhone, customerEmail, customerCpfCnpj, items, total, paymentMethod, notes, storePolicies, isBudget, salesChannel } = data;
 
   // Verificar se há serviços no pedido
   const hasServices = items.some(item => item.category === 'Serviços');
@@ -65,7 +68,7 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         ${isBudget ? '<p class="info">Versiory Store</p>' : '<p class="info">Transformando Ideias em Sucesso</p>'}
         <p class="info">----------------------------</p>
         <p class="info">${isBudget ? 'ORÇAMENTO' : 'PEDIDO'}: ${orderId}</p>
-        <p class="info">DATA: ${date} ${new Date().toLocaleTimeString('pt-BR')}</p>
+        <p class="info">DATA: ${date} ${orderTime || new Date().toLocaleTimeString('pt-BR')}</p>
         <div class="no-print" style="margin-bottom: 10px; text-align: center;">
           <button onclick="window.print()" style="background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%;">
             💾 Baixar PDF / Imprimir
@@ -77,7 +80,9 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         <strong>CLIENTE:</strong> ${customerName}<br>
         ${customerPhone ? `<strong>TELEFONE:</strong> ${customerPhone}<br>` : ''}
         ${customerEmail ? `<strong>E-MAIL:</strong> ${customerEmail}<br>` : ''}
-        ${customerAddress ? `<strong>ENDEREÇO:</strong> ${customerAddress}` : ''}
+        ${customerCpfCnpj ? `<strong>CPF/CNPJ:</strong> ${customerCpfCnpj}<br>` : ''}
+        ${customerAddress ? `<strong>ENDEREÇO:</strong> ${customerAddress}<br>` : ''}
+        ${salesChannel ? `<strong>ORIGEM:</strong> ${salesChannel.toUpperCase()}` : ''}
       </div>
 
       <table>

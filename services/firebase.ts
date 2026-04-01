@@ -196,6 +196,8 @@ export const deleteExpense = (id: number) => deleteDocument("expenses", id);
 export interface UserSession {
     email: string;
     name?: string;
+    phone?: string;
+    cpfCnpj?: string;
     address?: string;
     loginTime: number;
 }

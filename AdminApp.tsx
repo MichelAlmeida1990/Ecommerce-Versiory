@@ -81,10 +81,10 @@ const AdminApp: React.FC = () => {
           getExpenses()
         ]);
 
-        // Se não houver produtos, inicializar com dados padrão
-        if (productsData.length === 0) {
-          const defaultProducts = PRODUCTS.map(p => ({ ...p, stock: p.stock ?? 20, sizes: p.sizes ?? '' }));
-          await Promise.all(defaultProducts.map(p => saveProduct(p)));
+        // Se o Firebase estiver vazio, carregamos os produtos de exemplo apenas no estado local
+        if (productsData.length === 0 && PRODUCTS && PRODUCTS.length > 0) {
+          console.warn("⚠️ Banco de dados Firebase de produtos está vazio. Carregando itens de exemplo para demonstração.");
+          const defaultProducts = PRODUCTS.map(p => ({ ...p, stock: p.stock ?? 20, sizes: p.sizes ?? '', images: p.images ?? [] }));
           setProducts(defaultProducts);
         } else {
           setProducts(productsData);
@@ -110,13 +110,14 @@ const AdminApp: React.FC = () => {
         setExpenses(expensesData);
       } catch (error) {
         console.error('Erro ao carregar dados do Firebase:', error);
+        setError('Falha na conexão com o banco de dados. Verifique sua internet ou as permissões do Firebase.');
       }
     };
 
-    if (isAuthenticated) {
+    if (isAuthenticated && !error) {
       loadData();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated]); // Removed 'error' from dependency array
 
   // Verificar periodicamente se a sessão ainda é válida
   useEffect(() => {

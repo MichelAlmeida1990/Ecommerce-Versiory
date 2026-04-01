@@ -155,6 +155,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                     product.sizes.split(',').forEach(size => {
                       colorStock += getStockForSizeColor(size.trim(), trimmedColor);
                     });
+                  } else {
+                    colorStock = product.stock || 0;
                   }
 
                   const isAvailable = colorStock > 0;
@@ -165,15 +167,24 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                       key={trimmedColor}
                       onClick={() => isAvailable && setSelectedColor(trimmedColor)}
                       disabled={!isAvailable}
-                      className={`px-6 py-3 rounded-xl font-bold transition-all ${isSelected
+                      className={`px-6 py-3 rounded-xl font-bold transition-all relative group/color ${isSelected
                         ? 'bg-versiory-coral text-white shadow-lg scale-105'
                         : isAvailable
-                          ? 'bg-white border-2 border-slate-200 text-slate-700 hover:border-versiory-coral'
-                          : 'bg-slate-100 text-slate-400 line-through cursor-not-allowed'
+                          ? 'bg-white border-2 border-slate-200 text-slate-700 hover:border-versiory-coral shadow-sm'
+                          : 'bg-slate-50 text-slate-300 line-through cursor-not-allowed border border-slate-100 opacity-60'
                         }`}
                     >
                       {trimmedColor}
-                      {isAvailable && <span className="text-[10px] ml-1 opacity-70">({colorStock})</span>}
+                      {isAvailable && (
+                        <span className={`text-[10px] ml-1 opacity-70 ${colorStock < 3 ? 'text-red-500 font-black animate-pulse' : ''}`}>
+                          ({colorStock})
+                        </span>
+                      )}
+                      {!isAvailable && selectedSize && (
+                        <span className="absolute -top-2 -right-2 bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded font-bold opacity-0 group-hover/color:opacity-100 transition-opacity">
+                          ESGOTADO
+                        </span>
+                      )}
                     </button>
                   );
                 })}

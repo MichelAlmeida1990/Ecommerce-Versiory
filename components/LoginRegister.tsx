@@ -6,7 +6,7 @@ import { hashPassword, verifyPassword } from '../utils/crypto';
 
 interface LoginRegisterProps {
   onClose?: () => void;
-  onLoginSuccess?: (email: string, address: string) => void;
+  onLoginSuccess?: (email: string, address: string, phone?: string, cpfCnpj?: string) => void;
 }
 
 const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }) => {
@@ -130,11 +130,14 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
         const userSession = {
           email: form.email,
           name: form.name,
-          address: `${address.street}, ${address.number}${address.complement ? ', ' + address.complement : ''} - ${address.neighborhood}, ${address.city}/${address.state} - CEP: ${address.zipCode}`
+          phone: form.phone,
+          cpfCnpj: form.cpfCnpj,
+          address: `${address.street}, ${address.number}${address.complement ? ', ' + address.complement : ''} - ${address.neighborhood}, ${address.city}/${address.state} - CEP: ${address.zipCode}`,
+          loginTime: Date.now()
         };
         await saveUserSession(userSession);
 
-        onLoginSuccess?.(userSession.email, userSession.address);
+        onLoginSuccess?.(userSession.email, userSession.address, userSession.phone, userSession.cpfCnpj);
         onClose?.();
         
         if (!onLoginSuccess) {
@@ -155,10 +158,17 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
           if (isPasswordValid) {
             const addr = customer.addresses[0];
             const formattedAddr = addr ? `${addr.street}, ${addr.number} - ${addr.city}/${addr.state}` : '';
-            const userSession = { email: customer.email, name: customer.name, address: formattedAddr };
+            const userSession = { 
+              email: customer.email, 
+              name: customer.name, 
+              phone: customer.phone, 
+              cpfCnpj: customer.cpfCnpj, 
+              address: formattedAddr,
+              loginTime: Date.now()
+            };
 
             await saveUserSession(userSession);
-            onLoginSuccess?.(userSession.email, userSession.address);
+            onLoginSuccess?.(userSession.email, userSession.address, userSession.phone, userSession.cpfCnpj);
             onClose?.();
             setLoginAttempts(0);
             

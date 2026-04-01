@@ -13,6 +13,7 @@ const Account: React.FC = () => {
   const [editAddressId, setEditAddressId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOrdersOverlayOpen, setIsOrdersOverlayOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null); // ERRCOM084
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -173,7 +174,7 @@ const Account: React.FC = () => {
       const { saveCustomer, saveUserSession } = await import('../services/firebase');
       const updated = { ...customer, ...profileForm };
       await saveCustomer(updated);
-      await saveUserSession({ email: updated.email, name: updated.name });
+      await saveUserSession({ email: updated.email, name: updated.name, loginTime: Date.now() });
       setCustomer(updated);
       setEditProfile(false);
     } catch (error) {
@@ -258,6 +259,24 @@ const Account: React.FC = () => {
       setCustomer(updated);
     } catch (error) {
       console.error('Erro ao deletar endereço:', error);
+    }
+  };
+
+  const handleSetDefaultAddress = async (id: string) => {
+    if (!customer) return;
+    try {
+      const { saveCustomer } = await import('../services/firebase');
+      const updated = {
+        ...customer,
+        addresses: customer.addresses.map(a => ({
+          ...a,
+          isDefault: a.id === id
+        }))
+      };
+      await saveCustomer(updated);
+      setCustomer(updated);
+    } catch (error) {
+      console.error('Erro ao definir endereço padrão:', error);
     }
   };
 
@@ -593,6 +612,11 @@ const Account: React.FC = () => {
                               {address.type === 'shipping' ? 'Entrega' : 'Cobrança'}
                             </span>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {!address.isDefault && (
+                                <button onClick={() => handleSetDefaultAddress(address.id)} title="Definir como Padrão" className="p-2 hover:bg-emerald-50 rounded-xl text-slate-400 hover:text-emerald-600 transition-colors">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                </button>
+                              )}
                               <button onClick={() => { setAddressForm(address); setEditAddressId(address.id); }} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-900 transition-colors">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                               </button>
@@ -601,7 +625,10 @@ const Account: React.FC = () => {
                               </button>
                             </div>
                           </div>
-                          <p className="font-bold text-slate-900 text-lg mb-1 leading-tight">{address.street}, {address.number}</p>
+                          <p className="font-bold text-slate-900 text-lg mb-1 leading-tight">
+                            {address.street}, {address.number}
+                            {address.isDefault && <span className="ml-2 text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">Padrão</span>}
+                          </p>
                           <p className="text-slate-500 font-medium text-sm">{address.neighborhood}, {address.city} - {address.state}</p>
                           <p className="text-slate-400 font-black text-[10px] uppercase mt-4">CEP {address.zipCode}</p>
                         </div>
@@ -726,7 +753,10 @@ const Account: React.FC = () => {
                                       <p className="text-2xl font-black text-slate-900">R$ {order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                     </div>
                                     <button
-                                      onClick={() => setIsOrdersOverlayOpen(true)}
+                                      onClick={() => {
+                                        setSelectedOrderId(order.id);
+                                        setIsOrdersOverlayOpen(true);
+                                      }}
                                       className="px-6 py-3 bg-white border border-slate-200 text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-sm"
                                     >
                                       Ver Detalhes
@@ -806,7 +836,15 @@ const Account: React.FC = () => {
             <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
               <h4 className="text-lg font-black text-slate-900 mb-2">Suporte Versiory</h4>
               <p className="text-slate-500 text-sm font-medium mb-6 leading-relaxed">Precisa de ajuda com algum pedido ou alteração na sua conta?</p>
-              <button className="w-full border-2 border-slate-100 hover:border-slate-900 py-4 rounded-2xl font-black text-slate-900 transition-all">Falar com Consultor</button>
+              <button
+                onClick={() => {
+                  const message = `Olá! Gostaria de falar com um consultor Versiory sobre minha conta ou pedidos.`;
+                  window.open(`https://wa.me/5511958540171?text=${encodeURIComponent(message)}`, '_blank');
+                }}
+                className="w-full border-2 border-slate-100 hover:border-slate-900 py-4 rounded-2xl font-black text-slate-900 transition-all flex items-center justify-center gap-2"
+              >
+                💬 Falar com Consultor
+              </button>
             </div>
           </div>
         </div>
@@ -815,8 +853,12 @@ const Account: React.FC = () => {
       {/* Premium Orders Overlay Integration */}
       <CustomerOrders
         isOpen={isOrdersOverlayOpen}
-        onClose={() => setIsOrdersOverlayOpen(false)}
+        onClose={() => {
+          setIsOrdersOverlayOpen(false);
+          setSelectedOrderId(null);
+        }}
         customerEmail={customer.email}
+        initialOrderId={selectedOrderId || undefined}
       />
     </div>
   );

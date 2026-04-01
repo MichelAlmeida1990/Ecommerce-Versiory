@@ -5,6 +5,9 @@ import { generateInvoice } from '../services/invoice';
 import { getFiscalConfig } from '../services/fiscalConfig';
 import DanfePreview from './DanfePreview';
 
+const formatCurrency = (value: number) =>
+  `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
 interface PdvCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -26,6 +29,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
 }) => {
   const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
   const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'debito' | 'credito'>('dinheiro');
+  const [installments, setInstallments] = useState(1);
   const [emitNF, setEmitNF] = useState(false);
   const [isBudget, setIsBudget] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -34,6 +38,8 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   const [generatedCustomer, setGeneratedCustomer] = useState<Customer | null>(null);
   const [saleFinished, setSaleFinished] = useState(false);
   const [lastFinishedOrder, setLastFinishedOrder] = useState<Order | null>(null);
+  // ERRCOM074/075: Orçamento gerado mas ainda NÃO salvo
+  const [budgetPendingOrder, setBudgetPendingOrder] = useState<Order | null>(null);
   const [soldItems, setSoldItems] = useState<{ product: Product; quantity: number }[]>([]);
   const [soldTotal, setSoldTotal] = useState(0);
 
@@ -90,27 +96,25 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     return newErrors.length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent, forceBudget = false) => {
-    if (e) e.preventDefault();
+  // ERRCOM074/075: Gerar orçamento SEM salvar - apenas print preview
+  const handleBudgetPreview = async () => {
+    if (!customerForm.name.trim()) {
+      setErrors(['Nome do cliente é obrigatório mesmo para orçamentos']);
+      return;
+    }
+    setErrors([]);
 
-    // Se for orçamento, a validação é mais simples (apenas nome)
-    if (forceBudget) {
-      if (!customerForm.name.trim()) {
-        setErrors(['Nome do cliente é obrigatório mesmo para orçamentos']);
-        return;
-      }
-    } else if (!validateForm()) return;
-
-    const order: Order = {
-      id: forceBudget ? `ORC-${Date.now()}` : `PDV-${Date.now()}`,
+    // Montar o pedido em memória (ainda NÃO salvo)
+    const previewOrder: Order = {
+      id: 'ORC-PREVIEW',
       customerId: 0,
       customerName: customerForm.name,
-      customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''), // ERRCOM107: Evitar e-mail genérico pdv@versiory para não colidir histórico
+      customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''),
       customerPhone: customerForm.phone || undefined,
       date: new Date().toISOString(),
       total,
-      status: forceBudget ? 'pending' : 'delivered',
-      paymentMethod: forceBudget ? undefined : paymentMethod,
+      status: 'pending',
+      paymentMethod: undefined,
       items: cart.map(item => ({
         productId: item.product.id,
         name: item.product.name,
@@ -122,14 +126,117 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         installments: item.product.installments
       })),
       salesChannel: 'physical',
-      emitNF: forceBudget ? false : emitNF,
+      emitNF: false,
       notes: customerForm.notes,
       address: customerForm.address,
-      isBudget: forceBudget,
+      isBudget: true,
       customPolicies: customerForm.customPolicies
     };
 
-    if (emitNF && !forceBudget) {
+    // Imprimir o orçamento
+    const { generateReceiptHTML } = await import('../utils/receiptGenerator');
+    const { getFiscalConfig } = await import('../services/fiscalConfig');
+    const fiscalConfig = getFiscalConfig();
+    const receiptHTML = generateReceiptHTML({
+      orderId: 'ORC-PREVIEW',
+      date: new Date().toLocaleString('pt-BR'),
+      customerName: previewOrder.customerName,
+      customerPhone: previewOrder.customerPhone,
+      customerAddress: previewOrder.address || undefined,
+      notes: previewOrder.notes,
+      storePolicies: previewOrder.customPolicies || fiscalConfig?.storePolicies,
+      items: cart.map(item => ({ ...item.product, quantity: item.quantity as any, category: item.product.category })),
+      total,
+      isBudget: true
+    });
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(receiptHTML);
+      printWindow.document.close();
+    }
+
+    // Guardar em estado para confirmação posterior (ainda NÃO salvo no Firebase)
+    setBudgetPendingOrder(previewOrder);
+  };
+
+  // ERRCOM074/075: Gravar orçamento somente após confirmação explícita
+  const handleSaveBudget = async () => {
+    if (!budgetPendingOrder) return;
+    try {
+      await onSubmit({ ...customerForm, emitNF: false, isBudget: true }, budgetPendingOrder);
+      setSoldItems([...cart]);
+      setSoldTotal(total);
+      setLastFinishedOrder(budgetPendingOrder);
+      setIsBudget(true);
+      setSaleFinished(true);
+      setBudgetPendingOrder(null);
+    } catch (err: any) { }
+  };
+
+  // ERRCOM074/075: Confirmar como venda (a partir do orçamento previamente visualizado)
+  const handleConfirmSaleFromBudget = async () => {
+    if (!budgetPendingOrder) return;
+    const saleOrder: Order = {
+      ...budgetPendingOrder,
+      id: 'PDV-CONFIRM',
+      isBudget: false,
+      status: 'delivered',
+      paymentMethod
+    };
+    try {
+      await onSubmit({ ...customerForm, emitNF: false, isBudget: false }, saleOrder);
+      setSoldItems([...cart]);
+      setSoldTotal(total);
+      setLastFinishedOrder(saleOrder);
+      setIsBudget(false);
+      setSaleFinished(true);
+      setBudgetPendingOrder(null);
+      setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+    } catch (err: any) { }
+  };
+
+  const handleSubmit = async (e?: React.FormEvent, forceBudget = false) => {
+    if (e) e.preventDefault();
+    
+    // Se for clicado explicitamente em 'Gerar Orçamento' (forceBudget = true)
+    if (forceBudget) {
+      // ERRCOM074/075: Apenas gera preview - não salva no Firebase até confirmação na sub-tela
+      await handleBudgetPreview();
+      return;
+    }
+
+    if (!validateForm()) return;
+
+    const order: Order = {
+      id: `PDV-${Date.now()}`,
+      customerId: 0,
+      customerName: customerForm.name,
+      customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''),
+      customerPhone: customerForm.phone || undefined,
+      date: new Date().toISOString(),
+      total,
+      status: 'delivered',
+      paymentMethod,
+      items: cart.map(item => ({
+        productId: item.product.id,
+        name: item.product.name,
+        quantity: item.quantity,
+        price: item.product.price,
+        image: item.product.image,
+        selectedSize: item.selectedSize,
+        selectedColor: item.selectedColor,
+        installments: item.product.installments
+      })),
+      salesChannel: 'physical',
+      emitNF,
+      notes: customerForm.notes,
+      address: customerForm.address,
+      isBudget: false,
+      customPolicies: customerForm.customPolicies,
+      installments: paymentMethod === 'credito' ? installments : 1
+    };
+
+    if (emitNF) {
       const customer: Customer = {
         id: Date.now(),
         name: customerForm.name,
@@ -163,26 +270,19 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     }
 
     try {
-      await onSubmit({ ...customerForm, emitNF, isBudget: forceBudget }, order);
+      await onSubmit({ ...customerForm, emitNF, isBudget: false }, order);
 
-      if (!emitNF || forceBudget) {
+      if (!emitNF) {
         setSoldItems([...cart]);
         setSoldTotal(total);
         setLastFinishedOrder(order);
         setSaleFinished(true);
-        
-        // ERRCOM101: Mantemos os dados do cliente para orçamentos para que possam ser convertidos em venda facilmente
-        if (!forceBudget) {
-          setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
-          setEmitNF(false);
-          setErrors([]);
-        }
-        
-        setIsBudget(forceBudget);
+        setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+        setEmitNF(false);
+        setErrors([]);
+        setIsBudget(false);
       }
-    } catch (err: any) {
-      // Error is already alerted by AdminDashboard, we just prevent saleFinished from being set
-    }
+    } catch (err: any) { }
   };
 
   const handleCloseDanfe = () => {
@@ -234,14 +334,55 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     }
   };
 
+  // ERRCOM074/075: Tela de confirmação após visualizar orçamento - ANTES de salvar
+  if (budgetPendingOrder) {
+    return (
+      <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-3xl max-w-sm w-full p-8 text-center shadow-2xl animate-in zoom-in duration-300">
+          <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-6">📋</div>
+          <h3 className="text-2xl font-black text-slate-900 mb-2">Orçamento Visualizado</h3>
+          <p className="text-slate-500 mb-2 text-sm">O orçamento foi impresso/visualizado.</p>
+          <p className="text-slate-400 mb-6 text-xs font-medium">⚠️ Ele ainda NÃO foi salvo no sistema. Escolha o que deseja fazer:</p>
+          <div className="space-y-3">
+            <button
+              onClick={handleSaveBudget}
+              disabled={isSubmitting}
+              className="w-full bg-versiory-ink hover:bg-[#1b2a3a] text-white py-4 rounded-xl font-bold transition-all disabled:opacity-50"
+            >
+              📝 Gravar Orçamento
+            </button>
+            <button
+              onClick={handleConfirmSaleFromBudget}
+              disabled={isSubmitting}
+              className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-bold transition-all shadow-md disabled:opacity-50"
+            >
+              ✅ Confirmar como Venda
+            </button>
+            <button
+              onClick={() => { setBudgetPendingOrder(null); }}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-all"
+            >
+              ✏️ Editar Dados
+            </button>
+            <button
+              onClick={() => { setBudgetPendingOrder(null); onClose(); }}
+              className="w-full text-slate-400 hover:text-slate-600 font-bold py-2 transition-all text-sm"
+            >
+              Cancelar (sem salvar)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (saleFinished) {
     return (
       <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-3xl max-w-sm w-full p-8 text-center shadow-2xl animate-in zoom-in duration-300">
           <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-6">✓</div>
-          <h3 className="text-2xl font-black text-slate-900 mb-2">{isBudget ? 'Orçamento Gerado!' : 'Venda Finalizada!'}</h3>
-          <p className="text-slate-500 mb-8">{isBudget ? 'O orçamento foi registrado com sucesso.' : 'O que deseja fazer agora?'}</p>
-
+          <h3 className="text-2xl font-black text-slate-900 mb-2">{isBudget ? 'Orçamento Salvo!' : 'Venda Finalizada!'}</h3>
+          <p className="text-slate-500 mb-8">{isBudget ? 'Orçamento registrado com sucesso.' : 'O que deseja fazer agora?'}</p>
           <div className="space-y-3">
             <button
               onClick={handlePrintReceipt}
@@ -252,53 +393,17 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
               </svg>
               Imprimir {isBudget ? 'Orçamento' : 'Recibo'}
             </button>
-            
-            {/* ERRCOM102: Novas opções de fluxo para orçamentos */}
-            {isBudget ? (
-              <>
-                <button
-                  onClick={() => {
-                    setSaleFinished(false);
-                    onClose();
-                  }}
-                  className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-bold transition-all shadow-md shadow-coral-100"
-                >
-                  Confirmar Venda
-                </button>
-                <button
-                  onClick={() => {
-                    if (onClearCart) onClearCart();
-                    setSaleFinished(false);
-                    setLastFinishedOrder(null);
-                    onClose();
-                  }}
-                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-all"
-                >
-                  Nova Venda
-                </button>
-                <button
-                  onClick={() => {
-                    setSaleFinished(false);
-                    onClose();
-                  }}
-                  className="w-full text-slate-400 hover:text-slate-600 font-bold py-2 transition-all text-sm"
-                >
-                  Cancelar
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => {
-                  if (onClearCart) onClearCart();
-                  setSaleFinished(false);
-                  setLastFinishedOrder(null);
-                  onClose();
-                }}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-all"
-              >
-                Nova Venda
-              </button>
-            )}
+            <button
+              onClick={() => {
+                if (onClearCart) onClearCart();
+                setSaleFinished(false);
+                setLastFinishedOrder(null);
+                onClose();
+              }}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-all"
+            >
+              Nova Venda
+            </button>
           </div>
         </div>
       </div>
@@ -307,7 +412,17 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div 
+        className="absolute inset-0" 
+        onClick={() => {
+          if ((customerForm.name || customerForm.phone) && !saleFinished) {
+            if (window.confirm('Deseja realmente fechar o checkout? Dados preenchidos serão perdidos.')) onClose();
+          } else {
+            onClose();
+          }
+        }}
+      />
+      <div className="relative bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-xl font-black text-gray-900">Dados do Cliente</h3>
           <p className="text-sm text-gray-600 mt-1">Informe os dados para finalizar a venda</p>
@@ -416,6 +531,23 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
             </div>
           </div>
 
+          {paymentMethod === 'credito' && (
+            <div className="bg-white/50 p-4 rounded-xl border-2 border-blue-200 animate-in slide-in-from-top-2 duration-300">
+              <label className="block text-sm font-black text-blue-900 mb-2">Parcelamento (Crédito)</label>
+              <select
+                value={installments}
+                onChange={e => setInstallments(parseInt(e.target.value))}
+                className="w-full px-4 py-3 border-2 border-blue-100 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white font-bold text-slate-700"
+              >
+                {[...Array(12)].map((_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {i + 1}x de {formatCurrency(total / (i + 1))} {i === 0 ? '(Sem juros)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-black text-gray-700 mb-2">
               CPF/CNPJ {emitNF && '*'}
@@ -480,7 +612,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
                     {emitNF ? 'Gerando NF-e...' : 'Finalizando...'}
                   </>
                 ) : (
-                  emitNF ? '✓ Finalizar com NF-e' : 'Confirmar Venda'
+                  editingOrder?.isBudget ? '✓ Converter em Venda' : (emitNF ? '✓ Finalizar com NF-e' : 'Confirmar Venda')
                 )}
               </button>
             </div>
