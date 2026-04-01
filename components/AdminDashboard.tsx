@@ -1644,21 +1644,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             const p = { ...updatedProducts[productIndex] }; // Create a mutable copy
             p.stock = Math.max(0, (p.stock || 0) - item.quantity);
 
-            if (item.selectedSize) {
-              if (p.stockBySize) {
-                p.stockBySize = {
-                  ...p.stockBySize,
-                  [item.selectedSize]: Math.max(0, (p.stockBySize[item.selectedSize] || 0) - item.quantity)
-                };
-              }
-
-              if (item.selectedColor && p.stockBySizeColor) {
-                const key = `${item.selectedSize}-${item.selectedColor}`;
-                p.stockBySizeColor = {
-                  ...p.stockBySizeColor,
-                  [key]: Math.max(0, (p.stockBySizeColor[key] || 0) - item.quantity)
-                };
-              }
+            if (item.selectedSize && p.stockBySize) {
+              p.stockBySize = {
+                ...p.stockBySize,
+                [item.selectedSize]: Math.max(0, (p.stockBySize[item.selectedSize] || 0) - item.quantity)
+              };
+            }
+            
+            if (item.selectedColor && p.stockBySizeColor) {
+              const key = item.selectedSize ? `${item.selectedSize}-${item.selectedColor}` : item.selectedColor;
+              p.stockBySizeColor = {
+                ...p.stockBySizeColor,
+                [key]: Math.max(0, (p.stockBySizeColor[key] || 0) - item.quantity)
+              };
             }
 
             const sanitizedProduct = sanitizeData(p);
