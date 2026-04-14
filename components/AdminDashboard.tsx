@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+﻿import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Product,
@@ -521,14 +521,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const stats = useMemo(() => {
     // BUGFIX #4 & #10: Unificar lógica de faturamento para Dashboard, Pedidos e Financeiro
     const revenueOrders = orders.filter(order => {
-      if (order.isBudget || order.status === 'cancelled') return false;
+      // ERRCOM104: Orçamentos pagos contam como receita
+      const isPaidBudget = order.isBudget && order.status === 'paid';
+      const isRegularRevenue = !order.isBudget && order.status !== 'cancelled';
+      
+      if (!isPaidBudget && !isRegularRevenue) return false;
 
       const hasServiceOnly = order.items?.every(item => {
         const product = products.find(p => p.id === item.productId);
         return product?.category === 'Serviços';
       });
 
-      if (hasServiceOnly) return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
+      // ERRCOM071: Serviços contam como receita quando pagos ou entregues
+      if (hasServiceOnly) return ['paid', 'delivered'].includes(order.status);
       
       const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
       const isPdvImmediate = order.salesChannel === 'physical' && order.status !== 'pending';
@@ -537,12 +542,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
 
     const totalRevenue = revenueOrders.reduce((sum, order) => sum + order.total, 0);
+    const totalDiscounts = revenueOrders.reduce((sum, order) => sum + (order.discountAmount || 0), 0);
     return {
       totalProducts: products.length,
       // BUGFIX #6: Excluir cancelados da contagem total de pedidos do Dashboard
       totalOrders: orders.filter(o => !o.isBudget && o.status !== 'cancelled').length,
       totalCustomers: customers.length,
-      totalRevenue
+      totalRevenue,
+      totalDiscounts // ERRCOM108
     };
   }, [products, orders, customers]);
 
@@ -562,7 +569,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       const dayOrders = orders.filter(o => {
         const orderLocalDate = new Date(o.date).toLocaleDateString('en-CA');
-        if (orderLocalDate !== dateStr || o.isBudget || o.status === 'cancelled') return false;
+        // ERRCOM104: Orçamentos pagos contam no gráfico
+        const isPaidBudget = o.isBudget && o.status === 'paid';
+        const isRegularRevenue = !o.isBudget && o.status !== 'cancelled';
+
+        if (orderLocalDate !== dateStr || (!isPaidBudget && !isRegularRevenue)) return false;
 
         // BUGFIX #10: Aplicar a mesma regra de receita do stats para o gráfico
         const hasServiceOnly = o.items?.every(item => {
@@ -570,7 +581,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           return product?.category === 'Serviços';
         });
 
-        if (hasServiceOnly) return ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
+        if (hasServiceOnly) return ['paid', 'delivered'].includes(o.status);
         
         const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
         const isPdvImmediate = o.salesChannel === 'physical' && o.status !== 'pending';
@@ -702,7 +713,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const financialStats = useMemo(() => {
     const revenueOrders = orders.filter(order => {
-      if (order.isBudget) return false;
+      // ERRCOM104: Incluir orçamentos com status "Pagamento Efetuado"
+      if (order.isBudget && order.status !== 'paid') return false;
       const hasService = order.items?.some(item => {
         const product = products.find(p => p.id === item.productId);
         return product?.category === 'Serviços';
@@ -753,15 +765,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [products]);
 
   const recentTransactions = useMemo(() => {
-    const revenue = orders.map(order => ({
-      id: order.id,
-      description: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}`,
-      amount: order.total,
-      type: 'revenue' as const,
-      date: order.date,
-      category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
-      notes: order.notes || ''
-    }));
+    // ERRCOM026: Filtrar cancelados e orçamentos da lista de receitas
+    const revenue = orders
+      .filter(order => {
+        const isPaidBudget = order.isBudget && order.status === 'paid';
+        const isRegularRevenue = !order.isBudget && order.status !== 'cancelled';
+        return isPaidBudget || isRegularRevenue;
+      })
+      .map(order => ({
+        id: order.id,
+        description: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}${order.isBudget ? ' (Orçamento Finalizado)' : ''}`,
+        amount: order.total,
+        type: 'revenue' as const,
+        date: order.date,
+        category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
+        notes: order.notes || ''
+      }));
 
     const expenseItems = expenses.map(expense => ({
       id: String(expense.id),
@@ -777,16 +796,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const all = [...revenue, ...expenseItems]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // ERRCOM027: Filtro por período
+    // ERRCOM026: Melhorar comparação de datas para evitar problemas de fuso horário
     if (financialDateFilter.from || financialDateFilter.to) {
       return all.filter(t => {
-        const d = t.date.split('T')[0];
-        if (financialDateFilter.from && d < financialDateFilter.from) return false;
-        if (financialDateFilter.to && d > financialDateFilter.to) return false;
+        const transactionDate = new Date(t.date);
+        const fromDate = financialDateFilter.from ? new Date(financialDateFilter.from) : null;
+        const toDate = financialDateFilter.to ? new Date(financialDateFilter.to) : null;
+        
+        // Comparar usando timestamps para evitar problemas de formatação
+        if (fromDate && transactionDate < fromDate) return false;
+        if (toDate && transactionDate > toDate) return false;
         return true;
       });
     }
-    return all.slice(0, 50);
+    return all.slice(0, 100); // Aumentado para 100 quando sem filtro
   }, [orders, expenses, financialDateFilter]);
 
   // ERRCOM033: Estatísticas de clientes
@@ -1185,14 +1208,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const orderToUpdate = orders.find(o => o.id === orderStatusForm.orderId);
       if (!orderToUpdate) return;
 
-      const updatedOrder: Order = { ...orderToUpdate, status: orderStatusForm.status, notes: orderStatusForm.notes };
+      const updatedOrder: Order = { 
+        ...orderToUpdate, 
+        status: orderStatusForm.status, 
+        notes: orderStatusForm.notes,
+        // ERRCOM101: Registrar histórico de status
+        statusHistory: [
+          ...(orderToUpdate.statusHistory || []),
+          {
+            status: orderStatusForm.status,
+            date: new Date().toISOString(),
+            notes: orderStatusForm.notes
+          }
+        ]
+      };
       let finalProducts = products;
 
       // BUGFIX #12: Evitar loop de soma duplicada e garantir exclusão do saldo ao cancelar/voltar para pendente
-      if (updatedOrder.salesChannel === 'physical' && !updatedOrder.isBudget) {
+      // ERRCOM104: Orçamentos podem ser contabilizados se status for 'paid'
+      if (updatedOrder.salesChannel === 'physical') {
         const isAccountingStatus = ['delivered', 'paid', 'processing', 'shipped'].includes(updatedOrder.status);
         const wasAccountingStatus = ['delivered', 'paid', 'processing', 'shipped'].includes(orderToUpdate.status);
 
+        // Se for orçamento, só contabiliza se mudar para um status de pagamento/entrega
+        // Se for venda normal, segue o fluxo normal
         if (isAccountingStatus && !orderToUpdate.accountedInCash) {
           setCashRegister(prev => ({ ...prev, currentBalance: prev.currentBalance + updatedOrder.total }));
           updatedOrder.accountedInCash = true;
@@ -1590,6 +1629,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // Se estivermos editando, preservamos o ID original
       const orderId = editingOrder ? editingOrder.id : (isBudget ? `ORC-${Date.now()}` : `PDV-${Date.now()}`);
       order.id = orderId;
+      order.orderTime = new Date().toLocaleTimeString('pt-BR'); // ERRCOM083: Hora com segundos
+      order.accountedInCash = false; // Inicializa falso
 
       // BUGFIX: Buscar lista fresca do Firestore para evitar estado stale
       const freshCustomers = await getCustomers();
@@ -1689,6 +1730,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       onUpdateOrders(updated);
       
+      // ERRCOM102: Forçar atualização imediata da lista de pedidos
+      setTimeout(() => {
+        // Força uma re-renderização da lista de pedidos
+        setActiveTab('orders');
+        setTimeout(() => setActiveTab('pdv'), 100);
+      }, 500);
+      
       // ERRCOM100: Orçamentos NÃO limpam o carrinho para permitir finalizar a venda em seguida
       if (!isBudget) {
         setPdvCart([]);
@@ -1696,12 +1744,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       
       setEditingOrder(null);
 
-      // 5. Atualizar saldo do caixa (Somente se não for orçamento E não for serviço pendente)
-      if (!isBudget && !hasService) {
+      // 5. Atualizar saldo do caixa (Somente se não for orçamento)
+      if (!isBudget) {
         setCashRegister(prev => ({
           ...prev,
           currentBalance: prev.currentBalance + order.total
         }));
+        order.accountedInCash = true; // Marca como contabilizado
       }
       
       console.log(`${isBudget ? 'Orçamento' : 'Venda'} finalizada com sucesso:`, order.id);
@@ -1799,23 +1848,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       salesByPaymentCount
     };
 
-    // Usamos o histórico apenas para exibição no modal
-    setCashRegisterHistory(prev => [...prev, partialReport]);
-    setIsCashReportOpen(true);
-  };
-
-  const handlePrintCashReport = async (report: any) => {
-    try {
-      const { generateCashReportHTML } = await import('../utils/cashReportGenerator');
-      const html = generateCashReportHTML(report);
-      const printWindow = window.open('', '_blank', 'width=400,height=600');
-      if (printWindow) {
-        printWindow.document.write(html);
-        printWindow.document.close();
-      }
-    } catch (error) {
-      console.error('Erro ao imprimir relatório:', error);
-      window.print(); // Fallback
     }
   };
 
@@ -1833,7 +1865,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const registerOrders = orders.filter(o =>
       o.salesChannel === 'physical' &&
       new Date(o.date).getTime() >= registerOpenedAt &&
-      (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing' || o.status === 'shipped')
+      // ERRCOM095: Incluir pedidos cancelados no relatório
+      (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing' || o.status === 'shipped' || o.status === 'cancelled')
     );
 
     const salesByPayment = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
@@ -2159,7 +2192,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Top Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
                 <div className="text-3xl font-bold text-white mb-2">{stats.totalProducts}</div>
                 <div className="text-slate-400 font-medium text-sm">Total Produtos</div>
@@ -2174,7 +2207,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
                 <div className="text-3xl font-bold text-white mb-2">{stats.totalCustomers}</div>
-                <div className="text-slate-400 font-medium text-sm">Clientes</div>
+                <div className="text-slate-400 font-medium text-sm">Total Clientes</div>
+              </div>
+              <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
+                <div className="text-3xl font-bold text-emerald-400 mb-2">{formatCurrency(stats.totalDiscounts)}</div>
+                <div className="text-slate-400 font-medium text-sm">Descontos (Cupons)</div>
               </div>
             </div>
 
@@ -2304,7 +2341,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 tablet-desktop-grid gap-4 p-6 overflow-y-auto custom-scrollbar flex-1">
                   {products
-                    .filter(p => p.name.toLowerCase().includes(pdvSearch.toLowerCase()) || p.category.toLowerCase().includes(pdvSearch.toLowerCase()))
+                    .filter(p => p.active !== false && (p.name.toLowerCase().includes(pdvSearch.toLowerCase()) || p.category.toLowerCase().includes(pdvSearch.toLowerCase())))
                     .map(product => (
                       <div key={product.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col justify-between hover:bg-white/10 transition-colors">
                         <div className="flex items-start gap-3 mb-3">
@@ -2504,6 +2541,68 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <h2 className="text-xl font-black text-white">Gerenciar Produtos</h2>
               <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                {/* ERRCOM106: Função de Sincronizar movida para aba Produtos */}
+                <button
+                  onClick={async () => {
+                    if (!window.confirm('Sincronizar estoque por tamanho com estoque geral?\n\nIsso vai distribuir o estoque geral igualmente entre as variações (tamanhos/cores).')) return;
+                    try {
+                      const { saveProduct } = await import('../services/firebase');
+                      const updatedProductsList = [...products];
+                      let updatedCount = 0;
+
+                      for (let i = 0; i < updatedProductsList.length; i++) {
+                        const product = updatedProductsList[i];
+                        if (product.sizes) {
+                          const sizeArray = product.sizes.split(',').map(s => s.trim()).filter(s => s);
+                          const colorArray = product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : [];
+                          const totalStock = product.stock || 0;
+
+                          if (colorArray.length > 0) {
+                            // Sincronizar por Tamanho + Cor
+                            const combinations: string[] = [];
+                            sizeArray.forEach(s => colorArray.forEach(c => combinations.push(`${s}-${c}`)));
+
+                            const stockPerComb = Math.floor(totalStock / combinations.length);
+                            let remainder = totalStock % combinations.length;
+
+                            const stockBySizeColor: { [key: string]: number } = {};
+                            combinations.forEach((key, index) => {
+                              stockBySizeColor[key] = stockPerComb + (index < remainder ? 1 : 0);
+                            });
+
+                            const updatedProduct = { ...product, stockBySizeColor, stockBySize: {} };
+                            await saveProduct(updatedProduct);
+                            updatedProductsList[i] = updatedProduct;
+                            updatedCount++;
+                          } else {
+                            // Sincronizar apenas por Tamanho
+                            const stockPerSize = Math.floor(totalStock / sizeArray.length);
+                            let remainder = totalStock % sizeArray.length;
+
+                            const stockBySize: { [key: string]: number } = {};
+                            sizeArray.forEach((size, index) => {
+                              stockBySize[size] = stockPerSize + (index < remainder ? 1 : 0);
+                            });
+
+                            const updatedProduct = { ...product, stockBySize, stockBySizeColor: {} };
+                            await saveProduct(updatedProduct);
+                            updatedProductsList[i] = updatedProduct;
+                            updatedCount++;
+                          }
+                        }
+                      }
+
+                      onUpdateProducts(updatedProductsList);
+                      window.alert(`${updatedCount} produtos sincronizados com sucesso!`);
+                    } catch (error) {
+                      console.error(error);
+                      window.alert('Erro ao sincronizar produtos.');
+                    }
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all text-sm flex items-center gap-2"
+                >
+                  🔄 Sincronizar
+                </button>
                 <div className="relative flex-1 sm:w-80">
                   <input
                     type="text"
@@ -2522,75 +2621,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   )}
                 </div>
                 {userRole === 'admin' && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={async () => {
-                        if (!window.confirm('Sincronizar estoque por tamanho com estoque geral?\n\nIsso vai distribuir o estoque geral igualmente entre as variações (tamanhos/cores).')) return;
-                        try {
-                          const { saveProduct } = await import('../services/firebase');
-                          const updatedProductsList = [...products];
-                          let updatedCount = 0;
-
-                          for (let i = 0; i < updatedProductsList.length; i++) {
-                            const product = updatedProductsList[i];
-                            if (product.sizes) {
-                              const sizeArray = product.sizes.split(',').map(s => s.trim()).filter(s => s);
-                              const colorArray = product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : [];
-                              const totalStock = product.stock || 0;
-
-                              if (colorArray.length > 0) {
-                                // Sincronizar por Tamanho + Cor
-                                const combinations: string[] = [];
-                                sizeArray.forEach(s => colorArray.forEach(c => combinations.push(`${s}-${c}`)));
-
-                                const stockPerComb = Math.floor(totalStock / combinations.length);
-                                let remainder = totalStock % combinations.length;
-
-                                const stockBySizeColor: { [key: string]: number } = {};
-                                combinations.forEach((key, index) => {
-                                  stockBySizeColor[key] = stockPerComb + (index < remainder ? 1 : 0);
-                                });
-
-                                const updatedProduct = { ...product, stockBySizeColor, stockBySize: {} };
-                                await saveProduct(updatedProduct);
-                                updatedProductsList[i] = updatedProduct;
-                                updatedCount++;
-                              } else {
-                                // Sincronizar apenas por Tamanho
-                                const stockPerSize = Math.floor(totalStock / sizeArray.length);
-                                let remainder = totalStock % sizeArray.length;
-
-                                const stockBySize: { [key: string]: number } = {};
-                                sizeArray.forEach((size, index) => {
-                                  stockBySize[size] = stockPerSize + (index < remainder ? 1 : 0);
-                                });
-
-                                const updatedProduct = { ...product, stockBySize, stockBySizeColor: {} };
-                                await saveProduct(updatedProduct);
-                                updatedProductsList[i] = updatedProduct;
-                                updatedCount++;
-                              }
-                            }
-                          }
-
-                          onUpdateProducts(updatedProductsList);
-                          window.alert(`${updatedCount} produtos sincronizados com sucesso!`);
-                        } catch (error) {
-                          console.error(error);
-                          window.alert('Erro ao sincronizar produtos.');
-                        }
-                      }}
-                      className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all text-xs"
-                    >
-                      🔄 Sincronizar <span className="hidden lg:inline">Estoque</span>
-                    </button>
-                    <button
-                      onClick={() => openProductModal()}
-                      className="flex-1 sm:flex-none bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg text-sm"
-                    >
-                      + Novo
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => openProductModal()}
+                    className="flex-1 sm:flex-none bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg text-sm"
+                  >
+                    + Novo
+                  </button>
                 )}
               </div>
             </div>
@@ -3381,11 +3417,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-slate-100 font-medium text-sm">Receita Total — clique para detalhes</div>
               </button>
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && (['paid', 'processing', 'shipped', 'delivered'].includes(o.status) || (o.isBudget && o.status === 'paid'))) })}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
-                <div className="text-slate-100 font-medium text-sm">Vendas PDV — clique para detalhes</div>
+                <div className="text-slate-100 font-medium text-sm">Vendas PDV - clique para detalhes</div>
               </button>
               <button
                 onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
@@ -3449,11 +3485,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* ERRCOM029/030: Cards clicáveis PDV e Online por forma de pagamento */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && (['paid', 'processing', 'shipped', 'delivered'].includes(o.status) || (o.isBudget && o.status === 'paid'))) })}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 text-left hover:bg-white/20 transition-all"
               >
                 <div className="text-lg font-black text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
-                <div className="text-slate-300 text-sm">Vendas PDV — clique para ver por forma de pagamento</div>
+                <div className="text-slate-300 text-sm">Vendas PDV - clique para ver por forma de pagamento</div>
               </button>
               <button
                 onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
@@ -3734,6 +3770,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             required
                           />
                         </div>
+
+                        {/* ERRCOM105: Status Ativo/Inativo */}
+                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                          <label className="flex items-center gap-3 cursor-pointer group">
+                            <div className="relative">
+                              <input
+                                type="checkbox"
+                                checked={productForm.active !== false}
+                                onChange={e => setProductForm(prev => ({ ...prev, active: e.target.checked }))}
+                                className="sr-only"
+                              />
+                              <div className={`w-12 h-6 rounded-full transition-colors ${productForm.active !== false ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                              <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform ${productForm.active !== false ? 'translate-x-6' : ''}`}></div>
+                            </div>
+                            <div>
+                              <span className="text-sm font-bold text-slate-700">Produto Ativo (Visível na loja)</span>
+                              <p className="text-[10px] text-slate-500">Inative o produto para removê-lo da vitrine sem excluí-lo.</p>
+                            </div>
+                          </label>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -3784,9 +3840,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             value={productForm.installments || 1}
                             onChange={event => setProductForm(prev => ({ ...prev, installments: parseInt(event.target.value, 10) }))}
                             className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
-                            disabled={productForm.category !== 'Serviços' && !isCustomCategory}
-                          />
-                          <p className="text-[10px] text-slate-500 mt-1">Apenas para Serviços.</p>
+                                                      />
+                          <p className="text-[10px] text-slate-500 mt-1">Número máximo de parcelas sem juros.</p>
                         </div>
                         <div className="col-span-2">
                           <label className="block text-sm font-bold text-slate-700 mb-2">Estoque Mínimo (alerta) <span className="text-slate-400 font-normal">— padrão: 10</span></label>
@@ -5002,7 +5057,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div className="flex gap-4">
                 <button
-                  onClick={() => handlePrintCashReport(cashRegisterHistory[cashRegisterHistory.length - 1])}
+                  onClick={() => {
+                    const report = cashRegisterHistory[cashRegisterHistory.length - 1];
+                    // ERRCOM099: Trava de confirmação para impressão
+                    const confirmPrint = window.confirm(
+                      `Confirmar Impressão de Relatório\n\n` +
+                      `ID: #${report.id.slice(-8)}\n` +
+                      `Tipo: ${report.id?.startsWith('PARTIAL-') ? 'Leitura X' : 'Fechamento de Caixa'}\n` +
+                      `Data: ${new Date(report.openedAt).toLocaleString('pt-BR')}\n\n` +
+                      `Esta ação não pode ser desfeita. Deseja imprimir?`
+                    );
+                    
+                    if (confirmPrint) {
+                      handlePrintCashReport(report);
+                    }
+                  }}
                   className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-black transition-all shadow-xl shadow-blue-600/20 active:scale-95 group"
                 >
                   <svg className="w-5 h-5 group-hover:rotate-12 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5233,7 +5302,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             Sair
           </button>
-          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.4.5 (Estável)</span></p>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.4.6 (Estável)</span></p>
         </div>
       </footer>
     </div>

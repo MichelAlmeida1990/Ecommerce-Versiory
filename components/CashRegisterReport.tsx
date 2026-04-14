@@ -79,14 +79,27 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
           <div className="bg-green-50 rounded-2xl p-6">
             <h4 className="font-black text-green-900 text-sm uppercase mb-4">Por Forma de Pagamento</h4>
             <div className="space-y-3">
-              {Object.entries(cashRegister.salesByPayment).map(([method, amount]) => (
-                <div key={method} className="flex justify-between items-center">
-                  <span className="font-bold text-green-800 capitalize">{method}:</span>
-                  <span className="font-black text-green-900">
-                    R$ {amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              ))}
+              {Object.entries(cashRegister.salesByPayment).map(([method, amount]) => {
+                const count = cashRegister.salesByPaymentCount?.[method as keyof typeof cashRegister.salesByPaymentCount] || 0;
+                return (
+                  <div key={method} className="flex justify-between items-center">
+                    <span className="font-bold text-green-800 capitalize">
+                      {method === 'dinheiro' ? 'DINHEIRO' : 
+                       method === 'pix' ? 'PIX' : 
+                       method === 'debito' ? 'DÉBITO' : 
+                       method === 'credito' ? 'CRÉDITO' : method.toUpperCase()}:
+                    </span>
+                    <div className="text-right">
+                      <div className="font-black text-green-900">
+                        R$ {amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-sm text-green-700">
+                        ({count})
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

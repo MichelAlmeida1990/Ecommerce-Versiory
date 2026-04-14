@@ -253,7 +253,9 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
       processing: { label: 'Processando', color: 'text-blue-600', bg: 'bg-blue-50', icon: '📦' },
       shipped: { label: 'Em Trânsito', color: 'text-indigo-600', bg: 'bg-indigo-50', icon: '🚚' },
       delivered: { label: 'Entregue', color: 'text-slate-600', bg: 'bg-slate-50', icon: '🏠' },
-      cancelled: { label: 'Cancelado', color: 'text-red-600', bg: 'bg-red-50', icon: '❌' }
+      cancelled: { label: 'Cancelado', color: 'text-red-600', bg: 'bg-red-50', icon: '❌' },
+      returned: { label: 'Devolvido', color: 'text-purple-600', bg: 'bg-purple-50', icon: '🔄' },
+      budget: { label: 'Orçamento', color: 'text-slate-500', bg: 'bg-slate-100', icon: '📝' }
     };
     return configs[status as keyof typeof configs] || { label: status, color: 'text-slate-600', bg: 'bg-slate-50', icon: '📄' };
   };
@@ -486,6 +488,28 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                 </div>
               )}
 
+              {/* ERRCOM094: Alerta especial para status de devolução */}
+              {selectedOrder.status === 'returned' && (
+                <div className="bg-purple-50 border border-purple-200 p-6 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-500">
+                  <div className="flex items-start gap-4">
+                    <div className="text-3xl">🔄</div>
+                    <div className="flex-1">
+                      <h5 className="font-black text-purple-900 text-lg leading-none mb-2">Devolução em Processamento</h5>
+                      <p className="text-purple-700 text-xs font-medium mb-4 leading-relaxed">
+                        Sua devolução foi registrada e está sendo processada. A equipe de suporte entrará em contato em até 48h úteis com os próximos passos.
+                      </p>
+                      <div className="bg-purple-100 p-3 rounded-xl">
+                        <p className="text-purple-800 text-xs font-medium">
+                          <strong>Protocolo:</strong> {selectedOrder.id}-DEV<br />
+                          <strong>Status:</strong> Aguardando análise da devolução<br />
+                          <strong>Previsão:</strong> Até 48h úteis
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <div>
@@ -515,8 +539,64 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prazo Estimado</p>
                           <p className="text-sm font-black text-slate-900 mt-1">
-                            🚀 {selectedOrder.estimatedDelivery}
+                            <img src="/api/placeholder/16/16" alt="" className="w-4 h-4 inline mr-1" />
+                            {selectedOrder.estimatedDelivery}
                           </p>
+                        </div>
+                      )}
+                      
+                      {/* ERRCOM023: Seção de Rastreamento */}
+                      {selectedOrder.trackingCode && (
+                        <div className="mt-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-2xl">
+                          <h5 className="font-black text-blue-900 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <span className="text-lg">Track</span> Rastreamento da Entrega
+                          </h5>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-bold text-blue-700">Transportadora:</span>
+                              <span className="text-xs font-black text-blue-900">{selectedOrder.carrier || 'Correios'}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-bold text-blue-700">Código:</span>
+                              <span className="text-xs font-black text-blue-900 font-mono">{selectedOrder.trackingCode}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-bold text-blue-700">Status:</span>
+                              <span className="text-xs font-black text-green-600">Em trânsito</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => trackOrder(selectedOrder.trackingCode!)}
+                            className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all"
+                          >
+                            Rastrear no Site da Transportadora
+                          </button>
+                        </div>
+                      )}
+
+                      {/* ERRCOM101: Histórico de Status */}
+                      {selectedOrder.statusHistory && selectedOrder.statusHistory.length > 0 && (
+                        <div className="mt-6">
+                          <h5 className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-4">Histórico do Pedido</h5>
+                          <div className="space-y-4">
+                            {selectedOrder.statusHistory.map((entry, hidx) => (
+                              <div key={hidx} className="flex gap-4 relative">
+                                {hidx < selectedOrder.statusHistory!.length - 1 && (
+                                  <div className="absolute left-[11px] top-6 bottom-[-20px] w-0.5 bg-slate-100"></div>
+                                )}
+                                <div className="mt-1 w-6 h-6 rounded-full bg-slate-100 border-2 border-white shadow-sm flex items-center justify-center shrink-0 z-10">
+                                  <div className={`w-2 h-2 rounded-full ${hidx === selectedOrder.statusHistory!.length - 1 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></div>
+                                </div>
+                                <div className="flex-1 pb-2">
+                                  <div className="flex justify-between items-start">
+                                    <p className="text-xs font-black text-slate-900">{getStatusConfig(entry.status as any).label}</p>
+                                    <p className="text-[9px] font-bold text-slate-400">{new Date(entry.date).toLocaleDateString('pt-BR')} às {new Date(entry.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                  </div>
+                                  {entry.notes && <p className="text-[10px] text-slate-500 mt-1 italic">"{entry.notes}"</p>}
+                                </div>
+                              </div>
+                            )).reverse()}
+                          </div>
                         </div>
                       )}
                     </div>

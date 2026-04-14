@@ -28,6 +28,10 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
     city: '',
     state: '',
   });
+  const [step, setStep] = useState<'form' | 'verification' | 'forgot-password'>('form');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState('');
   const [loadingCep, setLoadingCep] = useState(false);
   const [loginAttempts, setLoginAttempts] = useState(0);
@@ -63,6 +67,24 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
     }
   };
 
+  const sendVerificationCode = () => {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedCode(code);
+    console.log(`[VERSIORY] Código de verificação para ${form.email}: ${code}`);
+    // Simulação de envio de e-mail
+    alert(`🔐 UM CÓDIGO DE VERIFICAÇÃO FOI ENVIADO PARA: ${form.email}\n\n(Para fins de teste, o código é: ${code})`);
+    setStep('verification');
+  };
+
+  const handleVerifyAndSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (verificationCode !== generatedCode) {
+      setError('❌ Código incorreto. Verifique o e-mail e tente novamente.');
+      return;
+    }
+    await finalizeSubmit();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -82,18 +104,29 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
       return;
     }
 
+    if (isRegister) {
+      if (!form.name || !address.zipCode || !address.street || !address.number) {
+        setError('⚠️ Preencha todos os campos obrigatórios do cadastro.');
+        return;
+      }
+      // Antes de salvar, validar e-mail
+      sendVerificationCode();
+    } else {
+      await finalizeSubmit();
+    }
+  };
+
+  const finalizeSubmit = async () => {
+    setIsVerifying(true);
     try {
       const { getCustomers, saveCustomer, saveUserSession } = await import('../services/firebase');
       let customers: Customer[] = await getCustomers();
 
       if (isRegister) {
-        if (!form.name || !address.zipCode || !address.street || !address.number) {
-          setError('⚠️ Preencha todos os campos obrigatórios do cadastro.');
-          return;
-        }
-
         if (customers.find(c => c.email === form.email)) {
           setError('❌ Este email já está cadastrado. Faça login ou use outro email.');
+          setStep('form');
+          setIsVerifying(false);
           return;
         }
 
@@ -197,6 +230,8 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
     } catch (error) {
       console.error('Erro ao processar login/cadastro:', error);
       setError('❌ Erro ao processar sua solicitação. Verifique sua conexão e tente novamente.');
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -217,51 +252,127 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
           )}
           
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-versiory-coral rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-versiory-coral rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-coral-500/20">
               <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </div>
-            <h2 className="text-3xl font-black text-white mb-2">{isRegister ? 'Criar Conta' : 'Bem-vindo'}</h2>
-            <p className="text-white/60">{isRegister ? 'Preencha seus dados para começar' : 'Faça login para continuar'}</p>
+            <h2 className="text-3xl font-black text-white mb-2">
+              {step === 'verification' ? 'Verifique seu E-mail' : 
+               step === 'forgot-password' ? 'Recuperar Senha' :
+               isRegister ? 'Criar Conta' : 'Bem-vindo'}
+            </h2>
+            <p className="text-white/60">
+              {step === 'verification' ? `Digit o código enviado para ${form.email}` :
+               step === 'forgot-password' ? 'Enviaremos um código para seu e-mail' :
+               isRegister ? 'Preencha seus dados para começar' : 'Faça login para continuar'}
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {isRegister && (
+          {step === 'verification' ? (
+            <form onSubmit={handleVerifyAndSubmit} className="space-y-6">
               <div>
-                <label className="block text-sm font-bold text-white/80 mb-2">Nome completo</label>
+                <label className="block text-sm font-bold text-white/80 mb-3 text-center">Código de 6 Dígitos</label>
                 <input
                   type="text"
-                  placeholder="Seu nome"
-                  value={form.name}
-                  onChange={e => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-versiory-coral focus:border-transparent transition-all"
+                  placeholder="000000"
+                  value={verificationCode}
+                  onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                  maxLength={6}
+                  className="w-full px-4 py-4 bg-white/5 border border-white/20 rounded-2xl text-white text-center text-3xl tracking-[1em] font-black focus:outline-none focus:ring-2 focus:ring-versiory-coral transition-all"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm animate-shake">{error}</div>}
+
+              <button 
+                type="submit" 
+                disabled={isVerifying}
+                className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl active:scale-[0.98] disabled:opacity-50"
+              >
+                {isVerifying ? 'Verificando...' : 'Verificar e Confirmar'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep('form')}
+                className="w-full text-white/40 hover:text-white/60 text-sm font-medium transition-colors"
+              >
+                Voltar para o formulário
+              </button>
+            </form>
+          ) : step === 'forgot-password' ? (
+            <form onSubmit={(e) => { e.preventDefault(); sendVerificationCode(); }} className="space-y-4">
+               <div>
+                <label className="block text-sm font-bold text-white/80 mb-2">Seu E-mail</label>
+                <input
+                  type="email"
+                  placeholder="seu@email.com"
+                  value={form.email}
+                  onChange={e => setForm({ ...form, email: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-versiory-coral transition-all"
                   required
                 />
               </div>
-            )}
-            <div>
-              <label className="block text-sm font-bold text-white/80 mb-2">E-mail</label>
-              <input
-                type="email"
-                placeholder="seu@email.com"
-                value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })}
-                className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-versiory-coral focus:border-transparent transition-all"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-white/80 mb-2">Senha</label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={form.password}
-                onChange={e => setForm({ ...form, password: e.target.value })}
-                className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-versiory-coral focus:border-transparent transition-all"
-                required
-              />
-            </div>
+              {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">{error}</div>}
+              <button type="submit" className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all">
+                Enviar Código
+              </button>
+              <button type="button" onClick={() => setStep('form')} className="w-full text-white/40 hover:text-white/60 text-sm font-medium">
+                Voltar ao Login
+              </button>
+            </form>
+          ) : (
+            <>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {isRegister && (
+                <div className="animate-in slide-in-from-top-2">
+                  <label className="block text-sm font-bold text-white/80 mb-2">Nome completo</label>
+                  <input
+                    type="text"
+                    placeholder="Seu nome"
+                    value={form.name}
+                    onChange={e => setForm({ ...form, name: e.target.value })}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-versiory-coral transition-all"
+                    required
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-bold text-white/80 mb-2">E-mail</label>
+                <input
+                  type="email"
+                  placeholder="seu@email.com"
+                  value={form.email}
+                  onChange={e => setForm({ ...form, email: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-versiory-coral transition-all"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-white/80 mb-2">Senha</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={form.password}
+                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-versiory-coral transition-all"
+                  required
+                />
+              </div>
+              {!isRegister && (
+                <div className="text-right">
+                  <button 
+                    type="button" 
+                    onClick={() => setStep('forgot-password')}
+                    className="text-xs text-white/40 hover:text-versiory-coral transition-colors"
+                  >
+                    Esqueceu a senha?
+                  </button>
+                </div>
+              )}
             {isRegister && (
               <>
                 <div>
@@ -286,8 +397,7 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
                 </div>
 
                 <div className="border-t border-white/10 pt-4 mt-2">
-                  <h3 className="font-bold text-white mb-3">📍 Endereço de Entrega</h3>
-
+                  <h3 className="font-bold text-white mb-3">Endereço de Entrega</h3>
                   <div className="relative mb-3">
                     <label className="block text-sm font-bold text-white/80 mb-2">CEP</label>
                     <input
@@ -397,6 +507,8 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
               {isRegister ? 'Já tem conta? Faça login' : 'Ainda não tem conta? Crie agora'}
             </button>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

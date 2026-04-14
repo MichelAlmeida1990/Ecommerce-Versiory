@@ -150,6 +150,8 @@ const App: React.FC = () => {
   }, [isAuthenticated, currentUserEmail, currentUserAddress]);
 
   // --- PERSISTÊNCIA DO CARRINHO ---
+  const [isCartLoaded, setIsCartLoaded] = useState(false);
+
   // Carregar carrinho local ao iniciar
   useEffect(() => {
     const savedCart = localStorage.getItem('versiory_cart');
@@ -160,6 +162,7 @@ const App: React.FC = () => {
         console.error('Erro ao carregar carrinho local:', error);
       }
     }
+    setIsCartLoaded(true);
   }, []);
 
   // Carregar carrinho remoto ao autenticar (Item 18)
@@ -170,7 +173,6 @@ const App: React.FC = () => {
           const { getCart } = await import('./services/firebase');
           const remoteCart = await getCart(currentUserEmail);
           if (remoteCart && remoteCart.length > 0) {
-            // Merge ou substituir? Para persistência, o remoto manda.
             setCartItems(remoteCart);
           }
         } catch (error) {
@@ -183,11 +185,10 @@ const App: React.FC = () => {
 
   // Salvar carrinho local E remoto sempre que mudar
   useEffect(() => {
-    if (cartItems.length >= 0) {
-      localStorage.setItem('versiory_cart', JSON.stringify(cartItems));
-    }
+    if (!isCartLoaded) return; // Não salvar antes de carregar o que já existe
 
-    // Throttle/Debounce seria ideal, mas vamos simplificar
+    localStorage.setItem('versiory_cart', JSON.stringify(cartItems));
+
     const timeout = setTimeout(async () => {
       if (isAuthenticated && currentUserEmail && cartItems.length > 0) {
         try {
@@ -197,14 +198,17 @@ const App: React.FC = () => {
           console.error('Erro ao salvar carrinho remoto:', error);
         }
       }
-    }, 1000);
+    }, 1500);
 
     return () => clearTimeout(timeout);
-  }, [cartItems, isAuthenticated, currentUserEmail]);
+  }, [cartItems, isAuthenticated, currentUserEmail, isCartLoaded]);
   // -------------------------------
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
+      // ERRCOM105: Filtrar inativos na vitrine
+      if (p.active === false) return false;
+
       const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
       const q = searchQuery.trim().toLowerCase();
       if (!q) return matchesCategory;
@@ -299,8 +303,21 @@ const App: React.FC = () => {
     ));
   };
 
-  const handleOrderComplete = () => {
+  const handleOrderComplete = async () => {
     setCartItems([]);
+    // ERRCOM078: Limpar carrinho do localStorage após finalização
+    localStorage.removeItem('versiory_cart');
+    
+    // ERRCOM078: Limpar carrinho remoto também
+    if (isAuthenticated && currentUserEmail) {
+      try {
+        const { saveCart } = await import('./services/firebase');
+        await saveCart(currentUserEmail, []);
+      } catch (error) {
+        console.error('Erro ao limpar carrinho remoto:', error);
+      }
+    }
+    
     setToastMessage('Pedido realizado com sucesso!');
     setTimeout(() => setToastMessage(''), 3000);
   };
@@ -454,6 +471,26 @@ const App: React.FC = () => {
                   <li><a href="/tracking" className="hover:text-versiory-coral transition-colors cursor-pointer">Rastreamento</a></li>
                   <li><a href="#" onClick={(e) => { e.preventDefault(); setInfoPage('payment'); }} className="hover:text-versiory-coral transition-colors cursor-pointer">Formas de Pagamento</a></li>
                 </ul>
+              </div>
+              <div className="flex flex-col items-start sm:items-end md:col-span-1">
+                <h4 className="font-bold mb-4 text-white sm:text-right w-full">Segurança</h4>
+                <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex items-center gap-3 group hover:bg-white/20 transition-all cursor-default">
+                  <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-white uppercase tracking-widest">Site Seguro</p>
+                    <p className="text-[9px] text-white/60 font-medium">Ambiente Criptografado</p>
+                    <p className="text-[9px] text-emerald-400 font-bold">SSL 256-bit Certified</p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-12 pt-8 border-t border-white/10 text-center">
+                <p className="text-white/60 text-xs">
+                  © {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.4.6 (Estável)</span>
+                </p>
               </div>
             </div>
           </div>

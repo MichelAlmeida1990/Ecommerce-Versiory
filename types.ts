@@ -36,6 +36,7 @@ export interface Product {
   aliquotaIs?: number; // Imposto Seletivo (Específico)
   cClassTrib?: string; // Código de Classificação Tributária (Reforma 2026)
   installments?: number; // Parcelamento máximo sem juros
+  active?: boolean; // ERRCOM105: Inativo/Ativo
 }
 
 
@@ -85,7 +86,10 @@ export interface Order {
   date: string;
   orderTime?: string; // ERRCOM083
   total: number;
+  discountAmount?: number; // ERRCOM108: Valor do desconto concedido
+  couponCode?: string; // ERRCOM108: Cupom utilizado
   status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'budget' | 'returned';
+  statusHistory?: { status: string; date: string; notes?: string }[]; // ERRCOM101: Histórico de status
   items: OrderItem[];
   address?: string;
   estimatedDelivery?: string;
@@ -221,6 +225,12 @@ export interface CashRegister {
   totalSales: number;
   totalOrders: number;
   salesByPayment: {
+    dinheiro: number;
+    pix: number;
+    debito: number;
+    credito: number;
+  };
+  salesByPaymentCount: {
     dinheiro: number;
     pix: number;
     debito: number;

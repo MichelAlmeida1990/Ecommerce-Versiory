@@ -95,8 +95,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
           <span className="text-slate-300 ml-1 font-medium">({product.reviews})</span>
         </div>
 
-        <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-md">
-          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white whitespace-pre-line">
+        <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-md cursor-pointer">
+          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white whitespace-pre-line hover:bg-slate-700 -mx-4 -my-4 px-4 py-4 rounded-2xl transition-all duration-300">
             {product.description}
           </p>
         </div>

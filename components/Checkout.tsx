@@ -22,11 +22,13 @@ const Checkout: React.FC<CheckoutProps> = ({
   onOrderComplete
 }) => {
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credit' | 'whatsapp'>('whatsapp');
+  const [installments, setInstallments] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
   const [emitNF, setEmitNF] = useState(false);
   const [invoiceStatus, setInvoiceStatus] = useState<'none' | 'generating' | 'ready'>('none');
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [isLoadingCustomer, setIsLoadingCustomer] = useState(false);
 
   // Resetar ao fechar
   React.useEffect(() => {
@@ -78,23 +80,24 @@ const Checkout: React.FC<CheckoutProps> = ({
     if (isOpen && effectiveEmail) {
       const loadCustomer = async () => {
         try {
+          setIsLoadingCustomer(true);
           const { getCustomers } = await import('../services/firebase');
           const customers = await getCustomers();
           const found = customers.find(c => c.email === effectiveEmail);
           if (found) {
             setCustomerData(found);
-            // ERRCOM080/085: Priorizar endereço padrão
+            // ERRCOM100: Priorizar endereço padrão e evitar formulário manual desnecessário
             if (found.addresses && found.addresses.length > 0) {
               const defaultAddr = found.addresses.find(a => a.isDefault) || found.addresses[0];
-              setSelectedAddressId(defaultAddr.id);
+              setSelectedAddressId(defaultAddr.id || 'default_0');
               const fullAddr = `${defaultAddr.street}, ${defaultAddr.number}${defaultAddr.complement ? ` - ${defaultAddr.complement}` : ''}, ${defaultAddr.neighborhood}, ${defaultAddr.city} - ${defaultAddr.state}, CEP: ${defaultAddr.zipCode}`;
               setCustomAddress(fullAddr);
             } else {
               setSelectedAddressId('manual');
               setCustomAddress(customerAddress || '');
             }
-            if (customerData.phone) setCustomerPhone(customerData.phone);
-            if (customerData.cpfCnpj) setCustomerCpfCnpj(customerData.cpfCnpj);
+            if (found.phone) setCustomerPhone(found.phone);
+            if (found.cpfCnpj) setCustomerCpfCnpj(found.cpfCnpj);
           } else {
             setSelectedAddressId('manual');
             setCustomAddress(customerAddress || '');
@@ -102,6 +105,8 @@ const Checkout: React.FC<CheckoutProps> = ({
         } catch (error) {
           console.error('Erro ao carregar dados do cliente:', error);
           setSelectedAddressId('manual');
+        } finally {
+          setIsLoadingCustomer(false);
         }
       };
       loadCustomer();
@@ -185,6 +190,8 @@ const Checkout: React.FC<CheckoutProps> = ({
         customerCpfCnpj: finalCpfCnpj || undefined, // ERRCOM070 / ERRCOM081
         date: new Date().toISOString(),
         total: total,
+        discountAmount: discount > 0 ? discount : undefined, // ERRCOM108
+        couponCode: couponApplied ? couponCode.toUpperCase().trim() : undefined, // ERRCOM108
         status: 'pending',
         address: finalAddress,
         estimatedDelivery: '5 a 10 dias úteis',
@@ -194,18 +201,20 @@ const Checkout: React.FC<CheckoutProps> = ({
             name: item.name,
             quantity: item.quantity,
             price: item.price,
-            image: item.image
+            image: item.image,
+            description: item.description,
+            selectedSize: item.selectedSize,
+            selectedColor: item.selectedColor,
+            installments: paymentMethod === 'credit' ? installments : 1
           };
-          if (item.description) orderItem.description = item.description;
-          if (item.selectedSize) orderItem.selectedSize = item.selectedSize;
-          if (item.selectedColor) orderItem.selectedColor = item.selectedColor;
           if (item.stockBySize) orderItem.stockBySize = item.stockBySize; // Include stockBySize
           if (item.stockBySizeColor) orderItem.stockBySizeColor = item.stockBySizeColor; // Include stockBySizeColor
           return orderItem;
         }),
         notes: orderNotes || '',
         salesChannel: 'online',
-        orderTime: new Date().toLocaleTimeString('pt-BR') // ERRCOM083
+        orderTime: new Date().toLocaleTimeString('pt-BR'), // ERRCOM083
+        installments: paymentMethod === 'credit' ? installments : 1 // ERRCOM088
       };
 
       // Atualizar no Firebase
@@ -351,7 +360,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       customerCpfCnpj: customerData?.cpfCnpj || undefined, // ERRCOM081
       notes: orderNotes,
       storePolicies: fiscalConfig?.storePolicies,
-      items: items.map(item => ({ ...item, productId: item.id })), // Map to expected structure
+      items: items.map(item => ({ ...item, productId: item.id, installments: paymentMethod === 'credit' ? installments : 1 })), // Map to expected structure
       total: total,
       paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod,
       salesChannel: 'online'
@@ -481,7 +490,7 @@ const Checkout: React.FC<CheckoutProps> = ({
           <div className="mb-6">
             <h4 className="font-bold text-slate-900 mb-4">Dados de Entrega</h4>
             
-            {/* Seleção de Endereços Cadastrados (Item 19) */}
+            {/* ERRCOM100: Seleção de Endereços Cadastrados */}
             {customerData && customerData.addresses && customerData.addresses.length > 0 ? (
               <div className="space-y-3 mb-4">
                 <p className="text-sm text-slate-600 mb-2">Selecione um endereço:</p>
@@ -528,9 +537,19 @@ const Checkout: React.FC<CheckoutProps> = ({
                   <span className="text-sm font-bold text-slate-900">Outro endereço (digitar manual)</span>
                 </label>
               </div>
-            ) : null}
+            ) : !isLoadingCustomer ? (
+              <div className="mb-4">
+                <p className="text-sm text-slate-600 mb-2">Nenhum endereço cadastrado. Por favor, cadastre um endereço para entrega:</p>
+              </div>
+            ) : (
+              <div className="p-4 text-center">
+                <div className="w-6 h-6 border-2 border-versiory-coral border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                <p className="text-xs text-slate-500">Buscando seus endereços...</p>
+              </div>
+            )}
 
-            {(selectedAddressId === 'manual' || !customerData?.addresses?.length) && (
+            {/* ERRCOM100: Formulário manual - só aparece quando selecionado ou quando não há endereços */}
+            {!isLoadingCustomer && (selectedAddressId === 'manual' || !customerData?.addresses?.length) && (
               <div className="bg-slate-50 rounded-xl p-4">
                 <div className="mb-3">
                   <p className="text-sm text-slate-600">Email</p>
@@ -690,7 +709,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                 <span className="text-slate-400">Em breve</span>
               </label>
 
-              <label className="flex items-center p-4 border-2 border-slate-200 rounded-xl cursor-pointer hover:border-versiory-coral transition-colors opacity-50">
+              <label className="flex items-center p-4 border-2 border-slate-200 rounded-xl cursor-pointer hover:border-versiory-coral transition-colors">
                 <input
                   type="radio"
                   name="payment"
@@ -698,14 +717,33 @@ const Checkout: React.FC<CheckoutProps> = ({
                   checked={paymentMethod === 'credit'}
                   onChange={(e) => setPaymentMethod(e.target.value as 'whatsapp' | 'pix' | 'credit')}
                   className="mr-3"
-                  disabled
                 />
                 <div className="flex-1">
                   <p className="font-medium text-slate-900">Cartão de Crédito</p>
-                  <p className="text-sm text-slate-600">Parcele em até 12x (em breve)</p>
+                  <p className="text-sm text-slate-600">Parcele em até 12x sem juros</p>
                 </div>
-                <span className="text-slate-400">Em breve</span>
               </label>
+
+              {paymentMethod === 'credit' && (
+                <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
+                  <label className="block text-sm font-black text-blue-900 mb-2">Parcelamento</label>
+                  <select
+                    value={installments}
+                    onChange={e => setInstallments(parseInt(e.target.value))}
+                    className="w-full px-4 py-3 border-2 border-blue-100 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white font-bold text-slate-700"
+                  >
+                    {(() => {
+                      // ERRCOM088: Calcular limite máximo de parcelas baseado nos produtos do carrinho
+                      const maxInstallments = Math.max(1, ...items.map(item => item.installments || 1));
+                      return [...Array(Math.min(maxInstallments, 12))].map((_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {i + 1}x de R$ {(total / (i + 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} {i === 0 ? '(Sem juros)' : ''}
+                        </option>
+                      ));
+                    })()}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 

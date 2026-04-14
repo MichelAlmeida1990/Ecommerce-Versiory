@@ -95,10 +95,10 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
       </div>
 
       <div class="info">
-        <div class="row"><span>ABERTURA:</span> <span>${new Date(data.openedAt).toLocaleString('pt-BR')}</span></div>
-        ${data.closedAt ? `<div class="row"><span>FECHAMENTO:</span> <span>${new Date(data.closedAt).toLocaleString('pt-BR')}</span></div>` : ''}
+        <div class="row"><span>ABERTURA:</span> <span>${new Date(data.openedAt).toLocaleString('pt-BR', { hour12: false })}</span></div>
+        ${data.closedAt ? `<div class="row"><span>FECHAMENTO:</span> <span>${new Date(data.closedAt).toLocaleString('pt-BR', { hour12: false })}</span></div>` : ''}
         <div class="row"><span>OPERADOR:</span> <span>${data.openedBy}</span></div>
-        <div class="row"><span>STATUS:</span> <span class="bold" style="color: ${isPartial ? '#b45309' : '#15803d'}">${isPartial ? 'CONFERÊNCIA ABERTA' : 'CAIXA ENCERRADO'}</span></div>
+        <div class="row"><span>STATUS:</span> <span class="bold" style="color: ${isPartial ? '#f59e0b' : '#10b981'}">${isPartial ? 'CONFERÊNCIA ABERTA' : 'CAIXA ENCERRADO'}</span></div>
       </div>
 
       <div class="section">
@@ -112,7 +112,7 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
       <div class="section">
         <div class="section-title">SANGRIAS (RETIRADAS)</div>
         ${data.withdrawals.map(w => `
-          <div class="row"><span>- ${w.reason.slice(0, 20)}</span> <span>${formatCurrency(w.amount)}</span></div>
+          <div class="row"><span>- ${w.reason.slice(0, 18)}:</span> <span>${formatCurrency(w.amount)}</span></div>
         `).join('')}
       </div>
       ` : ''}
@@ -121,23 +121,23 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
       <div class="section">
         <div class="section-title">SUPRIMENTOS (ENTRADAS)</div>
         ${data.deposits.map(d => `
-          <div class="row"><span>+ ${d.reason.slice(0, 20)}</span> <span>${formatCurrency(d.amount)}</span></div>
+          <div class="row"><span>+ ${d.reason.slice(0, 18)}:</span> <span>${formatCurrency(d.amount)}</span></div>
         `).join('')}
       </div>
       ` : ''}
 
       <div class="section">
-        <div class="section-title">TOTAL POR FORMA DE PAGTO (QTD / VALOR)</div>
-        <div class="row"><span>DINHEIRO:</span> <span>(${data.salesByPaymentCount?.dinheiro || 0}) ${formatCurrency(data.salesByPayment.dinheiro)}</span></div>
-        <div class="row"><span>PIX:</span> <span>(${data.salesByPaymentCount?.pix || 0}) ${formatCurrency(data.salesByPayment.pix)}</span></div>
-        <div class="row"><span>DÉBITO:</span> <span>(${data.salesByPaymentCount?.debito || 0}) ${formatCurrency(data.salesByPayment.debito)}</span></div>
-        <div class="row"><span>CRÉDITO:</span> <span>(${data.salesByPaymentCount?.credito || 0}) ${formatCurrency(data.salesByPayment.credito)}</span></div>
+        <div class="section-title">DIVISÃO POR FORMA DE PAGTO</div>
+        <div class="row"><span>DINHEIRO:</span> <span>${formatCurrency(data.salesByPayment.dinheiro)} (${data.salesByPaymentCount?.dinheiro || 0})</span></div>
+        <div class="row"><span>PIX:</span> <span>${formatCurrency(data.salesByPayment.pix)} (${data.salesByPaymentCount?.pix || 0})</span></div>
+        <div class="row"><span>DÉBITO:</span> <span>${formatCurrency(data.salesByPayment.debito)} (${data.salesByPaymentCount?.debito || 0})</span></div>
+        <div class="row"><span>CRÉDITO:</span> <span>${formatCurrency(data.salesByPayment.credito)} (${data.salesByPaymentCount?.credito || 0})</span></div>
       </div>
 
       <div class="section" style="border-top: 2px solid #000;">
-        <div class="row bold" style="font-size: 1.2em; margin-top: 5px;">
-          <span>SALDO EM CAIXA:</span>
-          <span class="highlight">${formatCurrency(data.expectedAmount)}</span>
+        <div class="row bold" style="font-size: 1.25em; margin-top: 8px;">
+          <span>TOTAL EM CAIXA:</span>
+          <span>${formatCurrency(data.expectedAmount)}</span>
         </div>
         ${!isPartial ? `
         <div class="row bold" style="margin-top: 10px;"><span>VALOR INFORMADO:</span> <span>${formatCurrency(data.actualAmount)}</span></div>
@@ -146,8 +146,8 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
           <span>${formatCurrency(data.difference)}</span>
         </div>
         ` : `
-        <div style="text-align: center; margin-top: 10px; font-style: italic; color: #666; font-size: 0.9em;">
-          Relatório de conferência parcial. <br> O caixa continua em operação.
+        <div style="text-align: center; margin-top: 15px; font-style: italic; color: #444; font-size: 10px; border: 1px solid #ccc; padding: 5px;">
+          LEITURA X DE CONFERÊNCIA PARCIAL.<br>MOVIMENTAÇÃO EM CURSO.
         </div>
         `}
       </div>

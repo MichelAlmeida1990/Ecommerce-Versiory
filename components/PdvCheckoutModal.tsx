@@ -539,11 +539,15 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
                 onChange={e => setInstallments(parseInt(e.target.value))}
                 className="w-full px-4 py-3 border-2 border-blue-100 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none bg-white font-bold text-slate-700"
               >
-                {[...Array(12)].map((_, i) => (
-                  <option key={i + 1} value={i + 1}>
-                    {i + 1}x de {formatCurrency(total / (i + 1))} {i === 0 ? '(Sem juros)' : ''}
-                  </option>
-                ))}
+                {(() => {
+                  // ERRCOM088: Calcular limite máximo de parcelas baseado nos produtos do carrinho
+                  const maxInstallments = Math.max(1, ...cart.map(item => item.product.installments || 1));
+                  return [...Array(Math.min(maxInstallments, 12))].map((_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {i + 1}x de {formatCurrency(total / (i + 1))} {i === 0 ? '(Sem juros)' : ''}
+                    </option>
+                  ));
+                })()}
               </select>
             </div>
           )}
