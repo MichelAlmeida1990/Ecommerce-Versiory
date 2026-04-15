@@ -155,33 +155,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleDeepRescue = async () => {
     console.log("🚀 [RESCUE] Iniciando busca exaustiva em todas as chaves do navegador...");
     let keysFound: string[] = [];
-
     
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i) || '';
       // Ignoramos chaves internas do Firebase/Vite/Mixpanel
       if (key.includes('firebase') || key.includes('session') || key.includes('vite')) continue;
-
       
       try {
         const value = localStorage.getItem(key);
         const parsed = JSON.parse(value || '');
-
         
         // Heurística para identificar uma lista de produtos:
         // 1. É um array
         // 2. Tem pelo menos um item
         // 3. O primeiro item tem propriedades comuns de produto (name, price, id)
         // 4. E, idealmente, tem dados de variação (sizes, colors, stockBySize)
-        const isLikelyProductList = Array.isArray(parsed) && parsed.length > 0 &&
-          (parsed[0].name && parsed[0].price !== undefined && parsed[0].id !== undefined);
-
         const isLikelyProductList = Array.isArray(parsed) && parsed.length > 0 && 
                                     (parsed[0].name && parsed[0].price !== undefined && parsed[0].id !== undefined);
         
         if (isLikelyProductList) {
           const hasVariationData = parsed.some((p: any) => p.sizes || p.colors || p.stockBySize || p.stockBySizeColor);
-
           
           if (hasVariationData) { // Priorizamos listas com dados de variação
             keysFound.push(key);
@@ -273,7 +266,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const p = updatedProductsList[productIndex];
       // Ignorar se for item sem estoque (opcional, dependendo se serviços tem estoque)
       // Mas a regra diz baixar estoque se tiver, então seguimos:
-
       
       const qty = item.quantity;
       const factor = type === 'decrement' ? -1 : 1;
@@ -426,7 +418,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleChartClick = (e: any) => {
     if (!e || !e.activeLabel) return;
-
     
     // Encontrar os dados do ponto clicado
     const data = last30DaysData.find(d => d.name === e.activeLabel);
@@ -533,7 +524,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // ERRCOM104: Orçamentos pagos contam como receita
       const isPaidBudget = order.isBudget && order.status === 'paid';
       const isRegularRevenue = !order.isBudget && order.status !== 'cancelled';
-
       
       if (!isPaidBudget && !isRegularRevenue) return false;
 
@@ -544,11 +534,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       // ERRCOM071: Serviços contam como receita quando pagos ou entregues
       if (hasServiceOnly) return ['paid', 'delivered'].includes(order.status);
-
       
       const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
       const isPdvImmediate = order.salesChannel === 'physical' && order.status !== 'pending';
-
       
       return isConfirmed || isPdvImmediate;
     });
@@ -574,7 +562,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     for (let i = 29; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-
       
       // ERRCOM105: Usar data local (YYYY-MM-DD) em vez de UTC para o bucket do gráfico
       const dateStr = d.toLocaleDateString('en-CA'); // en-CA retorna YYYY-MM-DD
@@ -595,11 +582,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         });
 
         if (hasServiceOnly) return ['paid', 'delivered'].includes(o.status);
-
         
         const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
         const isPdvImmediate = o.salesChannel === 'physical' && o.status !== 'pending';
-
         
         return isConfirmed || isPdvImmediate;
       });
@@ -652,7 +637,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .filter(p => {
         const q = productSearch.toLowerCase();
         return (
-          p.name?.toLowerCase().includes(q) ||
           p.name?.toLowerCase().includes(q) || 
           p.description?.toLowerCase().includes(q) ||
           p.category?.toLowerCase().includes(q) ||
@@ -818,7 +802,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const transactionDate = new Date(t.date);
         const fromDate = financialDateFilter.from ? new Date(financialDateFilter.from) : null;
         const toDate = financialDateFilter.to ? new Date(financialDateFilter.to) : null;
-
         
         // Comparar usando timestamps para evitar problemas de formatação
         if (fromDate && transactionDate < fromDate) return false;
@@ -970,9 +953,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             // Aqui vamos assumir que a soma das variações manda se elas já existirem.
             const totalFromVariants = Object.values(productForm.stockBySizeColor).reduce((s, q) => s + (Number(q) || 0), 0);
             if (totalFromVariants !== productForm.stock) {
-              // Se o usuário mudou o total manualmente no campo principal, limpamos para forçar redistribuição
-              // OU matemos a soma. Vamos manter a soma para evitar perda de dados acidental.
-              productForm.stock = totalFromVariants;
                // Se o usuário mudou o total manualmente no campo principal, limpamos para forçar redistribuição
                // OU matemos a soma. Vamos manter a soma para evitar perda de dados acidental.
                productForm.stock = totalFromVariants;
@@ -992,7 +972,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           } else {
             const totalFromVariants = Object.values(productForm.stockBySize).reduce((s, q) => s + (Number(q) || 0), 0);
             if (totalFromVariants !== productForm.stock) {
-              productForm.stock = totalFromVariants;
                productForm.stock = totalFromVariants;
             }
           }
@@ -1229,9 +1208,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const orderToUpdate = orders.find(o => o.id === orderStatusForm.orderId);
       if (!orderToUpdate) return;
 
-      const updatedOrder: Order = {
-        ...orderToUpdate,
-        status: orderStatusForm.status,
       const updatedOrder: Order = { 
         ...orderToUpdate, 
         status: orderStatusForm.status, 
@@ -1702,7 +1678,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const updatedProducts = [...products];
       if (!isBudget) {
         const itemsToDecrement = pdvCart.filter(item => item.product.category !== 'Serviços');
-
         
         for (const item of itemsToDecrement) {
           const productIndex = updatedProducts.findIndex(p => p.id === item.product.id);
@@ -1716,7 +1691,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 [item.selectedSize]: Math.max(0, (p.stockBySize[item.selectedSize] || 0) - item.quantity)
               };
             }
-
             
             if (item.selectedColor && p.stockBySizeColor) {
               const key = item.selectedSize ? `${item.selectedSize}-${item.selectedColor}` : item.selectedColor;
@@ -1755,7 +1729,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         : [...orders, order];
 
       onUpdateOrders(updated);
-
       
       // ERRCOM102: Forçar atualização imediata da lista de pedidos
       setTimeout(() => {
@@ -1763,13 +1736,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setActiveTab('orders');
         setTimeout(() => setActiveTab('pdv'), 100);
       }, 500);
-
       
       // ERRCOM100: Orçamentos NÃO limpam o carrinho para permitir finalizar a venda em seguida
       if (!isBudget) {
         setPdvCart([]);
       }
-
       
       setEditingOrder(null);
 
@@ -1781,7 +1752,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }));
         order.accountedInCash = true; // Marca como contabilizado
       }
-
       
       console.log(`${isBudget ? 'Orçamento' : 'Venda'} finalizada com sucesso:`, order.id);
 
@@ -1881,7 +1851,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // Adicionar ao histórico e abrir relatório
     setCashRegisterHistory(prev => [...prev, partialReport]);
     setIsCashReportOpen(true);
-  }
   };
 
   const handleCashRegisterClose = () => {
@@ -2070,7 +2039,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const generateInventoryReport = () => {
     const report: any[] = [];
-
     
     products.forEach(product => {
       if (product.sizes && product.stockBySize) {
@@ -2210,20 +2178,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
               <div className="flex gap-3">
-                <button
                 <button 
                   onClick={downloadLocalStorageDump} // Este botão agora funciona
                   className="bg-white/5 hover:bg-white/10 text-slate-300 px-4 py-3 rounded-2xl font-bold text-xs transition-all border border-white/10"
                 >
                   📥 Baixar Dump para Análise
                 </button>
-                <button
-                  onClick={handleDeepRescue}
                 <button 
                   onClick={handleDeepRescue} 
                   className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-2xl font-black text-xs transition-all shadow-xl shadow-amber-500/20 active:scale-95"
                 >
-                  Iniciar Varredura Profunda
                 Iniciar Varredura Profunda
                 </button>
               </div>
@@ -2276,8 +2240,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <h3 className="text-white font-bold mb-6">Faturamento por Dia (últimos 30 dias)</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={last30DaysData}
                     <BarChart 
                       data={last30DaysData} 
                       onClick={handleChartClick}
@@ -3130,8 +3092,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             onClick={() => {
                               // ERRCOM109: Filtrar histórico por ID se disponível, email apenas se não for vazio
-                              const custOrders = orders.filter(o =>
-                                (o.customerId && o.customerId === customer.id) ||
                               const custOrders = orders.filter(o => 
                                 (o.customerId && o.customerId === customer.id) || 
                                 (customer.email && customer.email.length > 5 && o.customerEmail === customer.email)
@@ -3882,7 +3842,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             value={productForm.installments || 1}
                             onChange={event => setProductForm(prev => ({ ...prev, installments: parseInt(event.target.value, 10) }))}
                             className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
-                          />
                                                       />
                           <p className="text-[10px] text-slate-500 mt-1">Número máximo de parcelas sem juros.</p>
                         </div>
@@ -4694,7 +4653,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button
                   onClick={() => {
                     let phone = selectedOrderDetail.customerPhone || '';
-
                     
                     if (!phone && selectedOrderDetail.customerEmail?.includes('@pdv.local')) {
                       phone = selectedOrderDetail.customerEmail.replace('@pdv.local', '');
@@ -4835,8 +4793,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <h3 className="text-2xl font-black text-white">Pedidos do Dia {drillDownData.date}</h3>
                 <p className="text-white/60 text-sm">{drillDownData.orderIds.length} pedidos encontrados</p>
               </div>
-              <button
-                onClick={() => setIsDrillDownModalOpen(false)}
               <button 
                 onClick={() => setIsDrillDownModalOpen(false)} 
                 className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all"
@@ -4854,14 +4810,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="col-span-2">Cliente</div>
                 <div className="col-span-1 text-right">Total</div>
               </div>
-
               
               <div className="max-h-[50vh] overflow-y-auto custom-scrollbar pr-2 space-y-2">
                 {drillDownData.orderIds.length > 0 ? (
                   drillDownData.orderIds.map(id => {
                     const order = orders.find(o => o.id === id);
                     if (!order) return null;
-
                     
                     const hasService = order.items?.some(item => {
                       const p = products.find(prod => prod.id === item.productId);
@@ -4869,8 +4823,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     });
 
                     return (
-                      <div
-                        key={id}
                       <div 
                         key={id} 
                         onClick={() => {
