@@ -49,7 +49,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         name: editingOrder.customerName || '',
         phone: editingOrder.customerPhone || '',
         email: editingOrder.customerEmail || '',
-        cpf: '', // CPF is not in Order type, it's on Customer
+        cpf: editingOrder.customerCpfCnpj || '', // ERRCOM116: Persistir CPF na conversão de orçamento
         notes: editingOrder.notes || '',
         address: editingOrder.address || '',
         customPolicies: editingOrder.customPolicies || ''
@@ -111,6 +111,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       customerName: customerForm.name,
       customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''),
       customerPhone: customerForm.phone || undefined,
+      customerCpfCnpj: customerForm.cpf || undefined, // ERRCOM109
       date: new Date().toISOString(),
       total,
       status: 'pending',
@@ -213,6 +214,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       customerName: customerForm.name,
       customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''),
       customerPhone: customerForm.phone || undefined,
+      customerCpfCnpj: customerForm.cpf || undefined, // ERRCOM109/ERRCOM116
       date: new Date().toISOString(),
       total,
       status: 'delivered',
@@ -318,6 +320,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       customerName: lastFinishedOrder.customerName,
       customerPhone: displayPhone || lastFinishedOrder.customerPhone || undefined,
       customerEmail: displayEmail,
+      customerCpfCnpj: lastFinishedOrder.customerCpfCnpj, // ERRCOM110
       customerAddress: lastFinishedOrder.address || undefined,
       notes: lastFinishedOrder.notes,
       storePolicies: lastFinishedOrder.customPolicies || fiscalConfig?.storePolicies,

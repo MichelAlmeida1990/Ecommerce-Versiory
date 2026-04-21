@@ -28,7 +28,7 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
     city: '',
     state: '',
   });
-  const [step, setStep] = useState<'form' | 'verification' | 'forgot-password'>('form');
+  const [step, setStep] = useState<'form' | 'verification-register' | 'verification-reset' | 'forgot-password' | 'new-password'>('form');
   const [verificationCode, setVerificationCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -67,13 +67,13 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
     }
   };
 
-  const sendVerificationCode = () => {
+  const sendVerificationCode = (forReset = false) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedCode(code);
     console.log(`[VERSIORY] Código de verificação para ${form.email}: ${code}`);
-    // Simulação de envio de e-mail
+    // Simulação de envio de e-mail (ERRCOM093)
     alert(`🔐 UM CÓDIGO DE VERIFICAÇÃO FOI ENVIADO PARA: ${form.email}\n\n(Para fins de teste, o código é: ${code})`);
-    setStep('verification');
+    setStep(forReset ? 'verification-reset' : 'verification-register');
   };
 
   const handleVerifyAndSubmit = async (e: React.FormEvent) => {
@@ -82,7 +82,41 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
       setError('❌ Código incorreto. Verifique o e-mail e tente novamente.');
       return;
     }
+    setError('');
+    if (step === 'verification-reset') {
+      setStep('new-password');
+      return;
+    }
     await finalizeSubmit();
+  };
+
+  const handleNewPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.password || form.password.length < 6) {
+      setError('A nova senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    setIsVerifying(true);
+    try {
+      const { getCustomers, saveCustomer } = await import('../services/firebase');
+      let customers: Customer[] = await getCustomers();
+      const customer = customers.find(c => c.email === form.email);
+      if (!customer) {
+        setError('❌ Usuário não encontrado.');
+        setIsVerifying(false);
+        return;
+      }
+      customer.password = await hashPassword(form.password);
+      await saveCustomer(customer);
+      alert('✅ Senha alterada com sucesso! Faça login.');
+      setStep('form');
+      setForm({ ...form, password: '' });
+      setIsRegister(false);
+    } catch (err) {
+      console.error(err);
+      setError('Erro ao salvar nova senha.');
+    }
+    setIsVerifying(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,7 +144,7 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
         return;
       }
       // Antes de salvar, validar e-mail
-      sendVerificationCode();
+      sendVerificationCode(false);
     } else {
       await finalizeSubmit();
     }
@@ -258,18 +292,20 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
               </svg>
             </div>
             <h2 className="text-3xl font-black text-white mb-2">
-              {step === 'verification' ? 'Verifique seu E-mail' : 
+              {step.startsWith('verification') ? 'Verifique seu E-mail' : 
+               step === 'new-password' ? 'Nova Senha' :
                step === 'forgot-password' ? 'Recuperar Senha' :
                isRegister ? 'Criar Conta' : 'Bem-vindo'}
             </h2>
             <p className="text-white/60">
-              {step === 'verification' ? `Digit o código enviado para ${form.email}` :
+              {step.startsWith('verification') ? `Digite o código enviado para ${form.email}` :
+               step === 'new-password' ? 'Crie uma nova senha segura' :
                step === 'forgot-password' ? 'Enviaremos um código para seu e-mail' :
                isRegister ? 'Preencha seus dados para começar' : 'Faça login para continuar'}
             </p>
           </div>
 
-          {step === 'verification' ? (
+          {step.startsWith('verification') ? (
             <form onSubmit={handleVerifyAndSubmit} className="space-y-6">
               <div>
                 <label className="block text-sm font-bold text-white/80 mb-3 text-center">Código de 6 Dígitos</label>
@@ -304,7 +340,7 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
               </button>
             </form>
           ) : step === 'forgot-password' ? (
-            <form onSubmit={(e) => { e.preventDefault(); sendVerificationCode(); }} className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); sendVerificationCode(true); }} className="space-y-4">
                <div>
                 <label className="block text-sm font-bold text-white/80 mb-2">Seu E-mail</label>
                 <input
@@ -322,6 +358,24 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
               </button>
               <button type="button" onClick={() => setStep('form')} className="w-full text-white/40 hover:text-white/60 text-sm font-medium">
                 Voltar ao Login
+              </button>
+            </form>
+          ) : step === 'new-password' ? (
+            <form onSubmit={handleNewPasswordSubmit} className="space-y-4">
+               <div>
+                <label className="block text-sm font-bold text-white/80 mb-2">Nova Senha</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={form.password}
+                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-versiory-coral transition-all"
+                  required
+                />
+              </div>
+              {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">{error}</div>}
+              <button type="submit" disabled={isVerifying} className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all">
+                {isVerifying ? 'Salvando...' : 'Salvar Nova Senha'}
               </button>
             </form>
           ) : (

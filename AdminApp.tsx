@@ -12,20 +12,15 @@ import { PRODUCTS } from './constants';
 import AdminLogin from './components/AdminLogin';
 import AdminDashboard from './components/AdminDashboard';
 import {
-  getProducts,
-  getCategories,
-  getOrders,
-  getCustomers,
-  getTracking,
-  getInventoryMovements,
-  getExpenses,
-  saveProduct,
-  saveCategory,
   getAdminSession,
   saveAdminSession,
   updateAdminActivity,
   clearAdminSession,
-  AdminSession
+  AdminSession,
+  subscribeToProducts,
+  subscribeToOrders,
+  subscribeToInventoryMovements,
+  subscribeToExpenses
 } from './services/firebase';
 
 const ADMIN_PASSWORD = 'versiory2024';
@@ -67,30 +62,49 @@ const AdminApp: React.FC = () => {
   }, []);
 
 
-  // Carregar dados do Firebase
+  // Carregar dados em tempo real (ERRCOM111)
   useEffect(() => {
-    const loadData = async () => {
+    if (!isAuthenticated) return;
+
+    let unsubProducts: (() => void) | undefined;
+    let unsubOrders: (() => void) | undefined;
+    let unsubMovements: (() => void) | undefined;
+    let unsubExpenses: (() => void) | undefined;
+
+    const startSubscriptions = async () => {
       try {
-        const [productsData, categoriesData, ordersData, customersData, trackingData, inventoryData, expensesData] = await Promise.all([
-          getProducts(),
+        // Produtos
+        unsubProducts = subscribeToProducts((data) => {
+          if (data.length === 0 && PRODUCTS && PRODUCTS.length > 0) {
+            const defaultProducts = PRODUCTS.map(p => ({ ...p, stock: p.stock ?? 20, sizes: p.sizes ?? '', images: p.images ?? [] }));
+            setProducts(defaultProducts);
+          } else {
+            setProducts(data);
+          }
+        });
+
+        // Pedidos
+        unsubOrders = subscribeToOrders((data) => {
+          setOrders(data);
+        });
+
+        // Movimentações
+        unsubMovements = subscribeToInventoryMovements((data) => {
+          setInventoryMovements(data);
+        });
+
+        // Despesas
+        unsubExpenses = subscribeToExpenses((data) => {
+          setExpenses(data);
+        });
+
+        // Dados estáticos (categorias, clientes, rastreio) continuam com fetch único ou podem ser movidos também
+        const [categoriesData, customersData, trackingData] = await Promise.all([
           getCategories(),
-          getOrders(),
           getCustomers(),
-          getTracking(),
-          getInventoryMovements(),
-          getExpenses()
+          getTracking()
         ]);
 
-        // Se o Firebase estiver vazio, carregamos os produtos de exemplo apenas no estado local
-        if (productsData.length === 0 && PRODUCTS && PRODUCTS.length > 0) {
-          console.warn("⚠️ Banco de dados Firebase de produtos está vazio. Carregando itens de exemplo para demonstração.");
-          const defaultProducts = PRODUCTS.map(p => ({ ...p, stock: p.stock ?? 20, sizes: p.sizes ?? '', images: p.images ?? [] }));
-          setProducts(defaultProducts);
-        } else {
-          setProducts(productsData);
-        }
-
-        // Se não houver categorias, inicializar com categorias base
         if (categoriesData.length === 0) {
           const defaultCategories = BASE_CATEGORIES.map(cat => ({
             id: cat.toLowerCase().replace(/\s+/g, '_'),
@@ -103,21 +117,24 @@ const AdminApp: React.FC = () => {
           setCategories(categoriesData);
         }
 
-        setOrders(ordersData);
         setCustomers(customersData);
         setTracking(trackingData);
-        setInventoryMovements(inventoryData);
-        setExpenses(expensesData);
+
       } catch (error) {
-        console.error('Erro ao carregar dados do Firebase:', error);
-        setError('Falha na conexão com o banco de dados. Verifique sua internet ou as permissões do Firebase.');
+        console.error('Erro ao iniciar assinaturas em tempo real:', error);
+        setError('Erro na conexão em tempo real. Algumas atualizações podem exigir atualização manual.');
       }
     };
 
-    if (isAuthenticated && !error) {
-      loadData();
-    }
-  }, [isAuthenticated]); // Removed 'error' from dependency array
+    startSubscriptions();
+
+    return () => {
+      if (unsubProducts) unsubProducts();
+      if (unsubOrders) unsubOrders();
+      if (unsubMovements) unsubMovements();
+      if (unsubExpenses) unsubExpenses();
+    };
+  }, [isAuthenticated]);
 
   // Verificar periodicamente se a sessão ainda é válida
   useEffect(() => {

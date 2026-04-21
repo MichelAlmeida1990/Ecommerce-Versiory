@@ -474,16 +474,23 @@ const App: React.FC = () => {
               </div>
               <div className="flex flex-col items-start sm:items-end md:col-span-1">
                 <h4 className="font-bold mb-4 text-white sm:text-right w-full">Segurança</h4>
-                <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex items-center gap-3 group hover:bg-white/20 transition-all cursor-default">
-                  <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center">
-                    <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
+                <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex flex-col gap-3 group hover:bg-white/20 transition-all cursor-default">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-white uppercase tracking-widest">Site Seguro</p>
+                      <p className="text-[9px] text-white/60 font-medium">Ambiente Criptografado</p>
+                      <p className="text-[9px] text-emerald-400 font-bold">SSL 256-bit Certified</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-black text-white uppercase tracking-widest">Site Seguro</p>
-                    <p className="text-[9px] text-white/60 font-medium">Ambiente Criptografado</p>
-                    <p className="text-[9px] text-emerald-400 font-bold">SSL 256-bit Certified</p>
+                  {/* ERRCOM107: Google Safe Browsing Badge */}
+                  <div className="flex items-center gap-2 mt-1 pt-2 border-t border-white/10">
+                    <img src="https://www.gstatic.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png" alt="Google" className="h-3 object-contain opacity-80" />
+                    <span className="text-[9px] font-bold text-white/80 uppercase tracking-widest border-l border-white/20 pl-2">Safe Browsing</span>
                   </div>
                 </div>
               </div>

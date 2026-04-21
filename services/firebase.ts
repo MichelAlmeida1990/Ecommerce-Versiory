@@ -1,15 +1,7 @@
 import { initializeApp } from "firebase/app";
 import {
-    getFirestore,
-    collection,
-    getDocs,
-    doc,
-    setDoc,
-    updateDoc,
-    deleteDoc,
-    query,
-    orderBy,
-    getDoc
+    getDoc,
+    onSnapshot
 } from "firebase/firestore";
 import {
     Product,
@@ -88,6 +80,13 @@ async function deleteDocument(path: string, id: string | number) {
 
 // ---- Products ----
 export const getProducts = () => getCollection<Product>("products");
+export const subscribeToProducts = (callback: (products: Product[]) => void) => {
+    const q = query(collection(db, "products"));
+    return onSnapshot(q, (snapshot) => {
+        const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Product));
+        callback(products);
+    });
+};
 
 export const saveProduct = async (product: Product, base64Image?: string) => {
     let imageUrl = product.image;
@@ -132,6 +131,13 @@ export const getOrders = async (): Promise<Order[]> => {
     const q = query(collection(db, "orders"), orderBy("date", "desc"));
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ ...doc.data() } as Order));
+};
+export const subscribeToOrders = (callback: (orders: Order[]) => void) => {
+    const q = query(collection(db, "orders"), orderBy("date", "desc"));
+    return onSnapshot(q, (snapshot) => {
+        const orders = snapshot.docs.map(doc => ({ ...doc.data() } as Order));
+        callback(orders);
+    });
 };
 export const saveOrder = (order: Order) => setDocument("orders", order.id, order);
 export const getOrder = async (id: string): Promise<Order | null> => {
@@ -179,6 +185,13 @@ export const getInventoryMovements = async (): Promise<InventoryMovement[]> => {
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ ...doc.data() } as InventoryMovement));
 };
+export const subscribeToInventoryMovements = (callback: (movements: InventoryMovement[]) => void) => {
+    const q = query(collection(db, "inventoryMovements"), orderBy("date", "desc"));
+    return onSnapshot(q, (snapshot) => {
+        const movements = snapshot.docs.map(doc => ({ ...doc.data() } as InventoryMovement));
+        callback(movements);
+    });
+};
 export const saveInventoryMovement = (movement: InventoryMovement) => setDocument("inventoryMovements", movement.id, movement);
 
 // ---- Expenses ----
@@ -186,6 +199,13 @@ export const getExpenses = async (): Promise<Expense[]> => {
     const q = query(collection(db, "expenses"), orderBy("date", "desc"));
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ ...doc.data() } as Expense));
+};
+export const subscribeToExpenses = (callback: (expenses: Expense[]) => void) => {
+    const q = query(collection(db, "expenses"), orderBy("date", "desc"));
+    return onSnapshot(q, (snapshot) => {
+        const expenses = snapshot.docs.map(doc => ({ ...doc.data() } as Expense));
+        callback(expenses);
+    });
 };
 export const saveExpense = (expense: Expense) => setDocument("expenses", expense.id, expense);
 export const deleteExpense = (id: number) => deleteDocument("expenses", id);

@@ -47,7 +47,7 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [otpError, setOtpError] = useState('');
   const [customerPhone, setCustomerPhone] = useState(''); // ERRCOM070
   const [customerCpfCnpj, setCustomerCpfCnpj] = useState(''); // ERRCOM070
-  
+
   // ERRCOM080: Campos de endereço estruturados
   const [addressZip, setAddressZip] = useState('');
   const [addressStreet, setAddressStreet] = useState('');
@@ -119,7 +119,7 @@ const Checkout: React.FC<CheckoutProps> = ({
   const applyCoupon = () => {
     setCouponError('');
     const code = couponCode.toUpperCase().trim();
-    
+
     if (code === 'VERSIORY10') {
       const d = subtotal * 0.1;
       setDiscount(d);
@@ -141,22 +141,51 @@ const Checkout: React.FC<CheckoutProps> = ({
   };
 
   const handleCheckout = async () => {
-      if (!isOtpVerified) {
-        alert('⚠️ Por favor, valide seu e-mail com o código de segurança antes de finalizar.');
-        return;
-      }
+    if (!isOtpVerified) {
+      alert('⚠️ Por favor, valide seu e-mail com o código de segurança antes de finalizar.');
+      return;
+    }
 
-      if (orderPlaced) return; // Segurança extra
+    if (orderPlaced) return; // Segurança extra
 
     setOrderPlaced(true); // ERRCOM082: bloquear imediatamente antes de qualquer await
     setIsProcessing(true);
 
     try {
-      const { saveOrder, getCustomers, saveCustomer } = await import('../services/firebase');
+      const { saveOrder, getCustomers, saveCustomer, getProducts } = await import('../services/firebase');
+
+      // ERRCOM112: Validação de estoque em tempo real no checkout
+      const currentProducts = await getProducts();
+      for (const item of items) {
+        if (item.category === 'Serviços') continue;
+        const actualProduct = currentProducts.find(p => p.id === item.id);
+        if (!actualProduct) {
+          alert(`❌ O produto ${item.name} não está mais disponível no catálogo.`);
+          setIsProcessing(false);
+          setOrderPlaced(false);
+          return;
+        }
+
+        let availableStock = actualProduct.stock || 0;
+
+        // Verifica variações específicas de estoque
+        if (item.selectedSize && item.selectedColor && actualProduct.stockBySizeColor && actualProduct.stockBySizeColor[`${item.selectedSize}-${item.selectedColor}`] !== undefined) {
+          availableStock = Number(actualProduct.stockBySizeColor[`${item.selectedSize}-${item.selectedColor}`]);
+        } else if (item.selectedSize && actualProduct.stockBySize && actualProduct.stockBySize[item.selectedSize] !== undefined) {
+          availableStock = Number(actualProduct.stockBySize[item.selectedSize]);
+        }
+
+        if (item.quantity > availableStock) {
+          alert(`❌ Estoque insuficiente para ${item.name}. Desejado: ${item.quantity}, Disponível: ${availableStock}.`);
+          setIsProcessing(false);
+          setOrderPlaced(false);
+          return;
+        }
+      }
 
       const orderId = generateOrderId();
       let fullName = customerData?.name || '';
-      
+
       if (!fullName) {
         try {
           const lastUser = localStorage.getItem('versiory_last_user');
@@ -462,7 +491,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                 </div>
               </div>
             </div>
-            
+
             {/* Campo de Cupom */}
             <div className="mt-4 flex gap-2">
               <input
@@ -475,9 +504,8 @@ const Checkout: React.FC<CheckoutProps> = ({
               />
               <button
                 onClick={couponApplied ? () => { setDiscount(0); setCouponApplied(false); setCouponCode(''); } : applyCoupon}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                  couponApplied ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-versiory-ink text-white hover:brightness-110'
-                }`}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${couponApplied ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-versiory-ink text-white hover:brightness-110'
+                  }`}
               >
                 {couponApplied ? 'Remover' : 'Aplicar'}
               </button>
@@ -489,19 +517,18 @@ const Checkout: React.FC<CheckoutProps> = ({
           {/* Dados de Entrega */}
           <div className="mb-6">
             <h4 className="font-bold text-slate-900 mb-4">Dados de Entrega</h4>
-            
+
             {/* ERRCOM100: Seleção de Endereços Cadastrados */}
             {customerData && customerData.addresses && customerData.addresses.length > 0 ? (
               <div className="space-y-3 mb-4">
                 <p className="text-sm text-slate-600 mb-2">Selecione um endereço:</p>
                 {customerData.addresses.map((addr, idx) => (
-                  <label 
-                    key={addr.id || idx} 
-                    className={`flex items-start p-3 border-2 rounded-xl cursor-pointer transition-all ${
-                      selectedAddressId === (addr.id || String(idx)) 
-                        ? 'border-versiory-coral bg-versiory-coral/5' 
+                  <label
+                    key={addr.id || idx}
+                    className={`flex items-start p-3 border-2 rounded-xl cursor-pointer transition-all ${selectedAddressId === (addr.id || String(idx))
+                        ? 'border-versiory-coral bg-versiory-coral/5'
                         : 'border-slate-100 hover:border-slate-200 bg-white'
-                    }`}
+                      }`}
                   >
                     <input
                       type="radio"
@@ -521,12 +548,11 @@ const Checkout: React.FC<CheckoutProps> = ({
                     </div>
                   </label>
                 ))}
-                
-                <label className={`flex items-center p-3 border-2 rounded-xl cursor-pointer transition-all ${
-                  selectedAddressId === 'manual' 
-                    ? 'border-versiory-coral bg-versiory-coral/5' 
+
+                <label className={`flex items-center p-3 border-2 rounded-xl cursor-pointer transition-all ${selectedAddressId === 'manual'
+                    ? 'border-versiory-coral bg-versiory-coral/5'
                     : 'border-slate-100 hover:border-slate-200 bg-white'
-                }`}>
+                  }`}>
                   <input
                     type="radio"
                     name="address-selection"
@@ -765,7 +791,7 @@ const Checkout: React.FC<CheckoutProps> = ({
               <span className="text-lg">🛡️</span> Validação de Segurança
             </h4>
             <p className="text-xs text-slate-600 mb-3">Para sua segurança e para evitar pedidos falsos, valide seu e-mail.</p>
-            
+
             {!otpSent ? (
               <button
                 onClick={() => setOtpSent(true)}
@@ -838,9 +864,8 @@ const Checkout: React.FC<CheckoutProps> = ({
             <button
               onClick={handleCheckout}
               disabled={isProcessing || orderPlaced}
-              className={`flex-1 text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                orderPlaced ? 'bg-emerald-600' : 'bg-versiory-coral hover:bg-[#ff8368]'
-              }`}
+              className={`flex-1 text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${orderPlaced ? 'bg-emerald-600' : 'bg-versiory-coral hover:bg-[#ff8368]'
+                }`}
             >
               {isProcessing ? (
                 <span className="flex items-center justify-center gap-2">
