@@ -20,7 +20,11 @@ import {
   subscribeToProducts,
   subscribeToOrders,
   subscribeToInventoryMovements,
-  subscribeToExpenses
+  subscribeToExpenses,
+  getCategories,
+  getCustomers,
+  getTracking,
+  saveCategory
 } from './services/firebase';
 
 const ADMIN_PASSWORD = 'versiory2024';
