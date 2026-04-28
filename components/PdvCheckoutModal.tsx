@@ -16,6 +16,8 @@ interface PdvCheckoutModalProps {
   onSubmit: (customerData: { name: string; phone: string; email: string; cpf: string; emitNF: boolean; notes: string; customPolicies?: string; isBudget?: boolean }, order: Order) => Promise<void>;
   isSubmitting: boolean;
   editingOrder?: Order | null;
+  discountAmount?: number;
+  discountType?: 'fixo' | 'percentual';
 }
 
 const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
@@ -25,7 +27,9 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   cart,
   onSubmit,
   isSubmitting,
-  editingOrder
+  editingOrder,
+  discountAmount = 0,
+  discountType = 'fixo'
 }) => {
   const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
   const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'debito' | 'credito'>('dinheiro');
@@ -66,7 +70,9 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     }
   }, [isOpen, editingOrder]);
 
-  const total = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+  const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+  const actualDiscount = discountType === 'percentual' ? subtotal * (discountAmount / 100) : discountAmount;
+  const total = Math.max(0, subtotal - actualDiscount);
 
   const validateForm = (): boolean => {
     const newErrors: string[] = [];
@@ -235,7 +241,9 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       address: customerForm.address,
       isBudget: false,
       customPolicies: customerForm.customPolicies,
-      installments: paymentMethod === 'credito' ? installments : 1
+      installments: paymentMethod === 'credito' ? installments : 1,
+      discountAmount: actualDiscount,
+      discountType: discountType
     };
 
     if (emitNF) {
@@ -587,13 +595,23 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
           </div>
 
           <div className="bg-slate-100 rounded-xl p-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium text-gray-600">Total da Venda:</span>
+            <div className="flex justify-between items-center text-sm text-gray-600 mb-1">
+              <span>Subtotal:</span>
+              <span className="font-bold">R$ {subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+            </div>
+            {discountAmount > 0 && (
+              <div className="flex justify-between items-center text-sm text-emerald-600 mb-2">
+                <span>Desconto ({discountType === 'percentual' ? `${discountAmount}%` : 'Fixo'}):</span>
+                <span className="font-bold">- R$ {actualDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center border-t border-gray-200 pt-2">
+              <span className="text-sm font-black text-gray-900">Total a Pagar:</span>
               <span className="text-2xl font-black text-versiory-coral">
                 R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </span>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 mt-1">
               {cart.reduce((sum, item) => sum + item.quantity, 0)} itens
             </p>
           </div>

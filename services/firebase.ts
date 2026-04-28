@@ -318,3 +318,53 @@ export const clearAdminSession = async () => {
     localStorage.removeItem(ADMIN_SESSION_KEY);
 };
 
+// ---- Coupons (ERRCOM124) ----
+import { Coupon } from '../types';
+
+export const getCoupons = () => getCollection<Coupon>('coupons');
+
+export const saveCoupon = (coupon: Coupon) => setDocument('coupons', coupon.id, coupon);
+
+export const deleteCouponItem = (id: string) => deleteDocument('coupons', id);
+
+/**
+ * Valida e consome um cupom.
+ * Retorna o objeto coupon se válido, ou null se inválido (com mensagem de erro).
+ */
+export const validateAndUseCoupon = async (
+    codigo: string
+): Promise<{ coupon: Coupon | null; error: string | null }> => {
+    try {
+        const coupons = await getCoupons();
+        const coupon = coupons.find(
+            c => c.codigo.toUpperCase() === codigo.toUpperCase()
+        );
+
+        if (!coupon) return { coupon: null, error: 'Cupom inválido ou expirado' };
+        if (!coupon.ativo) return { coupon: null, error: 'Cupom inválido ou expirado' };
+
+        const now = new Date();
+        const inicio = new Date(coupon.dataInicio);
+        const fim = new Date(coupon.dataFim);
+        fim.setHours(23, 59, 59, 999); // incluir o dia inteiro
+
+        if (now < inicio || now > fim) {
+            return { coupon: null, error: 'Cupom fora do período de validade' };
+        }
+
+        if (coupon.usosRealizados >= coupon.usoMaximo) {
+            return { coupon: null, error: 'Limite de usos do cupom atingido' };
+        }
+
+        // Incrementar uso — salvar de volta no Firestore
+        const updated: Coupon = { ...coupon, usosRealizados: coupon.usosRealizados + 1 };
+        await saveCoupon(updated);
+
+        return { coupon: updated, error: null };
+    } catch (err) {
+        console.error('Erro ao validar cupom:', err);
+        return { coupon: null, error: 'Erro ao validar cupom. Tente novamente.' };
+    }
+};
+
+

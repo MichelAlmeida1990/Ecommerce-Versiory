@@ -87,6 +87,7 @@ export interface Order {
   orderTime?: string; // ERRCOM083
   total: number;
   discountAmount?: number; // ERRCOM108: Valor do desconto concedido
+  discountType?: 'percentual' | 'fixo'; // ERRCOM125: Tipo do desconto (PDV)
   couponCode?: string; // ERRCOM108: Cupom utilizado
   status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'budget' | 'returned';
   statusHistory?: { status: string; date: string; notes?: string }[]; // ERRCOM101: Histórico de status
@@ -239,4 +240,19 @@ export interface CashRegister {
   withdrawals: CashWithdrawal[];
   deposits: CashDeposit[];
   notes?: string;
+}
+
+// ERRCOM124: Interface para Cupons de Desconto
+export interface Coupon {
+  id: string;
+  codigo: string; // ex: "PROMO10"
+  tipo: 'percentual' | 'fixo'; // % ou R$ fixo
+  valor: number; // 10 = 10% ou R$ 10,00
+  dataInicio: string; // ISO date string
+  dataFim: string;   // ISO date string
+  usoMaximo: number;
+  usosRealizados: number;
+  ativo: boolean;
+  descricao?: string;
+  valorMinimo?: number;
 }

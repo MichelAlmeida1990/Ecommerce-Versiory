@@ -21,6 +21,7 @@ import { sanitizeData } from '../services/utils';
 import ProductMediaShowcase from './ProductMediaShowcase';
 import CashRegisterReport from './CashRegisterReport';
 import { saveProduct } from '../services/firebase';
+import CouponManagement from './CouponManagement';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -51,7 +52,8 @@ type TabKey =
   | 'tracking'
   | 'inventory'
   | 'financial'
-  | 'fiscal';
+  | 'fiscal'
+  | 'settings';
 
 type StockFilter = 'all' | 'low' | 'out' | 'normal';
 
@@ -399,6 +401,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return saved ? JSON.parse(saved) : [];
   });
   const [isCashReportOpen, setIsCashReportOpen] = useState(false);
+  // ERRCOM119: Estado dedicado para evitar race condition com cashRegisterHistory
+  const [currentCashReport, setCurrentCashReport] = useState<any>(null);
   const [isCashRegisterModalOpen, setIsCashRegisterModalOpen] = useState(false);
   const [cashRegisterForm, setCashRegisterForm] = useState({ amount: 0 });
 
@@ -490,6 +494,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // ERRCOM022: Histórico de pedidos do cliente
   const [customerOrderHistory, setCustomerOrderHistory] = useState<{ customer: Customer; orders: Order[] } | null>(null);
+
+  // ERRCOM125: Campo de desconto no PDV
+  const [pdvDiscount, setPdvDiscount] = useState(0);
+  const [pdvDiscountType, setPdvDiscountType] = useState<'fixo' | 'percentual'>('fixo');
 
   // ERRCOM029/030: Modal de vendas por forma de pagamento
   const [paymentBreakdownModal, setPaymentBreakdownModal] = useState<{ channel: 'pdv' | 'online'; orders: Order[] } | null>(null);
@@ -1793,6 +1801,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         order.accountedInCash = false;
       }
 
+      // ERRCOM125: Persistir desconto do PDV no pedido
+      if (pdvDiscount > 0) {
+        order.discountAmount = pdvDiscountType === 'percentual' 
+          ? (order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) * (pdvDiscount / 100))
+          : pdvDiscount;
+        order.discountType = pdvDiscountType;
+      }
+
       const sanitizedOrder = sanitizeData(order);
       await saveOrder(sanitizedOrder);
 
@@ -1813,6 +1829,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // ERRCOM100: Orçamentos NÃO limpam o carrinho para permitir finalizar a venda em seguida
       if (!isBudget) {
         setPdvCart([]);
+        setPdvDiscount(0);
+        setPdvDiscountType('fixo');
       }
 
       setEditingOrder(null);
@@ -1920,8 +1938,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       salesByPaymentCount
     };
 
-    // Adicionar ao histórico e abrir relatório
+    // ERRCOM119: Guardar relatório no estado dedicado evita race condition
     setCashRegisterHistory(prev => [...prev, partialReport]);
+    setCurrentCashReport(partialReport);
     setIsCashReportOpen(true);
   };
 
@@ -1990,7 +2009,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setCashWithdrawals([]);
     setCashDeposits([]);
 
-    // Abrir relatório
+    // ERRCOM119: Guardar relatório no estado dedicado evita race condition
+    setCurrentCashReport(closedRegister);
     setIsCashReportOpen(true);
     setIsCashRegisterModalOpen(false);
   };
@@ -2215,7 +2235,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ['tracking', 'Rastreamento'],
                   ['inventory', 'Estoque'],
                   ['financial', 'Financeiro'],
-                  ['fiscal', 'Fiscal/NF-e']
+                  ['fiscal', 'Fiscal/NF-e'],
+                  ['settings', 'Configuração']
                 ]
                 : [
                   ['pdv', 'PDV Loja'],
@@ -2241,7 +2262,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {/* Top Cards */}
+            {/* Top Cards — ERRCOM122: Cards Vendas Online e PDV Loja adicionados */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
                 <div className="text-3xl font-bold text-white mb-2">{stats.totalProducts}</div>
@@ -2263,6 +2284,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-3xl font-bold text-emerald-400 mb-2">{formatCurrency(stats.totalDiscounts)}</div>
                 <div className="text-slate-400 font-medium text-sm">Descontos (Cupons)</div>
               </div>
+              {/* ERRCOM122: Card Vendas Online */}
+              <button
+                onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => o.salesChannel === 'online' && ['paid','processing','shipped','delivered'].includes(o.status)) })}
+                className="bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border border-blue-500/30 shadow-lg text-left transition-all"
+              >
+                <div className="text-3xl font-bold text-blue-400 mb-2">
+                  {formatCurrency(orders.filter(o => o.salesChannel === 'online' && ['paid','processing','shipped','delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}
+                </div>
+                <div className="text-slate-400 font-medium text-sm">🌐 Vendas Online — detalhes</div>
+              </button>
+              {/* ERRCOM122: Card Vendas PDV */}
+              <button
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid','processing','shipped','delivered'].includes(o.status)) })}
+                className="bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border border-green-500/30 shadow-lg text-left transition-all"
+              >
+                <div className="text-3xl font-bold text-green-400 mb-2">
+                  {formatCurrency(orders.filter(o => o.salesChannel === 'physical' && ['paid','processing','shipped','delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}
+                </div>
+                <div className="text-slate-400 font-medium text-sm">🏪 Vendas PDV — detalhes</div>
+              </button>
             </div>
 
             {/* Charts */}
@@ -2545,10 +2586,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div className="pt-4 border-t border-white/10 mt-auto">
+                {/* ERRCOM125: Campo de desconto no PDV */}
+                <div className="mb-3 p-3 bg-white/5 rounded-xl border border-white/10">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Desconto</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={pdvDiscount || ''}
+                      onChange={e => setPdvDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                      placeholder="0,00"
+                      className="flex-1 bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                    />
+                    <select
+                      value={pdvDiscountType}
+                      onChange={e => setPdvDiscountType(e.target.value as 'fixo' | 'percentual')}
+                      className="bg-white/10 border border-white/20 text-white rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                    >
+                      <option value="fixo" className="text-black">R$</option>
+                      <option value="percentual" className="text-black">%</option>
+                    </select>
+                    {pdvDiscount > 0 && (
+                      <button onClick={() => { setPdvDiscount(0); setPdvDiscountType('fixo'); }} className="text-slate-400 hover:text-red-400 text-xs transition-colors">✕</button>
+                    )}
+                  </div>
+                  {pdvDiscount > 0 && (
+                    <p className="text-xs text-emerald-400 mt-1">
+                      Desconto: -{formatCurrency(pdvDiscountType === 'percentual' ? pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0) * (pdvDiscount / 100) : pdvDiscount)}
+                    </p>
+                  )}
+                </div>
+
                 <div className="flex justify-between items-center mb-6">
                   <span className="text-slate-300">Total a pagar:</span>
                   <span className="text-2xl font-black text-white">
-                    {formatCurrency(pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0))}
+                    {(() => {
+                      const subtotal = pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+                      const discountVal = pdvDiscountType === 'percentual' ? subtotal * (pdvDiscount / 100) : pdvDiscount;
+                      return formatCurrency(Math.max(0, subtotal - discountVal));
+                    })()}
                   </span>
                 </div>
                 <button
@@ -3179,9 +3256,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {customer.totalOrders} pedidos
                           </button>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">
-                          {formatDate(customer.createdAt || '')}
-                          {formatCurrency(customer.totalSpent)}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
+                          <div className="font-bold">{formatDate(customer.createdAt || '')}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
+                          <div className="text-versiory-coral font-black">{formatCurrency(customer.totalSpent)}</div>
                         </td>
                       </tr>
                     ))}
@@ -3488,7 +3567,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => (o.salesChannel === 'physical' || !o.salesChannel) && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => ['paid','processing','shipped','delivered'].includes(o.status)) })}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalRevenue)}</div>
@@ -3710,6 +3789,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <CouponManagement />
           </div>
         )}
       </div>
@@ -4493,6 +4578,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onSubmit={handlePdvCheckoutSubmit}
         isSubmitting={isSubmitting}
         editingOrder={editingOrder}
+        discountAmount={pdvDiscount}
+        discountType={pdvDiscountType}
       />
 
       {/* Modal Gerenciador de Tamanhos */}
@@ -4721,25 +4808,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {selectedOrderDetail.customerCpfCnpj && <p><span className="font-bold text-white">CPF/CNPJ:</span> {selectedOrderDetail.customerCpfCnpj}</p>}
               <p><span className="font-bold text-white">Data:</span> {formatDate(selectedOrderDetail.date)} {selectedOrderDetail.orderTime ? `às ${selectedOrderDetail.orderTime}` : ''}</p>
               <p><span className="font-bold text-white">Status:</span> <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[selectedOrderDetail.status]}`}>{STATUS_LABELS[selectedOrderDetail.status]}</span></p>
-              <p><span className="font-bold text-white">Canal:</span> {selectedOrderDetail.salesChannel === 'physical' ? 'PDV' : 'Online'}</p>
+              <p><span className="font-bold text-white">Canal:</span> {selectedOrderDetail.salesChannel === 'physical' ? '🏪 PDV Loja' : '🌐 Online'}</p>
+              {/* ERRCOM123: Forma de pagamento */}
+              {selectedOrderDetail.paymentMethod && (
+                <p><span className="font-bold text-white">Forma de Pagamento:</span> <span className="text-versiory-coral font-bold uppercase">{selectedOrderDetail.paymentMethod}</span></p>
+              )}
               {selectedOrderDetail.address && <p><span className="font-bold text-white">Endereço:</span> {selectedOrderDetail.address}</p>}
+              {selectedOrderDetail.discountAmount && selectedOrderDetail.discountAmount > 0 && (
+                <p><span className="font-bold text-white">Desconto:</span> -{formatCurrency(selectedOrderDetail.discountAmount)}
+                  {selectedOrderDetail.couponCode && <span className="ml-1 text-xs text-emerald-400">(Cupom: {selectedOrderDetail.couponCode})</span>}
+                </p>
+              )}
               {selectedOrderDetail.notes && <p><span className="font-bold text-white">Observação:</span> {selectedOrderDetail.notes}</p>}
 
               <div className="pt-4 flex flex-wrap gap-2">
                 <button
                   onClick={() => {
                     let phone = selectedOrderDetail.customerPhone || '';
-
                     if (!phone && selectedOrderDetail.customerEmail?.includes('@pdv.local')) {
                       phone = selectedOrderDetail.customerEmail.replace('@pdv.local', '');
                     }
-
                     const cleanPhone = phone.replace(/\D/g, '');
-                    if (!cleanPhone) {
-                      window.alert('Telefone do cliente não disponível.');
-                      return;
-                    }
-
+                    if (!cleanPhone) { window.alert('Telefone do cliente não disponível.'); return; }
                     const message = `Olá ${selectedOrderDetail.customerName}, o status do seu pedido ${formatOrderId(selectedOrderDetail.id)} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`;
                     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
                   }}
@@ -4756,6 +4846,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="bg-versiory-ink hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
                 >
                   ✏️ Editar Pedido
+                </button>
+
+                {/* ERRCOM121: Botão Imprimir Pedido */}
+                <button
+                  onClick={async () => {
+                    const order = selectedOrderDetail;
+                    const paymentMethodLabel: Record<string, string> = {
+                      dinheiro: 'Dinheiro', pix: 'PIX', debito: 'Débito', credito: 'Crédito',
+                      whatsapp: 'A combinar', credit: 'Crédito', online: 'Online'
+                    };
+                    const channelLabel = order.salesChannel === 'physical' ? 'PDV Loja' : 'E-commerce (Site)';
+                    const itemsHtml = (order.items || []).map(item =>
+                      `<tr><td style="padding:4px 8px;">${item.name || `Produto #${item.productId}`}${item.selectedSize ? ` (${item.selectedSize})` : ''}${item.selectedColor ? ` / ${item.selectedColor}` : ''}</td><td style="padding:4px 8px;text-align:center;">${item.quantity}</td><td style="padding:4px 8px;text-align:right;">R$ ${(item.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td style="padding:4px 8px;text-align:right;">R$ ${(item.price*item.quantity).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>`
+                    ).join('');
+                    const subtotalVal = (order.items||[]).reduce((s,i)=>s+i.price*i.quantity,0);
+                    const html = `<!DOCTYPE html><html><head><title>Pedido ${formatOrderId(order.id)}</title><style>body{font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:0 auto;}h1{font-size:18px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;}table{width:100%;border-collapse:collapse;}th{background:#f0f0f0;padding:6px 8px;text-align:left;font-size:12px;}td{font-size:12px;border-bottom:1px solid #eee;}.total{font-size:16px;font-weight:bold;text-align:right;padding-top:8px;}.info{margin:8px 0;font-size:13px;}.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5e7eb;font-size:11px;}</style></head><body><h1>VERSIORY STORE — PEDIDO ${formatOrderId(order.id)}</h1><div class="info"><b>Cliente:</b> ${order.customerName}</div>${order.customerEmail?`<div class="info"><b>E-mail:</b> ${order.customerEmail}</div>`:''} ${order.customerPhone?`<div class="info"><b>Telefone:</b> ${order.customerPhone}</div>`:''} ${order.customerCpfCnpj?`<div class="info"><b>CPF/CNPJ:</b> ${order.customerCpfCnpj}</div>`:''} <div class="info"><b>Data:</b> ${new Date(order.date).toLocaleString('pt-BR')}</div><div class="info"><b>Canal:</b> ${channelLabel}</div><div class="info"><b>Forma de Pagamento:</b> ${paymentMethodLabel[order.paymentMethod||''] || order.paymentMethod || 'A combinar'}</div><div class="info"><b>Status:</b> <span class="badge">${(order.status||'').toUpperCase()}</span></div>${order.address?`<div class="info"><b>Endereço:</b> ${order.address}</div>`:''}<br><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço</th><th>Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><div class="total">Subtotal: R$ ${subtotalVal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>${order.discountAmount&&order.discountAmount>0?`<div style="text-align:right;font-size:13px;color:green;">Desconto${order.couponCode?` (${order.couponCode})`:''}:-R$ ${order.discountAmount.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`:''}<div class="total">TOTAL: R$ ${order.total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>${order.notes?`<div class="info" style="margin-top:12px;"><b>Observações:</b> ${order.notes}</div>`:''}<div style="text-align:center;margin-top:24px;font-size:11px;color:#666;">www.versiory.store</div></body></html>`;
+                    const w = window.open('','_blank','width=640,height=800');
+                    if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),500);}
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+                >
+                  🖨️ Imprimir Pedido
                 </button>
 
                 <button
@@ -4789,10 +4901,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               ))}
             </div>
-            <div className="border-t border-white/10 pt-3 flex justify-between">
-              <span className="text-white font-bold">Total</span>
-              <span className="text-2xl font-black text-versiory-coral">{formatCurrency(selectedOrderDetail.total)}</span>
-            </div>
+            {selectedOrderDetail.discountAmount && selectedOrderDetail.discountAmount > 0 ? (
+              <>
+                <div className="flex justify-between text-sm text-slate-300 mb-1">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency((selectedOrderDetail.items||[]).reduce((s,i)=>s+i.price*i.quantity,0))}</span>
+                </div>
+                <div className="flex justify-between text-sm text-emerald-400 mb-1">
+                  <span>Desconto{selectedOrderDetail.couponCode ? ` (${selectedOrderDetail.couponCode})` : ''}</span>
+                  <span>-{formatCurrency(selectedOrderDetail.discountAmount)}</span>
+                </div>
+                <div className="border-t border-white/10 pt-3 flex justify-between">
+                  <span className="text-white font-bold">Total</span>
+                  <span className="text-2xl font-black text-versiory-coral">{formatCurrency(selectedOrderDetail.total)}</span>
+                </div>
+              </>
+            ) : (
+              <div className="border-t border-white/10 pt-3 flex justify-between">
+                <span className="text-white font-bold">Total</span>
+                <span className="text-2xl font-black text-versiory-coral">{formatCurrency(selectedOrderDetail.total)}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -5100,17 +5229,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
 
-      {/* ERRCOM051/099: Modal de Relatório de Caixa */}
-      {isCashReportOpen && cashRegisterHistory.length > 0 && (
+      {/* ERRCOM119: Modal de Relatório de Caixa — usa currentCashReport para evitar race condition */}
+      {isCashReportOpen && currentCashReport && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md transition-all duration-500" />
           <CashRegisterReport
-            cashRegister={cashRegisterHistory[cashRegisterHistory.length - 1]}
+            cashRegister={currentCashReport}
             onClose={() => {
-              const last = cashRegisterHistory[cashRegisterHistory.length - 1];
-              if (last?.id?.startsWith('PARTIAL-')) {
-                setCashRegisterHistory(prev => prev.filter(h => h.id !== last.id));
+              if (currentCashReport?.id?.startsWith('PARTIAL-')) {
+                setCashRegisterHistory(prev => prev.filter(h => h.id !== currentCashReport.id));
               }
+              setCurrentCashReport(null);
               setIsCashReportOpen(false);
             }}
           />

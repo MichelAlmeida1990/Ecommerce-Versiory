@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { CashRegister } from '../types';
 
+// ERRCOM119: formatCurrency estava ausente, causando crash silencioso (tela vazia)
+const formatCurrency = (value: number) =>
+  `R$ ${(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 interface CashRegisterReportProps {
   cashRegister: CashRegister;
   onClose: () => void;
@@ -9,6 +13,19 @@ interface CashRegisterReportProps {
 const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, onClose }) => {
   const [hasPrinted, setHasPrinted] = useState(false);
 
+  const isPartial = cashRegister.status === 'open';
+  const reportTitle = isPartial ? 'LEITURA X (PARCIAL)' : 'FECHAMENTO DE CAIXA';
+  const shortId = cashRegister.id.replace('PARTIAL-', '').slice(-8).toUpperCase();
+
+  const paymentLabels: Record<string, string> = {
+    dinheiro: 'DINHEIRO',
+    pix: 'PIX',
+    debito: 'DÉBITO',
+    credito: 'CRÉDITO',
+  };
+
+  const saldo = (cashRegister.initialAmount || 0) + (cashRegister.totalSales || 0);
+
   const handlePrint = () => {
     setHasPrinted(true);
     window.print();
@@ -16,284 +33,189 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
 
   const handleClose = () => {
     if (!hasPrinted) {
-      window.alert('⚠️ IMPRESSÃO OBRIGATÓRIA\n\nPor favor, imprima o Relatório de Fechamento de Caixa antes de sair. Esta ação garante que os valores sejam registrados fisicamente e digitalmente.');
-      return;
+      const confirmed = window.confirm(
+        '⚠️ Você ainda não imprimiu o relatório.\nDeseja fechar mesmo assim?'
+      );
+      if (!confirmed) return;
     }
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* ERRCOM110: Estilos específicos para impressão térmica (80mm) */}
+    <>
+      {/* ERRCOM119: Estilos de impressão térmica 80mm */}
       <style>{`
         @media print {
-          @page {
-            margin: 0;
-            size: 80mm auto;
-          }
-          body {
-            background: white !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-          .fixed {
-            position: static !important;
-            display: block !important;
-            padding: 0 !important;
-          }
-          .bg-black\\/60 {
-            display: none !important;
-          }
-          .rounded-3xl {
-            border-radius: 0 !important;
-          }
-          .shadow-2xl {
-            box-shadow: none !important;
-          }
-          .max-w-2xl {
+          @page { margin: 0; size: 80mm auto; }
+          body { background: white !important; padding: 0 !important; margin: 0 !important; }
+          .print-hidden { display: none !important; }
+          .receipt-paper {
+            width: 76mm !important;
             max-width: 100% !important;
-            width: 80mm !important;
-            margin: 0 auto !important;
-          }
-          .max-h-\\[90vh\\] {
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            border: none !important;
             max-height: none !important;
             overflow: visible !important;
-          }
-          .p-8 {
-            padding: 10mm 5mm !important;
-          }
-          .bg-gray-50, .bg-blue-50, .bg-green-50, .bg-amber-50, .bg-gray-900 {
-            background-color: white !important;
-            border: 1px solid #eee !important;
-            color: black !important;
-            padding: 4mm !important;
-            margin-bottom: 5mm !important;
-          }
-          .text-white {
-            color: black !important;
-          }
-          .border-white\\/20 {
-            border-color: #000 !important;
-          }
-          .print\\:hidden {
-            display: none !important;
-          }
-          h3, h4 {
-            color: black !important;
-            border-bottom: 1px dashed #000;
-            padding-bottom: 2mm;
-            margin-bottom: 4mm;
-          }
-          .font-black {
-            font-weight: 900 !important;
-          }
-          .grid {
-            display: block !important;
-          }
-          .grid > div {
-            margin-bottom: 3mm;
-            border-bottom: 1px dotted #eee;
-            padding-bottom: 1mm;
           }
         }
       `}</style>
 
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      {/* Container — não usa fixed aqui pois o AdminDashboard já fornece o overlay */}
+      <div className="relative z-10 flex items-start justify-center w-full py-2">
+        <div className="receipt-paper bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-200 overflow-y-auto max-h-[80vh]">
 
-      <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-8 border-b border-gray-200 flex justify-between items-center print:border-black">
-          <div>
-            <h3 className="text-2xl font-black text-gray-900">Relatório de Fechamento</h3>
-            <p className="text-sm text-gray-500 mt-1">Caixa #{cashRegister.id.slice(0, 8)}</p>
-          </div>
-          <button onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-full print:hidden">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="p-8 space-y-6">
-          {/* Informações do Caixa */}
-          <div className="bg-gray-50 rounded-2xl p-6">
-            <h4 className="font-black text-gray-700 text-sm uppercase mb-4">Informações do Caixa</h4>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-gray-500 font-medium">Abertura:</p>
-                <p className="font-bold text-gray-900">
-                  {new Date(cashRegister.openedAt).toLocaleString('pt-BR')}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-500 font-medium">Fechamento:</p>
-                <p className="font-bold text-gray-900">
-                  {cashRegister.closedAt ? new Date(cashRegister.closedAt).toLocaleString('pt-BR') : '-'}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-500 font-medium">Operador:</p>
-                <p className="font-bold text-gray-900">{cashRegister.openedBy}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 font-medium">Status:</p>
-                <p className={`font-bold ${cashRegister.status === 'open' ? 'text-green-600' : 'text-gray-600'}`}>
-                  {cashRegister.status === 'open' ? 'Aberto' : 'Fechado'}
-                </p>
-              </div>
-            </div>
+          {/* Header */}
+          <div className="text-center py-5 px-4 border-b border-dashed border-gray-300">
+            <p className="font-black text-gray-900 tracking-widest text-sm" style={{ fontFamily: 'Courier New, monospace' }}>
+              VERSIORY STORE
+            </p>
+            <p className="font-bold text-gray-800 text-xs mt-1 tracking-wider" style={{ fontFamily: 'Courier New, monospace' }}>
+              {reportTitle}
+            </p>
+            <p className="text-gray-500 text-xs mt-1" style={{ fontFamily: 'Courier New, monospace' }}>
+              ID: #{shortId}
+            </p>
           </div>
 
-          {/* Resumo de Vendas por Canal (ERRCOM110) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
-              <p className="text-[10px] font-black text-blue-400 uppercase mb-1">Total Pedidos</p>
-              <p className="text-2xl font-black text-blue-900">{cashRegister.totalOrders}</p>
-            </div>
-            <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100">
-              <p className="text-[10px] font-black text-emerald-400 uppercase mb-1">Faturamento Bruto</p>
-              <p className="text-2xl font-black text-emerald-900">{formatCurrency(cashRegister.totalSales)}</p>
-            </div>
-          </div>
+          {/* Corpo */}
+          <div className="px-4 py-3 space-y-1 text-xs" style={{ fontFamily: 'Courier New, monospace' }}>
 
-          {/* Resumo de Vendas */}
-          <div className="bg-blue-50 rounded-2xl p-6">
-            <h4 className="font-black text-blue-900 text-sm uppercase mb-4">Resumo de Vendas</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-blue-700 font-medium text-sm">Total de Pedidos:</p>
-                <p className="text-3xl font-black text-blue-900">{cashRegister.totalOrders}</p>
-              </div>
-              <div>
-                <p className="text-blue-700 font-medium text-sm">Total Vendido:</p>
-                <p className="text-3xl font-black text-blue-900">
-                  R$ {cashRegister.totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
+            {/* Cabeçalho de operação */}
+            <div className="flex justify-between">
+              <span className="text-gray-600">ABERTURA:</span>
+              <span className="font-bold text-gray-900 text-right">
+                {new Date(cashRegister.openedAt).toLocaleString('pt-BR')}
+              </span>
             </div>
-          </div>
-
-          {/* Por Forma de Pagamento */}
-          <div className="bg-green-50 rounded-2xl p-6">
-            <h4 className="font-black text-green-900 text-sm uppercase mb-4">Por Forma de Pagamento</h4>
-            <div className="space-y-3">
-              {Object.entries(cashRegister.salesByPayment).map(([method, amount]) => {
-                const count = cashRegister.salesByPaymentCount?.[method as keyof typeof cashRegister.salesByPaymentCount] || 0;
-                return (
-                  <div key={method} className="flex justify-between items-center">
-                    <span className="font-bold text-green-800 capitalize">
-                      {method === 'dinheiro' ? 'DINHEIRO' :
-                        method === 'pix' ? 'PIX' :
-                          method === 'debito' ? 'DÉBITO' :
-                            method === 'credito' ? 'CRÉDITO' : method.toUpperCase()}:
-                    </span>
-                    <div className="text-right">
-                      <div className="font-black text-green-900">
-                        R$ {amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </div>
-                      <div className="text-sm text-green-700">
-                        ({count})
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Movimentações */}
-          <div className="bg-amber-50 rounded-2xl p-6">
-            <h4 className="font-black text-amber-900 text-sm uppercase mb-4">Movimentações</h4>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-amber-800">Troco Inicial:</span>
-                <span className="font-black text-amber-900">
-                  R$ {cashRegister.initialAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            {cashRegister.closedAt && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">FECHAMENTO:</span>
+                <span className="font-bold text-gray-900 text-right">
+                  {new Date(cashRegister.closedAt).toLocaleString('pt-BR')}
                 </span>
               </div>
-
-              {cashRegister.withdrawals.length > 0 && (
-                <div>
-                  <p className="font-bold text-amber-800 mb-2">Sangrias:</p>
-                  {cashRegister.withdrawals.map((w) => (
-                    <div key={w.id} className="flex justify-between text-sm ml-4 mb-1">
-                      <span className="text-amber-700">{w.reason}</span>
-                      <span className="font-bold text-red-600">
-                        -R$ {w.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {cashRegister.deposits.length > 0 && (
-                <div>
-                  <p className="font-bold text-amber-800 mb-2">Suprimentos:</p>
-                  {cashRegister.deposits.map((d) => (
-                    <div key={d.id} className="flex justify-between text-sm ml-4 mb-1">
-                      <span className="text-amber-700">{d.reason}</span>
-                      <span className="font-bold text-green-600">
-                        +R$ {d.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+            )}
+            <div className="flex justify-between">
+              <span className="text-gray-600">OPERADOR:</span>
+              <span className="font-bold text-gray-900">{cashRegister.openedBy || 'Operador'}</span>
             </div>
-          </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">STATUS:</span>
+              <span className={`font-black ${isPartial ? 'text-orange-500' : 'text-green-600'}`}>
+                {isPartial ? 'CONFERÊNCIA ABERTA' : 'CAIXA ENCERRADO'}
+              </span>
+            </div>
 
-          {/* Fechamento */}
-          {cashRegister.status === 'closed' && (
-            <div className="bg-gray-900 text-white rounded-2xl p-6">
-              <h4 className="font-black text-sm uppercase mb-4">Fechamento</h4>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold">Esperado:</span>
-                  <span className="font-black text-xl">
-                    R$ {cashRegister.expectedAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+            <div className="border-t border-dashed border-gray-300 my-2" />
+
+            {/* Resumo Financeiro */}
+            <p className="font-black text-gray-900 underline uppercase mb-1">Resumo Financeiro</p>
+            <div className="flex justify-between">
+              <span className="text-gray-600">VALOR ABERTURA:</span>
+              <span className="font-bold text-gray-900">{formatCurrency(cashRegister.initialAmount || 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">VENDAS NO PERÍODO:</span>
+              <span className="font-bold text-gray-900">{formatCurrency(cashRegister.totalSales || 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">QTD PEDIDOS:</span>
+              <span className="font-bold text-gray-900">{cashRegister.totalOrders || 0}</span>
+            </div>
+
+            <div className="border-t border-dashed border-gray-300 my-2" />
+
+            {/* Total por forma de pagamento */}
+            <p className="font-black text-gray-900 underline uppercase mb-1">Total por Forma de Pagto (QTD / VALOR)</p>
+            {Object.entries(cashRegister.salesByPayment || {}).map(([method, amount]) => {
+              const count = (cashRegister.salesByPaymentCount as Record<string, number>)?.[method] || 0;
+              return (
+                <div key={method} className="flex justify-between">
+                  <span className="text-gray-700">{paymentLabels[method] || method.toUpperCase()}:</span>
+                  <span className="font-bold text-gray-900">({count}) {formatCurrency(amount as number)}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-bold">Contado:</span>
-                  <span className="font-black text-xl">
-                    R$ {(cashRegister.actualAmount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+              );
+            })}
+
+            <div className="border-t border-dashed border-gray-300 my-2" />
+
+            {/* Saldo em Caixa */}
+            <div className="flex justify-between items-center py-1">
+              <span className="font-black text-gray-900 uppercase text-sm">Saldo em Caixa:</span>
+              <span className="font-black text-gray-900 text-sm">{formatCurrency(saldo)}</span>
+            </div>
+
+            {/* Seção exclusiva de Fechamento */}
+            {!isPartial && (
+              <>
+                <div className="border-t border-dashed border-gray-300 my-2" />
+                <div className="flex justify-between">
+                  <span className="text-gray-600">VALOR INFORMADO:</span>
+                  <span className="font-bold text-gray-900">{formatCurrency(cashRegister.actualAmount || 0)}</span>
                 </div>
-                <div className="flex justify-between items-center pt-3 border-t border-white/20">
-                  <span className="font-bold">Diferença:</span>
-                  <span className={`font-black text-2xl ${(cashRegister.difference || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {(cashRegister.difference || 0) >= 0 ? '+' : ''}R$ {(cashRegister.difference || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                <div className="flex justify-between">
+                  <span className="text-gray-600">DIFERENÇA:</span>
+                  <span className={`font-bold ${(cashRegister.difference || 0) < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                    {formatCurrency(Math.abs(cashRegister.difference || 0))}
                     {(cashRegister.difference || 0) > 0 && ' (SOBRA)'}
                     {(cashRegister.difference || 0) < 0 && ' (FALTA)'}
                   </span>
                 </div>
-              </div>
+              </>
+            )}
 
-              {cashRegister.notes && (
-                <div className="mt-4 pt-4 border-t border-white/20">
-                  <p className="font-bold text-sm mb-2">Observações:</p>
-                  <p className="text-sm text-gray-300">{cashRegister.notes}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            {/* Nota parcial */}
+            {isPartial && (
+              <>
+                <div className="border-t border-dashed border-gray-300 my-2" />
+                <p className="text-center text-gray-500 italic text-[10px] leading-relaxed">
+                  Relatório de conferência parcial.<br />O caixa continua em operação.
+                </p>
+              </>
+            )}
 
-        <div className="p-8 bg-gray-50 border-t border-gray-200 flex gap-4 print:hidden">
-          <button
-            onClick={handlePrint}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold transition-all"
-          >
-            🖨️ Imprimir Relatório
-          </button>
-          <button
-            onClick={handleClose}
-            className={`flex-1 ${hasPrinted ? 'bg-gray-200 hover:bg-gray-300 text-gray-800' : 'bg-red-100 text-red-500 cursor-not-allowed'} py-3 rounded-xl font-bold transition-all`}
-          >
-            {hasPrinted ? 'Fechar' : 'Imprima antes de Fechar'}
-          </button>
+            {/* Assinaturas — apenas no Fechamento */}
+            {!isPartial && (
+              <>
+                <div className="border-t border-dashed border-gray-300 my-3" />
+                <div className="mt-6 mb-1 border-b border-gray-400 mx-4" />
+                <p className="text-center text-[10px] text-gray-500">ASSINATURA DO OPERADOR</p>
+                <div className="mt-8 mb-1 border-b border-gray-400 mx-4" />
+                <p className="text-center text-[10px] text-gray-500">ASSINATURA DO GERENTE</p>
+              </>
+            )}
+
+            <div className="border-t border-dashed border-gray-300 my-2" />
+
+            {/* Rodapé */}
+            <p className="text-center text-[10px] text-gray-500 uppercase">
+              EMITIDO EM: {new Date().toLocaleString('pt-BR')}
+            </p>
+            <p className="text-center text-[10px] text-gray-500 uppercase">
+              {isPartial ? 'CONFERÊNCIA NÃO FISCAL' : 'FECHAMENTO NÃO FISCAL'}
+            </p>
+            <p className="text-center text-[10px] text-gray-400 mt-1">www.versiory.store</p>
+          </div>
+
+          {/* Botões de ação — ocultos na impressão */}
+          <div className="print-hidden px-4 pb-4 pt-3 flex gap-3 border-t border-gray-100">
+            <button
+              onClick={handlePrint}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2"
+            >
+              🖨️ Imprimir
+            </button>
+            <button
+              onClick={handleClose}
+              className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-xl font-bold text-sm transition-all active:scale-95"
+            >
+              ✕ Fechar
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

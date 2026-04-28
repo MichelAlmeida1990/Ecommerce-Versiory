@@ -116,23 +116,36 @@ const Checkout: React.FC<CheckoutProps> = ({
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = Math.max(0, subtotal - discount);
 
-  const applyCoupon = () => {
+  // ERRCOM124: Validação dinâmica de cupons via Firebase (substituindo hardcoded)
+  const applyCoupon = async () => {
     setCouponError('');
     const code = couponCode.toUpperCase().trim();
-
-    if (code === 'VERSIORY10') {
-      const d = subtotal * 0.1;
-      setDiscount(d);
-      setCouponApplied(true);
-    } else if (code === 'BEMVINDO') {
-      setDiscount(20);
-      setCouponApplied(true);
-    } else if (!code) {
+    if (!code) {
       setCouponError('Digite um cupom');
-    } else {
-      setCouponError('Cupom inválido ou expirado');
+      return;
+    }
+
+    try {
+      const { validateAndUseCoupon } = await import('../services/firebase');
+      const { coupon, error } = await validateAndUseCoupon(code);
+
+      if (error || !coupon) {
+        setCouponError(error || 'Cupom inválido ou expirado');
+        return;
+      }
+
+      // Calcular desconto
+      const d = coupon.tipo === 'percentual'
+        ? subtotal * (coupon.valor / 100)
+        : coupon.valor;
+
+      setDiscount(Math.min(d, subtotal)); // desconto não pode ser maior que subtotal
+      setCouponApplied(true);
+    } catch {
+      setCouponError('Erro ao validar cupom. Tente novamente.');
     }
   };
+
 
   const generateOrderId = () => {
     const timestamp = Date.now();

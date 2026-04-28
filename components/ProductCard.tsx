@@ -203,19 +203,28 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
             )}
           </div>
 
-          <button
-            onClick={handleAddToCart}
-            disabled={(product.stock || 0) <= 0}
-            className={`p-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-90 group/btn ${
-              (product.stock || 0) <= 0 
-                ? 'bg-slate-300 cursor-not-allowed' 
-                : 'bg-versiory-ink hover:bg-versiory-coral text-white'
-            }`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover/btn:rotate-90 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
+          <div className="flex flex-col gap-2">
+            {/* ERRCOM044: Botão Mais Detalhes */}
+            <button
+              onClick={() => onViewDetails(product)}
+              className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-versiory-coral transition-colors text-right"
+            >
+              Mais Detalhes →
+            </button>
+            <button
+              onClick={handleAddToCart}
+              disabled={(product.stock || 0) <= 0}
+              className={`p-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-90 group/btn ${
+                (product.stock || 0) <= 0 
+                  ? 'bg-slate-300 cursor-not-allowed' 
+                  : 'bg-versiory-ink hover:bg-versiory-coral text-white'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover/btn:rotate-90 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
