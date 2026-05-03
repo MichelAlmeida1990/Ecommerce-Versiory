@@ -24,7 +24,14 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
     credito: 'CRÉDITO',
   };
 
-  const saldo = (cashRegister.initialAmount || 0) + (cashRegister.totalSales || 0);
+  // ERRCOM128: Calcular sangrias e suprimentos para o saldo
+  const totalWithdrawals = (cashRegister.withdrawals || []).reduce((acc, w) => acc + w.amount, 0);
+  const totalDeposits = (cashRegister.deposits || []).reduce((acc, d) => acc + d.amount, 0);
+
+  // ERRCOM095: Apuração Final = Abertura + Vendas (Dinheiro/Pix) + Suprimentos - Sangrias
+  // Nota: Cartões são saldo futuro mas aparecem no resumo de vendas.
+  const apuracaoDinheiroEPix = (cashRegister.salesByPayment?.dinheiro || 0) + (cashRegister.salesByPayment?.pix || 0);
+  const saldo = (cashRegister.initialAmount || 0) + apuracaoDinheiroEPix + totalDeposits - totalWithdrawals;
 
   const handlePrint = () => {
     setHasPrinted(true);
@@ -126,6 +133,29 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
 
             <div className="border-t border-dashed border-gray-300 my-2" />
 
+            {/* ERRCOM128: Detalhamento de Sangrias e Suprimentos */}
+            {(cashRegister.withdrawals?.length > 0 || cashRegister.deposits?.length > 0) && (
+              <>
+                <p className="font-black text-gray-900 underline uppercase mb-1">Movimentações de Caixa</p>
+                {cashRegister.deposits?.map((d, i) => (
+                  <div key={`dep-${i}`} className="flex justify-between text-blue-600">
+                    <span>SUPRIMENTO:</span>
+                    <span className="font-bold">+{formatCurrency(d.amount)}</span>
+                  </div>
+                ))}
+                {cashRegister.withdrawals?.map((w, i) => (
+                  <div key={`wit-${i}`} className="flex justify-between text-red-600">
+                    <span>SANGRIA:</span>
+                    <span className="font-bold">-{formatCurrency(w.amount)}</span>
+                  </div>
+                ))}
+                {cashRegister.withdrawals?.map((w, i) => (
+                  <p key={`mot-${i}`} className="text-[9px] text-gray-500 italic mb-1">Motivo: {w.reason}</p>
+                ))}
+                <div className="border-t border-dashed border-gray-300 my-2" />
+              </>
+            )}
+
             {/* Total por forma de pagamento */}
             <p className="font-black text-gray-900 underline uppercase mb-1">Total por Forma de Pagto (QTD / VALOR)</p>
             {Object.entries(cashRegister.salesByPayment || {}).map(([method, amount]) => {
@@ -142,8 +172,11 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
 
             {/* Saldo em Caixa */}
             <div className="flex justify-between items-center py-1">
-              <span className="font-black text-gray-900 uppercase text-sm">Saldo em Caixa:</span>
-              <span className="font-black text-gray-900 text-sm">{formatCurrency(saldo)}</span>
+              <div>
+                <span className="font-black text-gray-900 uppercase text-sm">Saldo Real em Caixa:</span>
+                <p className="text-[9px] text-gray-400">(Abertura + Vendas Dinheiro/Pix + Suprimentos - Sangrias)</p>
+              </div>
+              <span className="font-black text-green-600 text-sm">{formatCurrency(saldo)}</span>
             </div>
 
             {/* Seção exclusiva de Fechamento */}

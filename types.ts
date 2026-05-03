@@ -3,6 +3,8 @@ export interface Product {
   id: number;
   name: string;
   price: number;
+  pricePOS?: number; // ERRCOM134: Preço para Loja Física
+  priceEcommerce?: number; // ERRCOM134: Preço para E-commerce
   category: string;
   image: string;
   images?: string[]; // Múltiplas imagens
@@ -76,6 +78,16 @@ export interface OrderItem {
   installments?: number;
 }
 
+export interface InstallmentStatus { // ERRCOM135
+  id: string;
+  number: string; // Ex: "1/6"
+  amount: number;
+  status: 'pending' | 'paid';
+  paidAt?: string;
+  notes?: string;
+  paymentMethod?: string;
+}
+
 export interface Order {
   id: string;
   customerId: number;
@@ -106,6 +118,7 @@ export interface Order {
   accountedInCash?: boolean; // Se o pedido já foi somado ao saldo do caixa atual
   stockDecremented?: boolean; // Se a baixa de estoque já foi realizada para este pedido
   installments?: number; // Número de parcelas (para crédito)
+  installmentDetails?: InstallmentStatus[]; // ERRCOM135: Gestão de parcelas
 }
 
 export interface Address {
@@ -163,6 +176,16 @@ export interface Expense {
   id: number;
   description: string;
   category: 'fixed' | 'variable' | 'investment' | 'emergency';
+  amount: number;
+  date: string;
+  notes?: string;
+  user: string;
+}
+
+export interface ManualRevenue { // ERRCOM136: Registro de receitas avulsas
+  id: number;
+  description: string;
+  category: 'PIX' | 'Dinheiro' | 'Credito' | 'Debito' | 'Deposito';
   amount: number;
   date: string;
   notes?: string;
@@ -255,4 +278,15 @@ export interface Coupon {
   ativo: boolean;
   descricao?: string;
   valorMinimo?: number;
+}
+
+export interface SmtpSettings { // ERRCOM093
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  encryption: 'tls' | 'ssl';
+  authRequired: boolean;
+  fromEmail: string;
+  fromName: string;
 }

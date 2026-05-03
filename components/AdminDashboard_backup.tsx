@@ -8,10 +8,7 @@ import {
   TrackingItem,
   InventoryMovement,
   Expense,
-  SizeChart,
-  ManualRevenue,
-  SmtpSettings,
-  OrderInstallment
+  SizeChart
 } from '../types';
 import PdvCheckoutModal from './PdvCheckoutModal';
 import FiscalConfigModal from './FiscalConfigModal';
@@ -24,7 +21,6 @@ import { sanitizeData } from '../services/utils';
 import ProductMediaShowcase from './ProductMediaShowcase';
 import CashRegisterReport from './CashRegisterReport';
 import { saveProduct } from '../services/firebase';
-import CouponManagement from './CouponManagement';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -55,8 +51,7 @@ type TabKey =
   | 'tracking'
   | 'inventory'
   | 'financial'
-  | 'fiscal'
-  | 'settings';
+  | 'fiscal';
 
 type StockFilter = 'all' | 'low' | 'out' | 'normal';
 
@@ -82,8 +77,8 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   shipped: 'Enviado',
   delivered: 'Entregue',
   cancelled: 'Cancelado',
-  budget: 'Or√ßamento',
-  returned: 'Devolu√ß√£o'
+  budget: 'OrÁamento',
+  returned: 'DevoluÁ„o'
 };
 
 const TRACKING_COLORS: Record<TrackingStatus, string> = {
@@ -102,15 +97,15 @@ const TRACKING_LABELS: Record<TrackingStatus, string> = {
   delayed: 'Atrasado'
 };
 
-const BASE_CATEGORIES = ['Eletr√¥nicos', 'Moda', 'Casa', 'Esportes', 'Cama, Mesa e Banho', 'Servi√ßos'];
+const BASE_CATEGORIES = ['EletrÙnicos', 'Moda', 'Casa', 'Esportes', 'Cama, Mesa e Banho', 'ServiÁos'];
 
 const BEDDING_SIZES = {
-  'Len√ßol': 'Solteiro (88x188cm), Casal (138x188cm), Queen (158x198cm), King (186x198cm)',
+  'LenÁol': 'Solteiro (88x188cm), Casal (138x188cm), Queen (158x198cm), King (186x198cm)',
   'Edredom': 'Solteiro (150x220cm), Casal (180x220cm), Queen (220x240cm), King (240x260cm)',
   'Colcha': 'Solteiro (150x220cm), Casal (180x220cm), Queen (220x240cm), King (240x260cm)',
-  'Fronha': 'Padr√£o (50x70cm), Queen/King (50x90cm)',
-  'Toalha de Banho': 'Padr√£o (70x140cm), Gigante (90x150cm), Banh√£o (100x150cm)',
-  'Toalha de Rosto': 'Padr√£o (50x80cm)',
+  'Fronha': 'Padr„o (50x70cm), Queen/King (50x90cm)',
+  'Toalha de Banho': 'Padr„o (70x140cm), Gigante (90x150cm), Banh„o (100x150cm)',
+  'Toalha de Rosto': 'Padr„o (50x80cm)',
   'Toalha de Mesa': '4 lugares (140x140cm), 6 lugares (140x210cm), 8 lugares (160x270cm)'
 };
 
@@ -119,7 +114,7 @@ const formatCurrency = (value: number) =>
 
 const formatOrderId = (id: string | number) => `#${id.toString().padStart(4, '0')}`;
 
-// ERRCOM026: Corrigido para usar data local (evita fuso hor√°rio UTC -1 dia)
+// ERRCOM026: Corrigido para usar data local (evita fuso hor·rio UTC -1 dia)
 const formatDate = (value: string) => {
   if (!value) return '';
   // Se formato YYYY-MM-DD, parsear como local
@@ -127,7 +122,7 @@ const formatDate = (value: string) => {
     const [y, m, d] = value.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString('pt-BR');
   }
-  // ISO string com hor√°rio
+  // ISO string com hor·rio
   const dt = new Date(value);
   return new Date(dt.getTime() + dt.getTimezoneOffset() * -60000).toLocaleDateString('pt-BR');
 };
@@ -151,69 +146,69 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateExpenses
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>(userRole === 'seller' ? 'pdv' : 'dashboard');
-  const [orderFilter, setOrderFilter] = useState<string>('all');
+  const [orderFilter, setOrderFilter] = useState<OrderStatus | 'all'>('all');
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
-  // ERRCOM106: Ferramenta de Resgate Total (Movida para Produtos)
+  // ERRCOM110: Ferramenta de Resgate Total (Corrigida e Refatorada para ser mais robusta)
   const handleDeepRescue = async () => {
-    console.log("üöÄ [RESCUE] Iniciando busca exaustiva em todas as chaves do navegador...");
+    console.log("?? [RESCUE] Iniciando busca exaustiva em todas as chaves do navegador...");
     let keysFound: string[] = [];
-
+    
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i) || '';
       // Ignoramos chaves internas do Firebase/Vite/Mixpanel
       if (key.includes('firebase') || key.includes('session') || key.includes('vite')) continue;
-
+      
       try {
         const value = localStorage.getItem(key);
         const parsed = JSON.parse(value || '');
-
-        // Heur√≠stica para identificar uma lista de produtos:
-        // 1. √â um array
+        
+        // HeurÌstica para identificar uma lista de produtos:
+        // 1. … um array
         // 2. Tem pelo menos um item
         // 3. O primeiro item tem propriedades comuns de produto (name, price, id)
-        // 4. E, idealmente, tem dados de varia√ß√£o (sizes, colors, stockBySize)
-        const isLikelyProductList = Array.isArray(parsed) && parsed.length > 0 &&
-          (parsed[0].name && parsed[0].price !== undefined && parsed[0].id !== undefined);
-
+        // 4. E, idealmente, tem dados de variaÁ„o (sizes, colors, stockBySize)
+        const isLikelyProductList = Array.isArray(parsed) && parsed.length > 0 && 
+                                    (parsed[0].name && parsed[0].price !== undefined && parsed[0].id !== undefined);
+        
         if (isLikelyProductList) {
           const hasVariationData = parsed.some((p: any) => p.sizes || p.colors || p.stockBySize || p.stockBySizeColor);
-
-          if (hasVariationData) { // Priorizamos listas com dados de varia√ß√£o
+          
+          if (hasVariationData) { // Priorizamos listas com dados de variaÁ„o
             keysFound.push(key);
-            console.log(`üéØ [RESCUE] Backup de PRODUTOS DETALHADOS encontrado! Chave: "${key}" com ${parsed.length} itens.`, parsed);
+            console.log(`?? [RESCUE] Backup de PRODUTOS DETALHADOS encontrado! Chave: "${key}" com ${parsed.length} itens.`, parsed);
 
-            if (window.confirm(`üö® DADOS DE PRODUTOS DETALHADOS LOCALIZADOS!\n\nA chave "${key}" cont√©m ${parsed.length} produtos com tamanhos/cores.\n\nDeseja substituir os dados atuais do Firebase por este backup?`)) {
+            if (window.confirm(`?? DADOS DE PRODUTOS DETALHADOS LOCALIZADOS!\n\nA chave "${key}" contÈm ${parsed.length} produtos com tamanhos/cores.\n\nDeseja substituir os dados atuais do Firebase por este backup?`)) {
               setIsSubmitting(true);
               const { saveProduct } = await import('../services/firebase');
               for (const p of parsed) {
                 const sanitized = sanitizeData(p);
-                // Garantir campos fiscais b√°sicos se ausentes
+                // Garantir campos fiscais b·sicos se ausentes
                 if (!sanitized.ncm) sanitized.ncm = '00000000';
                 if (!sanitized.unidade) sanitized.unidade = 'UN';
                 await saveProduct(sanitized);
               }
-              window.alert("‚úÖ SUCESSO! Banco de dados restaurado. A p√°gina ser√° atualizada.");
+              window.alert("? SUCESSO! Banco de dados restaurado. A p·gina ser· atualizada.");
               window.location.reload();
               return;
             }
-          } else { // Listas de produtos sem varia√ß√£o, apenas para log
-            console.log(`üí° [RESCUE] Candidato a lista de produtos (sem varia√ß√µes) encontrado na chave: "${key}" com ${parsed.length} itens.`, parsed);
+          } else { // Listas de produtos sem variaÁ„o, apenas para log
+            console.log(`?? [RESCUE] Candidato a lista de produtos (sem variaÁıes) encontrado na chave: "${key}" com ${parsed.length} itens.`, parsed);
           }
         }
       } catch (e) {
-        // console.warn(`‚ö†Ô∏è [RESCUE] Falha ao processar chave ${key} (n√£o √© JSON ou formato inesperado).`);
+        // console.warn(`?? [RESCUE] Falha ao processar chave ${key} (n„o È JSON ou formato inesperado).`);
       }
     }
 
     if (keysFound.length === 0) {
-      window.alert("‚ùå Nenhum backup de produtos detalhados (com tamanhos/cores) foi encontrado neste computador.\n\nSugest√£o: Verifique se voc√™ n√£o cadastrou os produtos em aba an√¥nima ou em outro navegador. Se voc√™ tiver um backup JSON, use o bot√£o 'Baixar Dump para An√°lise' e me envie o arquivo.");
+      window.alert("? Nenhum backup de produtos detalhados (com tamanhos/cores) foi encontrado neste computador.\n\nSugest„o: Verifique se vocÍ n„o cadastrou os produtos em aba anÙnima ou em outro navegador. Se vocÍ tiver um backup JSON, use o bot„o 'Baixar Dump para An·lise' e me envie o arquivo.");
     }
   };
 
-  // Fun√ß√£o auxiliar para baixar tudo do LocalStorage para an√°lise externa
+  // FunÁ„o auxiliar para baixar tudo do LocalStorage para an·lise externa
   const downloadLocalStorageDump = () => {
     const dump = JSON.stringify(localStorage, null, 2);
     const blob = new Blob([dump], { type: 'application/json' });
@@ -226,15 +221,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     document.body.removeChild(a);
   };
 
-  // BUGFIX #15: Fun√ß√£o para parser de valores decimais padr√£o brasileiro (2.226,89) ou americano (2226.89)
+  // BUGFIX #15: FunÁ„o para parser de valores decimais padr„o brasileiro (2.226,89) ou americano (2226.89)
   const parseBrazilianFloat = (value: string): number => {
     if (!value) return 0;
     let clean = value.trim();
-    // Se tiver v√≠rgula, tratamos como formato BR (2.226,89)
+    // Se tiver vÌrgula, tratamos como formato BR (2.226,89)
     if (clean.includes(',')) {
       clean = clean.replace(/\./g, '').replace(',', '.');
     }
-    // Remove qualquer outro caractere n√£o num√©rico exceto o ponto
+    // Remove qualquer outro caractere n„o numÈrico exceto o ponto
     clean = clean.replace(/[^\d.]/g, '');
     return parseFloat(clean) || 0;
   };
@@ -258,7 +253,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  // BUGFIX #1 & #11: Fun√ß√£o auxiliar para gerenciar baixa de estoque de forma consistente
+  // BUGFIX #1 & #11: FunÁ„o auxiliar para gerenciar baixa de estoque de forma consistente
   const updateStockProgressively = async (order: Order, type: 'decrement' | 'increment'): Promise<Product[]> => {
     const { saveProduct, saveInventoryMovement } = await import('../services/firebase');
     const updatedProductsList = [...products];
@@ -269,9 +264,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (productIndex === -1) continue;
 
       const p = updatedProductsList[productIndex];
-      // Ignorar se for item sem estoque (opcional, dependendo se servi√ßos tem estoque)
-      // Mas a regra diz baixar estoque se tiver, ent√£o seguimos:
-
+      // Ignorar se for item sem estoque (opcional, dependendo se serviÁos tem estoque)
+      // Mas a regra diz baixar estoque se tiver, ent„o seguimos:
+      
       const qty = item.quantity;
       const factor = type === 'decrement' ? -1 : 1;
       const newTotalStock = Math.max(0, (p.stock || 0) + (qty * factor));
@@ -334,7 +329,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [productForm, setProductForm] = useState<Partial<Product>>({
     name: '',
     price: 0,
-    category: 'Eletr√¥nicos',
+    category: 'EletrÙnicos',
     image: '',
     images: [],
     description: '',
@@ -404,8 +399,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return saved ? JSON.parse(saved) : [];
   });
   const [isCashReportOpen, setIsCashReportOpen] = useState(false);
-  // ERRCOM119: Estado dedicado para evitar race condition com cashRegisterHistory
-  const [currentCashReport, setCurrentCashReport] = useState<any>(null);
   const [isCashRegisterModalOpen, setIsCashRegisterModalOpen] = useState(false);
   const [cashRegisterForm, setCashRegisterForm] = useState({ amount: 0 });
 
@@ -425,7 +418,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleChartClick = (e: any) => {
     if (!e || !e.activeLabel) return;
-
+    
     // Encontrar os dados do ponto clicado
     const data = last30DaysData.find(d => d.name === e.activeLabel);
     if (!data || !data.orderIds || data.orderIds.length === 0) return;
@@ -433,7 +426,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const now = Date.now();
     const index = e.activeTooltipIndex;
 
-    // Simula√ß√£o de Double Click mais robusta
+    // SimulaÁ„o de Double Click mais robusta
     if (lastClickRef.current && lastClickRef.current.index === index && (now - lastClickRef.current.time) < 500) {
       setDrillDownData({ date: data.fullDate || data.name, orderIds: data.orderIds });
       setIsDrillDownModalOpen(true);
@@ -483,16 +476,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     notes: ''
   });
 
-  // ERRCOM027: Filtro de data dos lan√ßamentos financeiros
+  // ERRCOM027: Filtro de data dos lanÁamentos financeiros
   const [financialDateFilter, setFinancialDateFilter] = useState({ from: '', to: '' });
 
-  // ERRCOM047: Busca de pedido por n√∫mero
-  const [manualRevenues, setManualRevenues] = useState<ManualRevenue[]>([]); // ERRCOM136
-  const [isManualRevenueModalOpen, setIsManualRevenueModalOpen] = useState(false);
-  const [manualRevenueForm, setManualRevenueForm] = useState<Partial<ManualRevenue>>({
-    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], notes: ''
-  });
-
+  // ERRCOM047: Busca de pedido por n˙mero
   const [orderSearch, setOrderSearch] = useState('');
 
   // ERRCOM035: Busca de cliente por nome
@@ -501,79 +488,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ERRCOM046: Detalhe do pedido
   const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
 
-  // ERRCOM022: Hist√≥rico de pedidos do cliente
+  // ERRCOM022: HistÛrico de pedidos do cliente
   const [customerOrderHistory, setCustomerOrderHistory] = useState<{ customer: Customer; orders: Order[] } | null>(null);
-
-  // ERRCOM125: Campo de desconto no PDV
-  const [pdvDiscount, setPdvDiscount] = useState(0);
-  const [pdvDiscountType, setPdvDiscountType] = useState<'fixo' | 'percentual'>('fixo');
 
   // ERRCOM029/030: Modal de vendas por forma de pagamento
   const [paymentBreakdownModal, setPaymentBreakdownModal] = useState<{ channel: 'pdv' | 'online'; orders: Order[] } | null>(null);
-
-  // ERRCOM135: Estado para modal de Baixa Parcial
-  const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
-  const [selectedOrderForInstallments, setSelectedOrderForInstallments] = useState<Order | null>(null);
-
-  // ERRCOM093: Configura√ß√£o SMTP
-  const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
-    host: 'smtp.gmail.com', port: 587, user: '', pass: '', encryption: 'tls', authRequired: true, fromEmail: '', fromName: 'Equipe Versiory'
-  });
-
-  const handleInstallmentWriteOff = async (orderId: string, installmentId: string) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order || !order.installmentDetails) return;
-
-    const updatedInstallments = order.installmentDetails.map(inst =>
-      inst.id === installmentId ? { ...inst, status: 'paid' as const, paidAt: new Date().toISOString() } : inst
-    );
-
-    const updatedOrder = { ...order, installmentDetails: updatedInstallments };
-    const { saveOrder } = await import('../services/firebase');
-    await saveOrder(updatedOrder);
-
-    onUpdateOrders(orders.map(o => o.id === orderId ? updatedOrder : o));
-    setSelectedOrderForInstallments(updatedOrder);
-    // ERRCOM135: Adicionar ao caixa se necess√°rio (regra de neg√≥cio opcional)
-    alert('Parcela baixada com sucesso!');
-  };
-
-  // ERRCOM136: Carregar receitas manuais na inicializa√ß√£o
-  useEffect(() => {
-    const loadManualRevenues = async () => {
-      try {
-        const { getManualRevenues } = await import('../services/firebase');
-        const revenues = await getManualRevenues();
-        setManualRevenues(revenues);
-      } catch (error) {
-        console.error("Erro ao carregar receitas manuais:", error);
-      }
-    };
-    loadManualRevenues();
-  }, []);
-
-  // ERRCOM136: Lan√ßamento de Receita Manual
-  const handleManualRevenueSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualRevenueForm.description?.trim() || !manualRevenueForm.amount) return;
-
-    try {
-      const { saveManualRevenue } = await import('../services/firebase');
-      const revenue: ManualRevenue = {
-        id: Date.now(),
-        description: manualRevenueForm.description,
-        category: (manualRevenueForm.category || 'PIX') as any,
-        amount: manualRevenueForm.amount,
-        date: manualRevenueForm.date || new Date().toISOString().split('T')[0],
-        notes: manualRevenueForm.notes,
-        user: 'Admin'
-      };
-      await saveManualRevenue(revenue);
-      setManualRevenues(prev => [...prev, revenue]); // Atualiza o gr√°fico e cards imediatamente
-      alert('Receita lan√ßada com sucesso!');
-      setIsManualRevenueModalOpen(false);
-    } catch (error) { console.error(error); }
-  };
 
   const categoryOptions = useMemo(() => {
     const productCategories = products.map(product => product.category).filter(Boolean);
@@ -582,7 +501,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return Array.from(new Set(merged));
   }, [categories, products]);
 
-  // Persist√™ncia do Caixa (Salvamento)
+  // PersistÍncia do Caixa (Salvamento)
   useEffect(() => {
     localStorage.setItem('versiory_cash_register', JSON.stringify(cashRegister));
   }, [cashRegister]);
@@ -600,25 +519,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [cashRegisterHistory]);
 
   const stats = useMemo(() => {
-    // BUGFIX #4 & #10: Unificar l√≥gica de faturamento para Dashboard, Pedidos e Financeiro
+    // BUGFIX #4 & #10: Unificar lÛgica de faturamento para Dashboard, Pedidos e Financeiro
     const revenueOrders = orders.filter(order => {
-      // ERRCOM104: Or√ßamentos pagos contam como receita
+      // ERRCOM104: OrÁamentos pagos contam como receita
       const isPaidBudget = order.isBudget && order.status === 'paid';
       const isRegularRevenue = !order.isBudget && order.status !== 'cancelled';
-
+      
       if (!isPaidBudget && !isRegularRevenue) return false;
 
       const hasServiceOnly = order.items?.every(item => {
         const product = products.find(p => p.id === item.productId);
-        return product?.category === 'Servi√ßos';
+        return product?.category === 'ServiÁos';
       });
 
-      // ERRCOM108/104: Servi√ßos e Or√ßamentos pagos contam como receita
-      if (hasServiceOnly) return ['paid', 'delivered', 'processing', 'shipped'].includes(order.status);
-
+      // ERRCOM071: ServiÁos contam como receita quando pagos ou entregues
+      if (hasServiceOnly) return ['paid', 'delivered'].includes(order.status);
+      
       const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
       const isPdvImmediate = order.salesChannel === 'physical' && order.status !== 'pending';
-
+      
       return isConfirmed || isPdvImmediate;
     });
 
@@ -637,37 +556,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const last30DaysData = useMemo(() => {
     const data = [];
     const today = new Date();
-    // Ajustar para o final do dia local para garantir que pegamos as √∫ltimas 24h corretamente no loop
+    // Ajustar para o final do dia local para garantir que pegamos as ˙ltimas 24h corretamente no loop
     today.setHours(23, 59, 59, 999);
 
     for (let i = 29; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-
-      // ERRCOM105: Usar data local (YYYY-MM-DD) em vez de UTC para o bucket do gr√°fico
+      
+      // ERRCOM105: Usar data local (YYYY-MM-DD) em vez de UTC para o bucket do gr·fico
       const dateStr = d.toLocaleDateString('en-CA'); // en-CA retorna YYYY-MM-DD
       const shortDate = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
 
       const dayOrders = orders.filter(o => {
         const orderLocalDate = new Date(o.date).toLocaleDateString('en-CA');
-        // ERRCOM104: Or√ßamentos pagos contam no gr√°fico
+        // ERRCOM104: OrÁamentos pagos contam no gr·fico
         const isPaidBudget = o.isBudget && o.status === 'paid';
         const isRegularRevenue = !o.isBudget && o.status !== 'cancelled';
 
         if (orderLocalDate !== dateStr || (!isPaidBudget && !isRegularRevenue)) return false;
 
-        // BUGFIX #10: Aplicar a mesma regra de receita do stats para o gr√°fico
+        // BUGFIX #10: Aplicar a mesma regra de receita do stats para o gr·fico
         const hasServiceOnly = o.items?.every(item => {
           const product = products.find(p => p.id === item.productId);
-          return product?.category === 'Servi√ßos';
+          return product?.category === 'ServiÁos';
         });
 
-        // ERRCOM108/104: Incluir or√ßamentos e servi√ßos pagos no gr√°fico
-        if (hasServiceOnly) return ['paid', 'delivered', 'processing', 'shipped'].includes(o.status);
-
+        if (hasServiceOnly) return ['paid', 'delivered'].includes(o.status);
+        
         const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
         const isPdvImmediate = o.salesChannel === 'physical' && o.status !== 'pending';
-
+        
         return isConfirmed || isPdvImmediate;
       });
 
@@ -719,7 +637,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .filter(p => {
         const q = productSearch.toLowerCase();
         return (
-          p.name?.toLowerCase().includes(q) ||
+          p.name?.toLowerCase().includes(q) || 
           p.description?.toLowerCase().includes(q) ||
           p.category?.toLowerCase().includes(q) ||
           String(p.id).includes(productSearch)
@@ -729,26 +647,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [products, productSearch]);
 
   const filteredOrders = useMemo(() => {
-    let filtered = orders;
-    if (orderFilter !== 'all') {
-      if (orderFilter === 'budget') {
-        filtered = orders.filter(o => o.isBudget);
-      } else if (orderFilter === 'converted') {
-        filtered = orders.filter(o => !o.isBudget && o.id.startsWith('ORC-'));
-      } else if (orderFilter === 'returned') {
-        filtered = orders.filter(o => o.status === 'returned');
-      } else {
-        filtered = orders.filter(o => o.status === orderFilter);
-      }
-    }
-    // ERRCOM047: Filtro por n√∫mero do pedido
+    let filtered = orderFilter === 'all' ? orders : orders.filter(order => order.status === orderFilter);
+    // ERRCOM047: Filtro por n˙mero do pedido
     if (orderSearch.trim()) {
       filtered = filtered.filter(o =>
         o.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
         o.customerName.toLowerCase().includes(orderSearch.toLowerCase())
       );
     }
-    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return filtered;
   }, [orders, orderFilter, orderSearch]);
 
   const inventoryStats = useMemo(() => {
@@ -805,54 +712,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [products, inventorySearch, stockFilter]);
 
   const financialStats = useMemo(() => {
-    // ERRCOM026: Ajustar comportamento do filtro de data no m√≥dulo financeiro
-    const filterByDate = (dateStr: string) => {
-      if (!financialDateFilter.from && !financialDateFilter.to) return true;
-      const date = new Date(dateStr);
-      const from = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
-      const to = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
-      if (from && date < from) return false;
-      if (to && date > to) return false;
-      return true;
-    };
-
     const revenueOrders = orders.filter(order => {
-      if (!filterByDate(order.date)) return false;
-      // ERRCOM104: Or√ßamentos convertidos (paid, processing, shipped, delivered) refletem no financeiro
-      if (order.isBudget) {
-        const convertedStatuses = ['paid', 'processing', 'shipped', 'delivered'];
-        if (!convertedStatuses.includes(order.status)) return false;
-      }
-      if (order.status === 'cancelled') return false;
-
+      // ERRCOM104: Incluir orÁamentos com status "Pagamento Efetuado"
+      if (order.isBudget && order.status !== 'paid') return false;
       const hasService = order.items?.some(item => {
         const product = products.find(p => p.id === item.productId);
-        return product?.category === 'Servi√ßos';
+        return product?.category === 'ServiÁos';
       });
-
-      if (hasService) return ['paid', 'delivered'].includes(order.status);
-      return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status) ||
-        (order.salesChannel === 'physical' && order.status !== 'pending');
+      if (hasService) return order.status === 'delivered';
+      return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
     });
-
-    const filteredExpenses = expenses.filter(e => filterByDate(e.date));
 
     const totalRevenue = revenueOrders.reduce((sum, order) => sum + order.total, 0);
     const pdvRevenue = revenueOrders.filter(o => o.salesChannel === 'physical').reduce((sum, order) => sum + order.total, 0);
     const onlineRevenue = revenueOrders.filter(o => !o.salesChannel || o.salesChannel === 'online').reduce((sum, order) => sum + order.total, 0);
-    const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-
-    // ERRCOM136: C√°lculo real integrando Receitas Manuais
-    const filteredManualRevenues = manualRevenues.filter(r => filterByDate(r.date));
-    const manualRevenueTotal = filteredManualRevenues.reduce((sum, r) => sum + r.amount, 0);
-
-    const netProfit = totalRevenue + manualRevenueTotal - totalExpenses;
+    const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
-  }, [orders, expenses, products, financialDateFilter, manualRevenues]); // Depend√™ncia atualizada para ERRCOM136
+  }, [orders, expenses, products]);
 
-  // ERRCOM114: Valida√ß√£o de sincroniza√ß√£o de estoque (diagn√≥stico)
+  // ERRCOM114: ValidaÁ„o de sincronizaÁ„o de estoque (diagnÛstico)
   const validateStockConsistency = (product: Product): boolean => {
     if (!product.sizes && !product.colors) return true; // Only applies to products with variations
 
@@ -868,7 +749,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const stockGeneral = product.stock || 0;
 
     if (totalCalculatedStock !== stockGeneral) {
-      console.warn(`‚ö†Ô∏è Inconsist√™ncia de estoque detectada no produto ${product.name} (ID: ${product.id}):`, {
+      console.warn(`?? InconsistÍncia de estoque detectada no produto ${product.name} (ID: ${product.id}):`, {
         estoqueGeral: stockGeneral,
         somaPorVariacao: totalCalculatedStock,
         diferenca: Math.abs(totalCalculatedStock - stockGeneral)
@@ -884,7 +765,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [products]);
 
   const recentTransactions = useMemo(() => {
-    // ERRCOM026: Filtrar cancelados e or√ßamentos da lista de receitas
+    // ERRCOM026: Filtrar cancelados e orÁamentos da lista de receitas
     const revenue = orders
       .filter(order => {
         const isPaidBudget = order.isBudget && order.status === 'paid';
@@ -893,24 +774,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       })
       .map(order => ({
         id: order.id,
-        description: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}${order.isBudget ? ' (Or√ßamento Finalizado)' : ''}`,
+        description: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}${order.isBudget ? ' (OrÁamento Finalizado)' : ''}`,
         amount: order.total,
         type: 'revenue' as const,
         date: order.date,
         category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
         notes: order.notes || ''
       }));
-
-    // ERRCOM136: Incluir lan√ßamentos manuais na lista de transa√ß√µes recentes
-    const manualRevenueItems = manualRevenues.map(rev => ({
-      id: String(rev.id),
-      description: rev.description,
-      amount: rev.amount,
-      type: 'revenue' as const,
-      date: rev.date,
-      category: `Receita: ${rev.category}`,
-      notes: rev.notes || ''
-    }));
 
     const expenseItems = expenses.map(expense => ({
       id: String(expense.id),
@@ -920,20 +790,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       date: expense.date,
       category: expense.category,
       expenseId: expense.id,
-      notes: expense.notes || '' // Novo: exibir observa√ß√µes
+      notes: expense.notes || '' // Novo: exibir observaÁıes
     }));
 
-    const all = [...revenue, ...manualRevenueItems, ...expenseItems]
+    const all = [...revenue, ...expenseItems]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // ERRCOM026: Melhorar compara√ß√£o de datas para evitar problemas de fuso hor√°rio
+    // ERRCOM026: Melhorar comparaÁ„o de datas para evitar problemas de fuso hor·rio
     if (financialDateFilter.from || financialDateFilter.to) {
       return all.filter(t => {
         const transactionDate = new Date(t.date);
-        const fromDate = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
-        const toDate = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
-
-        // Comparar usando timestamps para evitar problemas de formata√ß√£o
+        const fromDate = financialDateFilter.from ? new Date(financialDateFilter.from) : null;
+        const toDate = financialDateFilter.to ? new Date(financialDateFilter.to) : null;
+        
+        // Comparar usando timestamps para evitar problemas de formataÁ„o
         if (fromDate && transactionDate < fromDate) return false;
         if (toDate && transactionDate > toDate) return false;
         return true;
@@ -942,7 +812,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return all.slice(0, 100); // Aumentado para 100 quando sem filtro
   }, [orders, expenses, financialDateFilter]);
 
-  // ERRCOM033: Estat√≠sticas de clientes
+  // ERRCOM033: EstatÌsticas de clientes
   const customerStats = useMemo(() => {
     const activeOrders = orders.filter(o => !o.isBudget);
     const pdvCustomerIds = new Set(
@@ -955,12 +825,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // Revenue logic should match stats calc
     const revenueOrders = orders.filter(order => {
       if (order.isBudget) return false;
-      if (order.status === 'cancelled') return false;
       const hasService = order.items?.some(item => {
         const product = products.find(p => p.id === item.productId);
-        return product?.category === 'Servi√ßos';
+        return product?.category === 'ServiÁos';
       });
-      if (hasService) return ['paid', 'delivered'].includes(order.status); // ERRCOM108
+      if (hasService) return order.status === 'delivered';
       return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
     });
 
@@ -990,7 +859,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProductForm({
       name: '',
       price: 0,
-      category: 'Eletr√¥nicos',
+      category: 'EletrÙnicos',
       image: '',
       images: [],
       description: '',
@@ -1057,7 +926,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       const { saveProduct } = await import('../services/firebase');
 
-      // Inicializar stockBySize e stockBySizeColor se houver varia√ß√µes
+      // Inicializar stockBySize e stockBySizeColor se houver variaÁıes
       let stockBySize = productForm.stockBySize || {};
       let stockBySizeColor = productForm.stockBySizeColor || {};
 
@@ -1079,14 +948,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               stockBySizeColor[key] = stockPerComb + (index < remainder ? 1 : 0);
             });
           } else {
-            // BUGFIX #2: Se j√° existem, garantir que o stock total seja a soma das varia√ß√µes
-            // Ou se o usu√°rio editou o total manualmente, avisar ou redistribuir.
-            // Aqui vamos assumir que a soma das varia√ß√µes manda se elas j√° existirem.
+            // BUGFIX #2: Se j· existem, garantir que o stock total seja a soma das variaÁıes
+            // Ou se o usu·rio editou o total manualmente, avisar ou redistribuir.
+            // Aqui vamos assumir que a soma das variaÁıes manda se elas j· existirem.
             const totalFromVariants = Object.values(productForm.stockBySizeColor).reduce((s, q) => s + (Number(q) || 0), 0);
             if (totalFromVariants !== productForm.stock) {
-              // Se o usu√°rio mudou o total manualmente no campo principal, limpamos para for√ßar redistribui√ß√£o
-              // OU matemos a soma. Vamos manter a soma para evitar perda de dados acidental.
-              productForm.stock = totalFromVariants;
+               // Se o usu·rio mudou o total manualmente no campo principal, limpamos para forÁar redistribuiÁ„o
+               // OU matemos a soma. Vamos manter a soma para evitar perda de dados acidental.
+               productForm.stock = totalFromVariants;
             }
           }
           stockBySize = {}; // Limpar stockBySize simples se tem cores
@@ -1103,10 +972,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           } else {
             const totalFromVariants = Object.values(productForm.stockBySize).reduce((s, q) => s + (Number(q) || 0), 0);
             if (totalFromVariants !== productForm.stock) {
-              productForm.stock = totalFromVariants;
+               productForm.stock = totalFromVariants;
             }
           }
-          stockBySizeColor = {}; // Limpar stockBySizeColor se n√£o tem cores
+          stockBySizeColor = {}; // Limpar stockBySizeColor se n„o tem cores
         }
       }
 
@@ -1181,18 +1050,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleProductDelete = async (id: number) => {
-    // Verificar se existe movimenta√ß√µes ou pedidos vinculados
+    // Verificar se existe movimentaÁıes ou pedidos vinculados
     const hasOrders = orders.some(order =>
       order.items?.some(item => item.productId === id)
     );
     const hasMovements = inventoryMovements.some(m => m.productId === id);
 
     if (hasOrders || hasMovements) {
-      window.alert('‚ùå Este produto n√£o pode ser exclu√≠do pois possui pedidos ou movimenta√ß√µes de estoque vinculadas. Por normas fiscais, a exclus√£o √© bloqueada.');
+      window.alert('? Este produto n„o pode ser excluÌdo pois possui pedidos ou movimentaÁıes de estoque vinculadas. Por normas fiscais, a exclus„o È bloqueada.');
       return;
     }
 
-    if (!window.confirm('Tem certeza que deseja excluir este produto? Esta a√ß√£o n√£o pode ser desfeita.')) return;
+    if (!window.confirm('Tem certeza que deseja excluir este produto? Esta aÁ„o n„o pode ser desfeita.')) return;
     try {
       const { deleteProductItem } = await import('../services/firebase');
       await deleteProductItem(id);
@@ -1305,11 +1174,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleCategoryDelete = async (categoryId: string) => {
-    // ERRCOM017: Bloquear exclus√£o se houver produtos vinculados
+    // ERRCOM017: Bloquear exclus„o se houver produtos vinculados
     const categoryName = categories.find(c => c.id === categoryId)?.name;
     const hasProducts = products.some(p => p.category === categoryName);
     if (hasProducts) {
-      window.alert(`‚ùå N√£o √© poss√≠vel excluir a categoria "${categoryName}" pois ela possui produtos vinculados. Remova ou reclassifique os produtos antes de excluir a categoria.`);
+      window.alert(`? N„o È possÌvel excluir a categoria "${categoryName}" pois ela possui produtos vinculados. Remova ou reclassifique os produtos antes de excluir a categoria.`);
       return;
     }
     if (!window.confirm('Tem certeza que deseja excluir esta categoria?')) return;
@@ -1324,11 +1193,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const openOrderStatusModal = (order: Order) => {
-    // ERRCOM113: Bloquear altera√ß√£o de status se for or√ßamento e estiver pendente (n√£o convertido)
-    if (order.isBudget && order.status === 'pending') {
-      window.alert('‚ö†Ô∏è A√á√ÉO BLOQUEADA\n\nEste pedido √© um Or√ßamento. Voc√™ deve utilizar o bot√£o "Converter em Venda" no final da lista para que o fluxo de caixa, estoque e apura√ß√£o sejam processados corretamente.');
-      return;
-    }
     setOrderStatusForm({
       orderId: order.id,
       status: order.status,
@@ -1344,11 +1208,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const orderToUpdate = orders.find(o => o.id === orderStatusForm.orderId);
       if (!orderToUpdate) return;
 
-      const updatedOrder: Order = {
-        ...orderToUpdate,
-        status: orderStatusForm.status,
+      const updatedOrder: Order = { 
+        ...orderToUpdate, 
+        status: orderStatusForm.status, 
         notes: orderStatusForm.notes,
-        // ERRCOM101: Registrar hist√≥rico de status
+        // ERRCOM101: Registrar histÛrico de status
         statusHistory: [
           ...(orderToUpdate.statusHistory || []),
           {
@@ -1360,13 +1224,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       };
       let finalProducts = products;
 
-      // BUGFIX #12: Evitar loop de soma duplicada e garantir exclus√£o do saldo ao cancelar/voltar para pendente
-      // ERRCOM104: Or√ßamentos podem ser contabilizados se status for 'paid'
+      // BUGFIX #12: Evitar loop de soma duplicada e garantir exclus„o do saldo ao cancelar/voltar para pendente
+      // ERRCOM104: OrÁamentos podem ser contabilizados se status for 'paid'
       if (updatedOrder.salesChannel === 'physical') {
         const isAccountingStatus = ['delivered', 'paid', 'processing', 'shipped'].includes(updatedOrder.status);
         const wasAccountingStatus = ['delivered', 'paid', 'processing', 'shipped'].includes(orderToUpdate.status);
 
-        // Se for or√ßamento, s√≥ contabiliza se mudar para um status de pagamento/entrega
+        // Se for orÁamento, sÛ contabiliza se mudar para um status de pagamento/entrega
         // Se for venda normal, segue o fluxo normal
         if (isAccountingStatus && !orderToUpdate.accountedInCash) {
           setCashRegister(prev => ({ ...prev, currentBalance: prev.currentBalance + updatedOrder.total }));
@@ -1377,17 +1241,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      // BUGFIX #1 & #11: Baixa de estoque somente ao acionar "Entregue" para Online e Servi√ßos
+      // BUGFIX #1 & #11: Baixa de estoque somente ao acionar "Entregue" para Online e ServiÁos
       const isDelivered = updatedOrder.status === 'delivered';
-      const wasDelivered = orderToUpdate.status === 'delivered' || orderToUpdate.status === 'returned';
+      const wasDelivered = orderToUpdate.status === 'delivered';
 
       if (isDelivered && !wasDelivered && !updatedOrder.stockDecremented) {
-        // Momento do decremento: Se PDV Products j√° baixou, adjustStock cuidar√° de n√£o baixar duplicado se gerenciado corretamente
-        // Mas a regra diz: baixa instant√¢nea no PDV (produtos) vs No Pedido (Servi√ßos/Online).
+        // Momento do decremento: Se PDV Products j· baixou, adjustStock cuidar· de n„o baixar duplicado se gerenciado corretamente
+        // Mas a regra diz: baixa instant‚nea no PDV (produtos) vs No Pedido (ServiÁos/Online).
         // Vamos filtrar os itens que DEVEM baixar agora.
         const itemsToDecrement = updatedOrder.items.filter(item => {
           const product = products.find(p => p.id === item.productId);
-          const isService = product?.category === 'Servi√ßos';
+          const isService = product?.category === 'ServiÁos';
           const isOnline = updatedOrder.salesChannel === 'online' || !updatedOrder.salesChannel;
           return isService || isOnline;
         });
@@ -1400,7 +1264,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         // Estorno de estoque se saiu de Entregue para qualquer outro status (incluindo Cancelado)
         const itemsToIncrement = updatedOrder.items.filter(item => {
           const product = products.find(p => p.id === item.productId);
-          const isService = product?.category === 'Servi√ßos';
+          const isService = product?.category === 'ServiÁos';
           const isOnline = updatedOrder.salesChannel === 'online' || !updatedOrder.salesChannel;
           return isService || isOnline;
         });
@@ -1415,7 +1279,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (isPdv) {
           const itemsToIncrement = updatedOrder.items.filter(item => {
             const product = products.find(p => p.id === item.productId);
-            return product?.category !== 'Servi√ßos';
+            return product?.category !== 'ServiÁos';
           });
           if (itemsToIncrement.length > 0) {
             finalProducts = await updateStockProgressively({ ...updatedOrder, items: itemsToIncrement }, 'increment');
@@ -1507,9 +1371,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const product = products.find(item => item.id === productId);
     if (!product) return;
 
-    // Se o produto tem tamanhos, validar sele√ß√£o (apenas para movimenta√ß√£o de estoque)
+    // Se o produto tem tamanhos, validar seleÁ„o (apenas para movimentaÁ„o de estoque)
     if (product.sizes && !inventoryForm.selectedSize) {
-      window.alert('Selecione um tamanho para movimenta√ß√£o de estoque.');
+      window.alert('Selecione um tamanho para movimentaÁ„o de estoque.');
       return;
     }
 
@@ -1551,7 +1415,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         newStock = currentStock + inventoryForm.quantity;
       } else if (inventoryForm.type === 'out') {
         if (currentCombStock < inventoryForm.quantity) {
-          window.alert('Estoque insuficiente para esta sa√≠da.');
+          window.alert('Estoque insuficiente para esta saÌda.');
           return;
         }
         newCombStock = currentCombStock - inventoryForm.quantity;
@@ -1600,7 +1464,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         stock: newStock
       };
 
-      // S√≥ adicionar stockBySize se tiver tamanhos
+      // SÛ adicionar stockBySize se tiver tamanhos
       if (product.sizes && Object.keys(newStockBySize).length > 0) {
         updatedProduct.stockBySize = newStockBySize;
       }
@@ -1645,7 +1509,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const addToPdvCart = (product: Product, size?: string, color?: string) => {
-    // Se o produto tem variantes mas n√£o foram passadas, usar do estado global (compatibilidade com busca direta)
+    // Se o produto tem variantes mas n„o foram passadas, usar do estado global (compatibilidade com busca direta)
     const finalSize = size || pdvModalSelection.size || selectedSizes[product.id];
     const finalColor = color || pdvModalSelection.color; // Cor geralmente vem do modal no PDV
 
@@ -1659,7 +1523,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
-    // Verificar estoque espec√≠fico
+    // Verificar estoque especÌfico
     let availableStock = product.stock || 0;
     if (finalSize && finalColor && product.stockBySizeColor) {
       availableStock = product.stockBySizeColor[`${finalSize}-${finalColor}`] || 0;
@@ -1681,7 +1545,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       if (existing) {
         if (existing.quantity >= availableStock) {
-          window.alert('Quantidade m√°xima em estoque atingida.');
+          window.alert('Quantidade m·xima em estoque atingida.');
           return prev;
         }
 
@@ -1722,7 +1586,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       if (newQuantity > maxStock) {
-        window.alert('Quantidade m√°xima em estoque atingida.');
+        window.alert('Quantidade m·xima em estoque atingida.');
         return;
       }
     }
@@ -1736,12 +1600,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handlePdvCheckout = () => {
     if (pdvCart.length === 0) {
-      window.alert('O carrinho est√° vazio.');
+      window.alert('O carrinho est· vazio.');
       return;
     }
     // ERRCOM050: Bloquear venda com caixa fechado
     if (!cashRegister.isOpen) {
-      window.alert('‚ö†Ô∏è O Caixa est√° fechado. Abra o caixa antes de realizar vendas.');
+      window.alert('?? O Caixa est· fechado. Abra o caixa antes de realizar vendas.');
       setIsCashRegisterModalOpen(true); // Open cash register modal to prompt opening
       return;
     }
@@ -1751,9 +1615,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; email: string; cpf: string; notes: string; address?: string; isBudget?: boolean }, order: Order) => {
     const isBudget = order.isBudget || false;
 
-    // ERRCOM99: Or√ßamentos n√£o exigem caixa aberto, pois n√£o geram movimenta√ß√£o financeira imediata
+    // ERRCOM99: OrÁamentos n„o exigem caixa aberto, pois n„o geram movimentaÁ„o financeira imediata
     if (!isBudget && !cashRegister.isOpen) {
-      window.alert('‚ö†Ô∏è O Caixa est√° fechado. Abra o caixa antes de realizar vendas.');
+      window.alert('?? O Caixa est· fechado. Abra o caixa antes de realizar vendas.');
       setIsPdvCheckoutModalOpen(false);
       return;
     }
@@ -1768,47 +1632,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       order.orderTime = new Date().toLocaleTimeString('pt-BR'); // ERRCOM083: Hora com segundos
       order.accountedInCash = false; // Inicializa falso
 
-      // ERRCOM112: Trava de Estoque S√≠ncrona no Admin/PDV
-      if (!isBudget) {
-        const { getProducts } = await import('../services/firebase');
-        const currentProducts = await getProducts();
-        for (const cartItem of pdvCart) {
-          if (cartItem.product.category === 'Servi√ßos') continue;
-          const actualProduct = currentProducts.find(p => p.id === cartItem.product.id);
-          if (!actualProduct) {
-            const msg = `‚ùå O produto ${cartItem.product.name} n√£o est√° mais dispon√≠vel no cat√°logo.`;
-            window.alert(msg);
-            setIsSubmitting(false);
-            throw new Error(msg);
-          }
-
-          let availableStock = actualProduct.stock || 0;
-          if (cartItem.selectedSize && cartItem.selectedColor && actualProduct.stockBySizeColor && actualProduct.stockBySizeColor[`${cartItem.selectedSize}-${cartItem.selectedColor}`] !== undefined) {
-            availableStock = actualProduct.stockBySizeColor[`${cartItem.selectedSize}-${cartItem.selectedColor}`];
-          } else if (cartItem.selectedSize && actualProduct.stockBySize && actualProduct.stockBySize[cartItem.selectedSize] !== undefined) {
-            availableStock = actualProduct.stockBySize[cartItem.selectedSize];
-          }
-
-          if (cartItem.quantity > availableStock) {
-            const msg = `‚ùå Estoque insuficiente para ${cartItem.product.name}. Desejado: ${cartItem.quantity}, Dispon√≠vel: ${availableStock}.`;
-            window.alert(msg);
-            setIsSubmitting(false);
-            throw new Error(msg);
-          }
-        }
-      }
-
       // BUGFIX: Buscar lista fresca do Firestore para evitar estado stale
       const freshCustomers = await getCustomers();
+      let customer = freshCustomers.find(c => (c.phone === customerData.phone && customerData.phone) || (c.email === customerData.email && customerData.email));
 
-      // ERRCOM126: Identifica√ß√£o por CPF primeiro (chave √∫nica), depois celular/email
-      let customer = freshCustomers.find(c =>
-        (customerData.cpf && c.cpfCnpj === customerData.cpf) ||
-        (customerData.phone && c.phone === customerData.phone) ||
-        (customerData.email && c.email === customerData.email)
-      );
-
-      // BUGFIX: Sanitizar customerPhone ‚Äî Firestore rejeita campos 'undefined'
+      // BUGFIX: Sanitizar customerPhone ó Firestore rejeita campos 'undefined'
       if (!order.customerPhone) delete (order as any).customerPhone;
 
       // 1. Atualizar ou Criar Cliente (Sanitizado para evitar erro de 'undefined' no Firestore)
@@ -1820,7 +1648,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         customer.cpfCnpj = customerData.cpf || customer.cpfCnpj;
         order.customerId = customer.id;
 
-        // Sanitiza√ß√£o profunda para evitar crashing no Firestore por campos undefined
+        // SanitizaÁ„o profunda para evitar crashing no Firestore por campos undefined
         const sanitizedCustomer = sanitizeData(customer);
         await saveCustomer(sanitizedCustomer);
         // Atualizar lista local com dados do cliente atualizado
@@ -1846,11 +1674,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onUpdateCustomers([...freshCustomers, newCustomer]);
       }
 
-      // 2. Atualizar Estoque (Somente se n√£o for or√ßamento)
+      // 2. Atualizar Estoque (Somente se n„o for orÁamento)
       const updatedProducts = [...products];
       if (!isBudget) {
-        const itemsToDecrement = pdvCart.filter(item => item.product.category !== 'Servi√ßos');
-
+        const itemsToDecrement = pdvCart.filter(item => item.product.category !== 'ServiÁos');
+        
         for (const item of itemsToDecrement) {
           const productIndex = updatedProducts.findIndex(p => p.id === item.product.id);
           if (productIndex !== -1) {
@@ -1863,7 +1691,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 [item.selectedSize]: Math.max(0, (p.stockBySize[item.selectedSize] || 0) - item.quantity)
               };
             }
-
+            
             if (item.selectedColor && p.stockBySizeColor) {
               const key = item.selectedSize ? `${item.selectedSize}-${item.selectedColor}` : item.selectedColor;
               p.stockBySizeColor = {
@@ -1877,46 +1705,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             updatedProducts[productIndex] = saved;
           }
         }
-        // Se houve itens decrementados (produtos f√≠sicos), marcar no pedido
+        // Se houve itens decrementados (produtos fÌsicos), marcar no pedido
         if (itemsToDecrement.length > 0) {
-          order.stockDecremented = itemsToDecrement.length === pdvCart.length; // Se todos baixaram, marca true. Se tem servi√ßo pendente, false.
+          order.stockDecremented = itemsToDecrement.length === pdvCart.length; // Se todos baixaram, marca true. Se tem serviÁo pendente, false.
         }
 
         onUpdateProducts(updatedProducts);
       }
 
-      // 3. Salvar Pedido/Or√ßamento (Sanitizado)
-      // Se tiver servi√ßo, status inicial √© pending
-      const hasService = pdvCart.some(item => item.product.category === 'Servi√ßos');
+      // 3. Salvar Pedido/OrÁamento (Sanitizado)
+      // Se tiver serviÁo, status inicial È pending
+      const hasService = pdvCart.some(item => item.product.category === 'ServiÁos');
       if (hasService && !isBudget) {
         order.status = 'pending';
-      }
-
-      // ERRCOM108: Garantir que a flag de contabiliza√ß√£o seja salva no banco ANTES do saveOrder
-      if (!isBudget) {
-        order.accountedInCash = true;
-      } else {
-        order.accountedInCash = false;
-      }
-
-      // ERRCOM135: Gerar parcelas se for cr√©dito
-      if (order.paymentMethod === 'credito' && order.installments && order.installments > 1) {
-        const installmentAmount = order.total / order.installments;
-        order.installmentDetails = Array.from({ length: order.installments }).map((_, i) => ({
-          id: `${order.id}-inst-${i + 1}`,
-          number: `${i + 1}/${order.installments}`,
-          amount: installmentAmount,
-          status: 'pending',
-          paymentMethod: 'Credito'
-        }));
-      }
-
-      // ERRCOM125: Persistir desconto do PDV no pedido
-      if (pdvDiscount > 0) {
-        order.discountAmount = pdvDiscountType === 'percentual'
-          ? (order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) * (pdvDiscount / 100))
-          : pdvDiscount;
-        order.discountType = pdvDiscountType;
       }
 
       const sanitizedOrder = sanitizeData(order);
@@ -1928,52 +1729,51 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         : [...orders, order];
 
       onUpdateOrders(updated);
-
-      // ERRCOM102: For√ßar atualiza√ß√£o imediata da lista de pedidos
+      
+      // ERRCOM102: ForÁar atualizaÁ„o imediata da lista de pedidos
       setTimeout(() => {
-        onUpdateOrders(updated);
-        // ERRCOM111: Disparar evento para outros m√≥dulos que ouvem a lista de pedidos
-        window.dispatchEvent(new CustomEvent('orderUpdated'));
+        // ForÁa uma re-renderizaÁ„o da lista de pedidos
+        setActiveTab('orders');
+        setTimeout(() => setActiveTab('pdv'), 100);
       }, 500);
-
-      // ERRCOM100: Or√ßamentos N√ÉO limpam o carrinho para permitir finalizar a venda em seguida
+      
+      // ERRCOM100: OrÁamentos N√O limpam o carrinho para permitir finalizar a venda em seguida
       if (!isBudget) {
         setPdvCart([]);
-        setPdvDiscount(0);
-        setPdvDiscountType('fixo');
       }
-
+      
       setEditingOrder(null);
 
-      // 5. Atualizar saldo do caixa (Somente se n√£o for or√ßamento)
+      // 5. Atualizar saldo do caixa (Somente se n„o for orÁamento)
       if (!isBudget) {
         setCashRegister(prev => ({
           ...prev,
           currentBalance: prev.currentBalance + order.total
         }));
+        order.accountedInCash = true; // Marca como contabilizado
       }
-
-      console.log(`${isBudget ? 'Or√ßamento' : 'Venda'} finalizada com sucesso:`, order.id);
+      
+      console.log(`${isBudget ? 'OrÁamento' : 'Venda'} finalizada com sucesso:`, order.id);
 
     } catch (error: any) {
-      console.error('Erro cr√≠tico ao finalizar venda:', error);
+      console.error('Erro crÌtico ao finalizar venda:', error);
       const msg = error?.message || 'Verifique o console ou tente novamente.';
-      window.alert(`Ocorreu um erro ao processar a opera√ß√£o.\n\nDetalhe: ${msg}`);
+      window.alert(`Ocorreu um erro ao processar a operaÁ„o.\n\nDetalhe: ${msg}`);
       throw error;
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Fun√ß√µes de movimenta√ß√£o de caixa
+  // FunÁıes de movimentaÁ„o de caixa
   const handleCashMovement = () => {
     if (!cashMovementForm.amount || cashMovementForm.amount <= 0) {
-      window.alert('Informe um valor v√°lido.');
+      window.alert('Informe um valor v·lido.');
       return;
     }
 
     if (!cashMovementForm.reason.trim()) {
-      window.alert('Informe o motivo da movimenta√ß√£o.');
+      window.alert('Informe o motivo da movimentaÁ„o.');
       return;
     }
 
@@ -2048,10 +1848,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       salesByPaymentCount
     };
 
-    // ERRCOM119: Guardar relat√≥rio no estado dedicado evita race condition
-    setCashRegisterHistory(prev => [...prev, partialReport]);
-    setCurrentCashReport(partialReport);
-    setIsCashReportOpen(true);
+    }
   };
 
   const handleCashRegisterClose = () => {
@@ -2063,14 +1860,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const expected = cashRegister.currentBalance;
     const difference = actual - expected;
 
-    // Calcular vendas reais por forma de pagamento no per√≠odo deste caixa
+    // Calcular vendas reais por forma de pagamento no perÌodo deste caixa
     const registerOpenedAt = new Date(cashRegister.openedAt!).getTime();
     const registerOrders = orders.filter(o =>
       o.salesChannel === 'physical' &&
       new Date(o.date).getTime() >= registerOpenedAt &&
-      // ERRCOM095: Remover pedidos cancelados do fluxo de fechamento/soma, e incluir or√ßamentos apenas se pagos
-      ((!o.isBudget && o.status !== 'cancelled' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) ||
-        (o.isBudget && o.status === 'paid'))
+      // ERRCOM095: Incluir pedidos cancelados no relatÛrio
+      (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing' || o.status === 'shipped' || o.status === 'cancelled')
     );
 
     const salesByPayment = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
@@ -2095,7 +1891,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       expectedAmount: expected,
       actualAmount: actual,
       difference: difference,
-      // BUGFIX #7 (ERRCOM069/092): C√°lculo correto de Vendas Totais (Isolando faturamento puro)
+      // BUGFIX #7 (ERRCOM069/092): C·lculo correto de Vendas Totais (Isolando faturamento puro)
       // Vendas = (Saldo Final - Abertura - Suprimentos + Sangrias)
       totalSales: Math.max(0, expected - cashRegister.openingAmount - cashDeposits.reduce((acc, d) => acc + d.amount, 0) + cashWithdrawals.reduce((acc, w) => acc + w.amount, 0)),
       totalOrders: registerOrders.length,
@@ -2106,7 +1902,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       notes: difference !== 0 ? `${difference > 0 ? 'Sobra' : 'Falta'} de R$ ${Math.abs(difference).toFixed(2)}` : undefined
     };
 
-    // Salvar no hist√≥rico
+    // Salvar no histÛrico
     setCashRegisterHistory(prev => [...prev, closedRegister]);
 
     // Resetar caixa atual
@@ -2119,8 +1915,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setCashWithdrawals([]);
     setCashDeposits([]);
 
-    // ERRCOM119: Guardar relat√≥rio no estado dedicado evita race condition
-    setCurrentCashReport(closedRegister);
+    // Abrir relatÛrio
     setIsCashReportOpen(true);
     setIsCashRegisterModalOpen(false);
   };
@@ -2202,7 +1997,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }).filter(Boolean) as { product: Product; quantity: number; selectedSize?: string; selectedColor?: string }[];
 
     if (newCart.length === 0) {
-      window.alert('N√£o foi poss√≠vel carregar os produtos deste pedido para edi√ß√£o (podem ter sido exclu√≠dos).');
+      window.alert('N„o foi possÌvel carregar os produtos deste pedido para ediÁ„o (podem ter sido excluÌdos).');
       return;
     }
 
@@ -2210,7 +2005,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingOrder(order);
     setActiveTab('pdv');
     setSelectedOrderDetail(null);
-    window.alert(`Editando Pedido ${order.id}. Voc√™ foi redirecionado para o PDV para alterar os itens.`);
+    window.alert(`Editando Pedido ${order.id}. VocÍ foi redirecionado para o PDV para alterar os itens.`);
   };
 
   const handleExpenseDelete = async (id: number) => {
@@ -2242,7 +2037,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const generateInventoryReport = () => {
     const report: any[] = [];
-
+    
     products.forEach(product => {
       if (product.sizes && product.stockBySize) {
         product.sizes.split(',').forEach(size => {
@@ -2312,12 +2107,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-              {/* ERRCOM038: Bot√£o Suporte WhatsApp */}
+              {/* ERRCOM038: Bot„o Suporte WhatsApp */}
               <button
-                onClick={() => window.open('https://wa.me/5511958540171?text=Ol√°! Preciso de suporte no painel Versiory Store.', '_blank')}
+                onClick={() => window.open('https://wa.me/5511958540171?text=Ol·! Preciso de suporte no painel Versiory Store.', '_blank')}
                 className="bg-green-600 hover:bg-green-700 px-3 sm:px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2 text-sm sm:text-base order-2 sm:order-1"
               >
-                <span>üí¨</span> <span className="hidden sm:inline">Suporte</span>
+                <span>??</span> <span className="hidden sm:inline">Suporte</span>
               </button>
               <button
                 onClick={onLogout}
@@ -2345,8 +2140,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ['tracking', 'Rastreamento'],
                   ['inventory', 'Estoque'],
                   ['financial', 'Financeiro'],
-                  ['fiscal', 'Fiscal/NF-e'],
-                  ['settings', 'Configura√ß√£o']
+                  ['fiscal', 'Fiscal/NF-e']
                 ]
                 : [
                   ['pdv', 'PDV Loja'],
@@ -2372,7 +2166,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {/* Top Cards ‚Äî ERRCOM122: Cards Vendas Online e PDV Loja adicionados */}
+            {/* ERRCOM111: Painel de Resgate de Dados */}
+            <div className="bg-amber-500/10 border-2 border-amber-500/30 p-6 rounded-[32px] flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-amber-500/5">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg">??</div>
+                <div>
+                  <h4 className="text-amber-500 font-black text-sm uppercase">Resgate de Dados Perdidos</h4>
+                  <p className="text-slate-400 text-xs mt-1">Recupere tamanhos, cores e estoque salvos no navegador antes do Firebase.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={downloadLocalStorageDump} // Este bot„o agora funciona
+                  className="bg-white/5 hover:bg-white/10 text-slate-300 px-4 py-3 rounded-2xl font-bold text-xs transition-all border border-white/10"
+                >
+                  ?? Baixar Dump para An·lise
+                </button>
+                <button 
+                  onClick={handleDeepRescue} 
+                  className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-2xl font-black text-xs transition-all shadow-xl shadow-amber-500/20 active:scale-95"
+                >
+                Iniciar Varredura Profunda
+                </button>
+              </div>
+            </div>
+
+            {/* Top Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
                 <div className="text-3xl font-bold text-white mb-2">{stats.totalProducts}</div>
@@ -2394,32 +2213,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-3xl font-bold text-emerald-400 mb-2">{formatCurrency(stats.totalDiscounts)}</div>
                 <div className="text-slate-400 font-medium text-sm">Descontos (Cupons)</div>
               </div>
-              {/* ERRCOM122: Card Vendas Online */}
-              <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => o.salesChannel === 'online' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
-                className="bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border border-blue-500/30 shadow-lg text-left transition-all"
-              >
-                <div className="text-3xl font-bold text-blue-400 mb-2">
-                  {formatCurrency(orders.filter(o => o.salesChannel === 'online' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}
-                </div>
-                <div className="text-slate-400 font-medium text-sm">üåê Vendas Online ‚Äî detalhes</div>
-              </button>
-              {/* ERRCOM122: Card Vendas PDV */}
-              <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
-                className="bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border border-green-500/30 shadow-lg text-left transition-all"
-              >
-                <div className="text-3xl font-bold text-green-400 mb-2">
-                  {formatCurrency(orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}
-                </div>
-                <div className="text-slate-400 font-medium text-sm">üè™ Vendas PDV ‚Äî detalhes</div>
-              </button>
             </div>
 
             {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-[#17223b] rounded-xl p-6 border border-white/5 shadow-lg">
-                <h3 className="text-white font-bold mb-6">Vendas por Dia (√∫ltimos 30 dias)</h3>
+                <h3 className="text-white font-bold mb-6">Vendas por Dia (˙ltimos 30 dias)</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={last30DaysData} onClick={handleChartClick}>
@@ -2436,11 +2235,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
               <div className="bg-[#17223b] rounded-xl p-6 border border-white/5 shadow-lg">
-                <h3 className="text-white font-bold mb-6">Faturamento por Dia (√∫ltimos 30 dias)</h3>
+                <h3 className="text-white font-bold mb-6">Faturamento por Dia (˙ltimos 30 dias)</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={last30DaysData}
+                    <BarChart 
+                      data={last30DaysData} 
                       onClick={handleChartClick}
                       onDoubleClick={(data: any) => {
                         // ERRCOM076: Drill-down suporte clique duplo
@@ -2466,7 +2265,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-[10px] text-slate-500 text-center mt-2 font-bold italic">üí° Clique duplo em um dia para ver os pedidos.</p>
+                <p className="text-[10px] text-slate-500 text-center mt-2 font-bold italic">?? Clique duplo em um dia para ver os pedidos.</p>
               </div>
             </div>
 
@@ -2474,7 +2273,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-[#243558] rounded-xl p-6 shadow-lg border border-white/5">
                 <div className="flex items-center gap-2 mb-6">
-                  <span className="text-xl">üèÜ</span>
+                  <span className="text-xl">??</span>
                   <h3 className="text-lg font-bold text-white">Top 5 Produtos Mais Vendidos</h3>
                 </div>
                 <div className="space-y-3">
@@ -2482,7 +2281,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div key={item.product?.id} className="bg-[#1b2a47] rounded-xl p-4 flex items-center justify-between border border-white/5">
                       <div className="flex items-center gap-4">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-yellow-500 text-white' : index === 1 ? 'bg-slate-300 text-slate-800' : index === 2 ? 'bg-amber-700 text-white' : 'bg-slate-700 text-slate-300'}`}>
-                          {index + 1}¬∫
+                          {index + 1}∫
                         </div>
                         <img src={item.product?.image} alt={item.product?.name} className="w-12 h-12 rounded-lg object-cover bg-white" />
                         <div>
@@ -2552,9 +2351,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <span className="text-slate-300 text-xs">{product.category}</span>
                             {(product.sizes || product.colors) && (
                               <div className="text-xs text-blue-300 mt-1">
-                                {product.sizes && `Tamanhos dispon√≠veis`}
-                                {product.sizes && product.colors && ' ‚Ä¢ '}
-                                {product.colors && `Cores dispon√≠veis`}
+                                {product.sizes && `Tamanhos disponÌveis`}
+                                {product.sizes && product.colors && ' ï '}
+                                {product.colors && `Cores disponÌveis`}
                               </div>
                             )}
                           </div>
@@ -2562,10 +2361,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                         <div className="flex justify-between items-end mt-2">
                           <div>
-                            <p className="font-black text-white text-lg">{formatCurrency(product.pricePOS || product.price)}</p>
+                            <p className="font-black text-white text-lg">{formatCurrency(product.price)}</p>
                             {product.installments && product.installments > 1 && (
                               <p className="text-[10px] text-versiory-coral font-bold -mt-1">
-                                ou {product.installments}x de {formatCurrency((product.pricePOS || product.price) / product.installments)}
+                                ou {product.installments}x de {formatCurrency(product.price / product.installments)}
                               </p>
                             )}
                             <p className="text-xs text-green-400">
@@ -2575,7 +2374,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             onClick={() => {
                               if (!cashRegister.isOpen) {
-                                window.alert('üîí Abra o caixa antes de adicionar produtos.');
+                                window.alert('?? Abra o caixa antes de adicionar produtos.');
                                 setIsCashRegisterModalOpen(true);
                                 return;
                               }
@@ -2658,7 +2457,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-400 mt-1">{formatCurrency(item.product.pricePOS || item.product.price)} / un</p>
+                        <p className="text-xs text-slate-400 mt-1">{formatCurrency(item.product.price)} / un</p>
                       </div>
                       <button onClick={() => removeFromPdvCart(item.product.id, item.selectedSize, item.selectedColor)} className="text-slate-400 hover:text-red-400 transition-colors">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2679,7 +2478,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         >+</button>
                       </div>
                       <p className="font-bold text-white">
-                        {formatCurrency((item.product.pricePOS || item.product.price) * item.quantity)}
+                        {formatCurrency(item.product.price * item.quantity)}
                       </p>
                     </div>
                   </div>
@@ -2696,46 +2495,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div className="pt-4 border-t border-white/10 mt-auto">
-                {/* ERRCOM125: Campo de desconto no PDV */}
-                <div className="mb-3 p-3 bg-white/5 rounded-xl border border-white/10">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Desconto</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={pdvDiscount || ''}
-                      onChange={e => setPdvDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
-                      placeholder="0,00"
-                      className="flex-1 bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
-                    />
-                    <select
-                      value={pdvDiscountType}
-                      onChange={e => setPdvDiscountType(e.target.value as 'fixo' | 'percentual')}
-                      className="bg-white/10 border border-white/20 text-white rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
-                    >
-                      <option value="fixo" className="text-black">R$</option>
-                      <option value="percentual" className="text-black">%</option>
-                    </select>
-                    {pdvDiscount > 0 && (
-                      <button onClick={() => { setPdvDiscount(0); setPdvDiscountType('fixo'); }} className="text-slate-400 hover:text-red-400 text-xs transition-colors">‚úï</button>
-                    )}
-                  </div>
-                  {pdvDiscount > 0 && (
-                    <p className="text-xs text-emerald-400 mt-1">
-                      Desconto: -{formatCurrency(pdvDiscountType === 'percentual' ? pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0) * (pdvDiscount / 100) : pdvDiscount)}
-                    </p>
-                  )}
-                </div>
-
                 <div className="flex justify-between items-center mb-6">
                   <span className="text-slate-300">Total a pagar:</span>
                   <span className="text-2xl font-black text-white">
-                    {(() => {
-                      const subtotal = pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-                      const discountVal = pdvDiscountType === 'percentual' ? subtotal * (pdvDiscount / 100) : pdvDiscount;
-                      return formatCurrency(Math.max(0, subtotal - discountVal));
-                    })()}
+                    {formatCurrency(pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0))}
                   </span>
                 </div>
                 <button
@@ -2749,7 +2512,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Finalizando...
                     </>
                   ) : !cashRegister.isOpen ? (
-                    'üîí Abra o Caixa para Vender'
+                    '?? Abra o Caixa para Vender'
                   ) : (
                     'Finalizar Venda (PDV)'
                   )}
@@ -2763,9 +2526,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span>Leitura X</span>
                 </button>
                 <div className="mt-2 flex items-start gap-1 justify-center px-2">
-                  <span className="text-yellow-400 text-[10px]">‚ö†Ô∏è</span>
+                  <span className="text-yellow-400 text-[10px]">??</span>
                   <p className="text-[9px] font-bold text-slate-400 text-center leading-tight">
-                    Resumo das vendas realizadas at√© o momento, para confer√™ncia parcial.
+                    Resumo das vendas realizadas atÈ o momento, para conferÍncia parcial.
                   </p>
                 </div>
               </div>
@@ -2778,10 +2541,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <h2 className="text-xl font-black text-white">Gerenciar Produtos</h2>
               <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                {/* ERRCOM106: Fun√ß√£o de Sincronizar movida para aba Produtos */}
+                {/* ERRCOM106: FunÁ„o de Sincronizar movida para aba Produtos */}
                 <button
                   onClick={async () => {
-                    if (!window.confirm('Sincronizar estoque por tamanho com estoque geral?\n\nIsso vai distribuir o estoque geral igualmente entre as varia√ß√µes (tamanhos/cores).')) return;
+                    if (!window.confirm('Sincronizar estoque por tamanho com estoque geral?\n\nIsso vai distribuir o estoque geral igualmente entre as variaÁıes (tamanhos/cores).')) return;
                     try {
                       const { saveProduct } = await import('../services/firebase');
                       const updatedProductsList = [...products];
@@ -2838,14 +2601,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   }}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all text-sm flex items-center gap-2"
                 >
-                  üîÑ Sincronizar
+                  ?? Sincronizar
                 </button>
                 <div className="relative flex-1 sm:w-80">
                   <input
                     type="text"
                     value={productSearch}
                     onChange={e => setProductSearch(e.target.value)}
-                    placeholder="Buscar produtos..." // ERRCOM092: Fix busca por descri√ß√£o
+                    placeholder="Buscar produtos..." // ERRCOM092: Fix busca por descriÁ„o
                     className="w-full px-4 py-2 border border-white/20 bg-white/10 backdrop-blur-md text-white rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
                   />
                   {productSearch && (
@@ -2853,7 +2616,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       onClick={() => setProductSearch('')}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
                     >
-                      ‚úï
+                      ?
                     </button>
                   )}
                 </div>
@@ -2868,36 +2631,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {/* ERRCOM111: Painel de Resgate de Dados (Movido para Produtos conforme ERRCOM106) */}
-            <div className="mb-8 bg-amber-500/10 border-2 border-amber-500/30 p-6 rounded-[32px] flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-amber-500/5">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg">üÜò</div>
-                <div>
-                  <h4 className="text-amber-500 font-black text-sm uppercase">Resgate de Dados Perdidos</h4>
-                  <p className="text-slate-400 text-xs mt-1">Recupere tamanhos, cores e estoque salvos no navegador antes do Firebase.</p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={downloadLocalStorageDump}
-                  className="bg-white/5 hover:bg-white/10 text-slate-300 px-4 py-3 rounded-2xl font-bold text-xs transition-all border border-white/10"
-                >
-                  üì• Baixar Dump para An√°lise
-                </button>
-                <button
-                  onClick={handleDeepRescue}
-                  className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-2xl font-black text-xs transition-all shadow-xl shadow-amber-500/20 active:scale-95"
-                >
-                  Iniciar Varredura Profunda
-                </button>
-              </div>
-            </div>
-
             {/* ERRCOM031: Top 5 Produtos Mais Vendidos */}
             {finalDashboardTop5.some(p => p.count > 0) && (
               <div className="mb-6 bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-5">
                 <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
-                  <span className="text-2xl">üèÜ</span> Top 5 Produtos Mais Vendidos
+                  <span className="text-2xl">??</span> Top 5 Produtos Mais Vendidos
                 </h3>
                 <div className="space-y-2">
                   {finalDashboardTop5.filter(p => p.count > 0).map(({ product, count, revenue }, idx) => (
@@ -2905,7 +2643,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <span className={`w-8 h-8 flex items-center justify-center rounded-full font-black text-sm ${idx === 0 ? 'bg-yellow-500 text-white' :
                         idx === 1 ? 'bg-slate-400 text-white' :
                           idx === 2 ? 'bg-amber-700 text-white' : 'bg-white/20 text-white'
-                        }`}>{idx + 1}¬∞</span>
+                        }`}>{idx + 1}∞</span>
                       <img src={product?.image} alt={product?.name} className="w-10 h-10 rounded-lg object-cover bg-white" />
                       <div className="flex-1">
                         <p className="text-sm font-bold text-white line-clamp-1">{product?.name}</p>
@@ -2956,12 +2694,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
 
-                    {/* ERRCOM003: Descri√ß√£o com quebra de linha */}
+                    {/* ERRCOM003: DescriÁ„o com quebra de linha */}
                     <p className="text-sm text-slate-300 line-clamp-2 mb-4 whitespace-pre-wrap">{product.description}</p>
 
                     <div className="grid grid-cols-2 gap-3 mb-4">
                       <div className="bg-white/5 rounded-lg p-3">
-                        <div className="text-xs text-slate-400 mb-1">Pre√ßo</div>
+                        <div className="text-xs text-slate-400 mb-1">PreÁo</div>
                         <div className="text-lg font-bold text-white">{formatCurrency(product.price)}</div>
                       </div>
                       <div className="bg-white/5 rounded-lg p-3">
@@ -2969,7 +2707,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className={`text-lg font-bold ${(product.stock || 0) < (product.minStock ?? 10) ? 'text-red-400' : 'text-white'}`}>
                           {product.stock || 0} un
                         </div>
-                        <div className="text-xs text-slate-400">M√≠n: {product.minStock ?? 10} un</div>
+                        <div className="text-xs text-slate-400">MÌn: {product.minStock ?? 10} un</div>
                       </div>
                     </div>
 
@@ -3041,10 +2779,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     <div className="flex items-center gap-2 mb-4">
                       <div className="flex items-center">
-                        <span className="text-yellow-400 text-lg">‚òÖ</span>
+                        <span className="text-yellow-400 text-lg">?</span>
                         <span className="text-sm font-medium text-white ml-1">{product.rating}</span>
                       </div>
-                      <span className="text-xs text-slate-400">({product.reviews} avalia√ß√µes)</span>
+                      <span className="text-xs text-slate-400">({product.reviews} avaliaÁıes)</span>
                     </div>
 
                     {userRole === 'admin' && (
@@ -3053,7 +2791,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           onClick={() => openProductModal(product)}
                           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
                         >
-                          ‚úèÔ∏è Editar
+                          ?? Editar
                         </button>
                         <button
                           onClick={() => {
@@ -3064,22 +2802,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           }}
                           className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
                         >
-                          üìè Tamanhos
+                          ?? Tamanhos
                         </button>
-                        {/* ERRCOM044: Bot√£o Mais Detalhes */}
+                        {/* ERRCOM044: Bot„o Mais Detalhes */}
                         <button
                           onClick={() => {
-                            alert(`üìã Detalhes T√©cnicos: ${product.name}\n\nID: #${product.id}\nCategoria: ${product.category}\nPre√ßo: ${formatCurrency(product.price)}\nEstoque Total: ${product.stock || 0} unidades\nEstoque M√≠nimo: ${product.minStock ?? 10} unidades\n\nDescri√ß√£o:\n${product.description || 'Nenhuma descri√ß√£o dispon√≠vel'}\n\nDados Fiscais:\nNCM: ${product.ncm || 'N/A'}\nCFOP: ${product.cfop || 'N/A'}\nCST: ${product.cst || 'N/A'}\nOrigem: ${product.origem ?? 'N/A'}\nUnidade: ${product.unidade || 'N/A'}\nPeso: ${product.peso || 'N/A'} kg\nGTIN: ${product.gtin || 'N/A'}\n\nAl√≠quotas:\nICMS: ${product.aliquotaIcms || 0}%\nPIS: ${product.aliquotaPis || 0}%\nCOFINS: ${product.aliquotaCofins || 0}%\nIPI: ${product.aliquotaIpi || 0}%`);
+                            alert(`?? Detalhes TÈcnicos: ${product.name}\n\nID: #${product.id}\nCategoria: ${product.category}\nPreÁo: ${formatCurrency(product.price)}\nEstoque Total: ${product.stock || 0} unidades\nEstoque MÌnimo: ${product.minStock ?? 10} unidades\n\nDescriÁ„o:\n${product.description || 'Nenhuma descriÁ„o disponÌvel'}\n\nDados Fiscais:\nNCM: ${product.ncm || 'N/A'}\nCFOP: ${product.cfop || 'N/A'}\nCST: ${product.cst || 'N/A'}\nOrigem: ${product.origem ?? 'N/A'}\nUnidade: ${product.unidade || 'N/A'}\nPeso: ${product.peso || 'N/A'} kg\nGTIN: ${product.gtin || 'N/A'}\n\nAlÌquotas:\nICMS: ${product.aliquotaIcms || 0}%\nPIS: ${product.aliquotaPis || 0}%\nCOFINS: ${product.aliquotaCofins || 0}%\nIPI: ${product.aliquotaIpi || 0}%`);
                           }}
                           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
                         >
-                          üìã Mais Detalhes
+                          ?? Mais Detalhes
                         </button>
                         <button
                           onClick={() => handleProductDelete(product.id)}
                           className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
                         >
-                          üóëÔ∏è
+                          ???
                         </button>
                       </div>
                     )}
@@ -3095,7 +2833,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {products.length === 0 && (
               <div className="text-center py-20">
-                <div className="text-6xl mb-4">üì¶</div>
+                <div className="text-6xl mb-4">??</div>
                 <h3 className="text-xl font-bold text-white mb-2">Nenhum produto cadastrado</h3>
                 <p className="text-slate-300 mb-6">Comece adicionando seu primeiro produto</p>
                 {userRole === 'admin' && (
@@ -3161,7 +2899,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <img src={p.image} alt="" className="w-8 h-8 rounded object-cover bg-white shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-white truncate group-hover:text-versiory-coral transition-colors">{p.name}</p>
-                          <p className="text-[10px] text-slate-400">{formatCurrency(p.price)} ‚Ä¢ {p.stock || 0} un</p>
+                          <p className="text-[10px] text-slate-400">{formatCurrency(p.price)} ï {p.stock || 0} un</p>
                         </div>
                         <svg className="w-3 h-3 text-slate-500 group-hover:text-versiory-coral transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" />
@@ -3197,34 +2935,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
               <h2 className="text-xl font-black text-white">Gerenciar Pedidos</h2>
               <div className="flex flex-wrap gap-3">
-                {/* ERRCOM047: Busca por n√∫mero do pedido */}
+                {/* ERRCOM047: Busca por n˙mero do pedido */}
                 <input
                   type="text"
                   value={orderSearch}
                   onChange={e => setOrderSearch(e.target.value)}
-                  placeholder="üîç Buscar pedido ou cliente..."
+                  placeholder="?? Buscar pedido ou cliente..."
                   className="px-4 py-2 border border-white/20 bg-white/5 text-white rounded-xl text-sm focus:ring-2 focus:ring-versiory-coral outline-none w-64"
                 />
                 <button
                   onClick={() => handleDownloadNFXml()}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
                 >
-                  üìÑ Baixar XML NF-e
+                  ?? Baixar XML NF-e
                 </button>
                 <select
                   value={orderFilter}
-                  onChange={event => setOrderFilter(event.target.value)}
+                  onChange={event => setOrderFilter(event.target.value as OrderStatus | 'all')}
                   className="px-3 py-2 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
                 >
                   <option value="all">Todos os Status</option>
-                  <option value="budget">Or√ßamento</option>
-                  <option value="converted">Convers√µes</option>
                   <option value="pending">Aguardando Pagamento</option>
                   <option value="paid">Pagamento Efetuado</option>
                   <option value="processing">Em Processamento</option>
                   <option value="shipped">Enviado</option>
                   <option value="delivered">Entregue</option>
-                  <option value="returned">Devolu√ß√£o</option>
                   <option value="cancelled">Cancelado</option>
                 </select>
               </div>
@@ -3240,15 +2975,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Data</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Total</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Status</th>
-                      {/* ERRCOM018: Coluna de Observa√ß√£o */}
-                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Observa√ß√£o</th>
+                      {/* ERRCOM018: Coluna de ObservaÁ„o */}
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">ObservaÁ„o</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Acoes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10">
                     {filteredOrders.map(order => (
                       <tr key={order.id} className="hover:bg-white/5 transition-colors">
-                        {/* ERRCOM046: Clicar no n√∫mero do pedido abre detalhe */}
+                        {/* ERRCOM046: Clicar no n˙mero do pedido abre detalhe */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-versiory-coral">
                           <button onClick={() => setSelectedOrderDetail(order)} className="hover:underline font-bold">
                             {formatOrderId(order.id)}
@@ -3264,9 +2999,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {STATUS_LABELS[order.status]}
                           </span>
                         </td>
-                        {/* ERRCOM018: Campo observa√ß√£o */}
+                        {/* ERRCOM018: Campo observaÁ„o */}
                         <td className="px-6 py-4 text-sm text-slate-300 max-w-[180px] truncate" title={order.notes || ''}>
-                          {order.notes || <span className="text-slate-500 italic text-xs">‚Äî</span>}
+                          {order.notes || <span className="text-slate-500 italic text-xs">ó</span>}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium flex gap-2">
                           <button
@@ -3299,7 +3034,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div>
             <h2 className="text-xl font-black text-white mb-4">Gerenciar Clientes</h2>
 
-            {/* ERRCOM033: Cards de m√©tricas de clientes */}
+            {/* ERRCOM033: Cards de mÈtricas de clientes */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20">
                 <div className="text-2xl font-black text-white">{customerStats.total}</div>
@@ -3315,7 +3050,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20">
                 <div className="text-2xl font-black text-versiory-coral">{formatCurrency(customerStats.avgTicket)}</div>
-                <div className="text-slate-300 text-sm">Ticket M√©dio</div>
+                <div className="text-slate-300 text-sm">Ticket MÈdio</div>
               </div>
             </div>
 
@@ -3324,7 +3059,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 type="text"
                 value={customerSearch}
                 onChange={e => setCustomerSearch(e.target.value)}
-                placeholder="üîç Buscar cliente por nome, email ou telefone..."
+                placeholder="?? Buscar cliente por nome, email ou telefone..."
                 className="px-4 py-3 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none w-full"
               />
             </div>
@@ -3350,13 +3085,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{customer.phone}</td>
-                        {/* ERRCOM022: Clicar na quantidade de pedidos abre hist√≥rico */}
+                        {/* ERRCOM022: Clicar na quantidade de pedidos abre histÛrico */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <button
                             onClick={() => {
-                              // ERRCOM109: Filtrar hist√≥rico por ID se dispon√≠vel, email apenas se n√£o for vazio
-                              const custOrders = orders.filter(o =>
-                                (o.customerId && o.customerId === customer.id) ||
+                              // ERRCOM109: Filtrar histÛrico por ID se disponÌvel, email apenas se n„o for vazio
+                              const custOrders = orders.filter(o => 
+                                (o.customerId && o.customerId === customer.id) || 
                                 (customer.email && customer.email.length > 5 && o.customerEmail === customer.email)
                               );
                               setCustomerOrderHistory({ customer, orders: custOrders });
@@ -3366,11 +3101,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {customer.totalOrders} pedidos
                           </button>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
-                          <div className="font-bold">{formatDate(customer.createdAt || '')}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
-                          <div className="text-versiory-coral font-black">{formatCurrency(customer.totalSpent)}</div>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-100">
+                          {formatDate(customer.createdAt || '')}
+                          {formatCurrency(customer.totalSpent)}
                         </td>
                       </tr>
                     ))}
@@ -3507,10 +3240,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* BUGFIX #14: Filtros de Status de Estoque */}
             <div className="flex flex-wrap gap-2 mb-6">
               {[
-                { id: 'all', label: 'Todos os Produtos', icon: 'üì¶' },
-                { id: 'low', label: 'Estoque Baixo', icon: '‚ö†Ô∏è' },
-                { id: 'out', label: 'Sem Estoque', icon: '‚ùå' },
-                { id: 'normal', label: 'Estoque Normal', icon: '‚úÖ' }
+                { id: 'all', label: 'Todos os Produtos', icon: '??' },
+                { id: 'low', label: 'Estoque Baixo', icon: '??' },
+                { id: 'out', label: 'Sem Estoque', icon: '?' },
+                { id: 'normal', label: 'Estoque Normal', icon: '?' }
               ].map(filter => (
                 <button
                   key={filter.id}
@@ -3573,7 +3306,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="bg-white/5 rounded-lg p-3">
                           <div className="text-xs text-slate-400 mb-1">Estoque Atual</div>
                           <div className="text-2xl font-black text-white">{stock}</div>
-                          <div className="text-xs text-slate-400">M√≠n: {product.minStock ?? 10} un</div>
+                          <div className="text-xs text-slate-400">MÌn: {product.minStock ?? 10} un</div>
                         </div>
                         <div className="bg-white/5 rounded-lg p-3">
                           <div className="text-xs text-slate-400 mb-1">Valor Unit.</div>
@@ -3588,7 +3321,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="flex flex-wrap gap-2">
                             {product.sizes.split(',').map(size => {
                               const trimmedSize = size.trim();
-                              const isExpanded = expandedSizes[`inv-${product.id}-${trimmedSize}`]; // usar prefixo inv para n√£o conflitar com a aba produtos se necess√°rio, ou manter igual
+                              const isExpanded = expandedSizes[`inv-${product.id}-${trimmedSize}`]; // usar prefixo inv para n„o conflitar com a aba produtos se necess·rio, ou manter igual
                               const colors = product.colors ? product.colors.split(',').map(c => c.trim()).filter(c => c) : [];
 
                               if (colors.length > 0 && product.stockBySizeColor) {
@@ -3655,7 +3388,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onClick={() => openInventoryModal(product.id)}
                         className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-3 rounded-xl font-bold transition-all shadow-lg"
                       >
-                        üì¶ Movimentar Estoque
+                        ?? Movimentar Estoque
                       </button>
                     </div>
                   </div>
@@ -3665,7 +3398,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {filteredInventoryProducts.length === 0 && (
               <div className="text-center py-20">
-                <div className="text-6xl mb-4">üì¶</div>
+                <div className="text-6xl mb-4">??</div>
                 <h3 className="text-xl font-bold text-white mb-2">Nenhum produto encontrado</h3>
                 <p className="text-slate-300">Ajuste os filtros para ver mais produtos</p>
               </div>
@@ -3677,11 +3410,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => (o.salesChannel === 'physical' || !o.salesChannel) && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalRevenue)}</div>
-                <div className="text-slate-100 font-medium text-sm">Receita Total ‚Äî clique para detalhes</div>
+                <div className="text-slate-100 font-medium text-sm">Receita Total ó clique para detalhes</div>
               </button>
               <button
                 onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && (['paid', 'processing', 'shipped', 'delivered'].includes(o.status) || (o.isBudget && o.status === 'paid'))) })}
@@ -3695,16 +3428,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-blue-400">{formatCurrency(financialStats.onlineRevenue)}</div>
-                <div className="text-slate-100 font-medium text-sm">Vendas Online ‚Äî clique para detalhes</div>
+                <div className="text-slate-100 font-medium text-sm">Vendas Online ó clique para detalhes</div>
               </button>
               <button
                 onClick={() => {
                   const expensesList = expenses.map(e => ({
                     ...e,
-                    categoryLabel: e.category === 'fixed' ? 'Fixa' : e.category === 'variable' ? 'Vari√°vel' : e.category === 'investment' ? 'Investimento' : 'Emergencial'
+                    categoryLabel: e.category === 'fixed' ? 'Fixa' : e.category === 'variable' ? 'Vari·vel' : e.category === 'investment' ? 'Investimento' : 'Emergencial'
                   }));
                   if (expensesList.length > 0) {
-                    alert(`Despesas Totais: ${formatCurrency(financialStats.totalExpenses)}\n\nDetalhamento:\n${expensesList.map(e => `‚Ä¢ ${e.description} (${e.categoryLabel}): ${formatCurrency(e.amount)}`).join('\n')}`);
+                    alert(`Despesas Totais: ${formatCurrency(financialStats.totalExpenses)}\n\nDetalhamento:\n${expensesList.map(e => `ï ${e.description} (${e.categoryLabel}): ${formatCurrency(e.amount)}`).join('\n')}`);
                   } else {
                     alert('Nenhuma despesa cadastrada.');
                   }
@@ -3712,25 +3445,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalExpenses)}</div>
-                <div className="text-slate-100 font-medium text-sm">Despesas ‚Äî clique para detalhes</div>
+                <div className="text-slate-100 font-medium text-sm">Despesas ó clique para detalhes</div>
               </button>
               <button
                 onClick={() => {
-                  alert(`Lucro L√≠quido: ${formatCurrency(financialStats.netProfit)}\n\nC√°lculo:\nReceita Total: ${formatCurrency(financialStats.totalRevenue)}\n(-) Despesas: ${formatCurrency(financialStats.totalExpenses)}\n(=) Lucro L√≠quido: ${formatCurrency(financialStats.netProfit)}`);
+                  alert(`Lucro LÌquido: ${formatCurrency(financialStats.netProfit)}\n\nC·lculo:\nReceita Total: ${formatCurrency(financialStats.totalRevenue)}\n(-) Despesas: ${formatCurrency(financialStats.totalExpenses)}\n(=) Lucro LÌquido: ${formatCurrency(financialStats.netProfit)}`);
                 }}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.netProfit)}</div>
-                <div className="text-slate-100 font-medium text-sm">Lucro L√≠quido ‚Äî clique para detalhes</div>
+                <div className="text-slate-100 font-medium text-sm">Lucro LÌquido ó clique para detalhes</div>
               </button>
               <button
                 onClick={() => {
-                  alert(`Margem de Lucro: ${financialStats.profitMargin.toFixed(1)}%\n\nC√°lculo:\nLucro L√≠quido: ${formatCurrency(financialStats.netProfit)}\nReceita Total: ${formatCurrency(financialStats.totalRevenue)}\nMargem = (Lucro / Receita) √ó 100\nMargem = ${financialStats.profitMargin.toFixed(2)}%`);
+                  alert(`Margem de Lucro: ${financialStats.profitMargin.toFixed(1)}%\n\nC·lculo:\nLucro LÌquido: ${formatCurrency(financialStats.netProfit)}\nReceita Total: ${formatCurrency(financialStats.totalRevenue)}\nMargem = (Lucro / Receita) ◊ 100\nMargem = ${financialStats.profitMargin.toFixed(2)}%`);
                 }}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-slate-100">{financialStats.profitMargin.toFixed(1)}%</div>
-                <div className="text-slate-100 font-medium text-sm">Margem de Lucro ‚Äî clique para detalhes</div>
+                <div className="text-slate-100 font-medium text-sm">Margem de Lucro ó clique para detalhes</div>
               </button>
             </div>
 
@@ -3742,17 +3475,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 + Lancar Despesa
               </button>
               <button
-                onClick={() => {
-                  setManualRevenueForm({
-                    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], notes: ''
-                  });
-                  setIsManualRevenueModalOpen(true);
-                }}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
-              >
-                + Lancar Receita
-              </button>
-              <button
                 onClick={generateFinancialReport}
                 className="bg-versiory-ink hover:bg-[#1b2a3a] text-white px-4 py-2 rounded-lg"
               >
@@ -3760,7 +3482,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
-            {/* ERRCOM029/030: Cards clic√°veis PDV e Online por forma de pagamento */}
+            {/* ERRCOM029/030: Cards clic·veis PDV e Online por forma de pagamento */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <button
                 onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && (['paid', 'processing', 'shipped', 'delivered'].includes(o.status) || (o.isBudget && o.status === 'paid'))) })}
@@ -3774,16 +3496,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 text-left hover:bg-white/20 transition-all"
               >
                 <div className="text-lg font-black text-blue-400">{formatCurrency(financialStats.onlineRevenue)}</div>
-                <div className="text-slate-300 text-sm">Vendas Online ‚Äî clique para ver por forma de pagamento</div>
+                <div className="text-slate-300 text-sm">Vendas Online ó clique para ver por forma de pagamento</div>
               </button>
             </div>
 
             {/* ERRCOM027: Filtro de data */}
             <div className="flex flex-wrap gap-3 items-center mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
-              <span className="text-slate-300 text-sm font-bold">Filtrar por per√≠odo:</span>
+              <span className="text-slate-300 text-sm font-bold">Filtrar por perÌodo:</span>
               <input type="date" value={financialDateFilter.from} onChange={e => setFinancialDateFilter(p => ({ ...p, from: e.target.value }))}
                 className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none" />
-              <span className="text-slate-400 text-sm">at√©</span>
+              <span className="text-slate-400 text-sm">atÈ</span>
               <input type="date" value={financialDateFilter.to} onChange={e => setFinancialDateFilter(p => ({ ...p, to: e.target.value }))}
                 className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none" />
               {(financialDateFilter.from || financialDateFilter.to) && (
@@ -3812,7 +3534,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="text-sm text-slate-200">
                         {formatDate(transaction.date)} - {transaction.category}
                       </div>
-                      {/* Novo: Observa√ß√µes */}
+                      {/* Novo: ObservaÁıes */}
                       {'notes' in transaction && transaction.notes && (
                         <div className="text-xs text-slate-400 mt-1 italic">{transaction.notes as string}</div>
                       )}
@@ -3859,74 +3581,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {activeTab === 'settings' && (
-          <div className="space-y-6">
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
-              <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-                <span>üìß</span> Configura√ß√£o de E-mail (SMTP)
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">SMTP Host</label>
-                  <input type="text" value={smtpSettings.host} onChange={e => setSmtpSettings({ ...smtpSettings, host: e.target.value })} className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none" placeholder="smtp.gmail.com" />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Porta</label>
-                  <input type="number" value={smtpSettings.port} onChange={e => setSmtpSettings({ ...smtpSettings, port: parseInt(e.target.value) })} className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none" placeholder="587" />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Usu√°rio</label>
-                  <input type="text" value={smtpSettings.user} onChange={e => setSmtpSettings({ ...smtpSettings, user: e.target.value })} className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none" placeholder="exemplo@gmail.com" />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Senha / App Password</label>
-                  <input type="password" value={smtpSettings.pass} onChange={e => setSmtpSettings({ ...smtpSettings, pass: e.target.value })} className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none" placeholder="‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢" />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">E-mail do Remetente</label>
-                  <input type="email" value={smtpSettings.fromEmail} onChange={e => setSmtpSettings({ ...smtpSettings, fromEmail: e.target.value })} className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none" placeholder="no-reply@loja.com" />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Nome Amig√°vel</label>
-                  <input type="text" value={smtpSettings.fromName} onChange={e => setSmtpSettings({ ...smtpSettings, fromName: e.target.value })} className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none" placeholder="Versiory Store" />
-                </div>
-                <div className="flex gap-4 items-end">
-                  <div className="flex-1">
-                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Criptografia</label>
-                    <select value={smtpSettings.encryption} onChange={e => setSmtpSettings({ ...smtpSettings, encryption: e.target.value as 'tls' | 'ssl' })} className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 outline-none">
-                      <option value="tls" className="text-black">TLS</option>
-                      <option value="ssl" className="text-black">SSL</option>
-                    </select>
-                  </div>
-                  <button
-                    onClick={() => {
-                      localStorage.setItem('versiory_smtp', JSON.stringify(smtpSettings));
-                      alert('Configura√ß√µes salvas!');
-                    }}
-                    className="bg-versiory-coral text-white px-8 py-3 rounded-xl font-black transition-all shadow-lg h-[50px]"
-                  >
-                    Salvar SMTP
-                  </button>
-                </div>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-4 italic">
-                * Requisito ERRCOM093: Estas configura√ß√µes permitir√£o o envio de c√≥digos de valida√ß√£o e confirma√ß√£o de pedidos automaticamente.
-              </p>
-            </div>
-            <CouponManagement />
-          </div>
-        )}
-
         {activeTab === 'fiscal' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-black text-white">Configura√ß√µes Fiscais e NF-e</h2>
+              <h2 className="text-xl font-black text-white">ConfiguraÁıes Fiscais e NF-e</h2>
               {userRole === 'admin' && (
                 <button
                   onClick={() => setIsFiscalConfigOpen(true)}
                   className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all"
                 >
-                  ‚öôÔ∏è Configurar Dados Fiscais
+                  ?? Configurar Dados Fiscais
                 </button>
               )}
             </div>
@@ -3941,7 +3605,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Cliente</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Data</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">Valor</th>
-                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">A√ß√µes</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase">AÁıes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10">
@@ -3956,7 +3620,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             onClick={() => handleDownloadNFXml(order.id)}
                             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium"
                           >
-                            üìÑ Baixar XML
+                            ?? Baixar XML
                           </button>
                         </td>
                       </tr>
@@ -3968,12 +3632,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
             </div>
-          </div>
-        )}
-
-        {activeTab === 'settings' && (
-          <div className="space-y-6">
-            <CouponManagement />
           </div>
         )}
       </div>
@@ -4080,10 +3738,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               value={productForm.sizes || ''}
                               onChange={event => setProductForm(prev => ({ ...prev, sizes: event.target.value }))}
                               className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
-                              placeholder={productForm.category === 'Cama, Mesa e Banho' ? 'Digite o tipo: Len√ßol, Edredom, Toalha de Banho, etc.' : 'Ex: P, M, G, GG'}
+                              placeholder={productForm.category === 'Cama, Mesa e Banho' ? 'Digite o tipo: LenÁol, Edredom, Toalha de Banho, etc.' : 'Ex: P, M, G, GG'}
                             />
                             <p className="text-xs text-slate-500 mt-1">
-                              üí° Separe por v√≠rgula. Use o bot√£o "üìè Tamanhos" no card do produto para gerenciar estoque por tamanho.
+                              ?? Separe por vÌrgula. Use o bot„o "?? Tamanhos" no card do produto para gerenciar estoque por tamanho.
                             </p>
                           </div>
                           <div>
@@ -4096,25 +3754,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               placeholder="Ex: Preto, Branco, Vermelho, Azul"
                             />
                             <p className="text-xs text-slate-500 mt-1">
-                              üé® Separe por v√≠rgula. Se usar cores + tamanhos, gerencie estoque por combina√ß√£o (ex: M-Preto).
+                              ?? Separe por vÌrgula. Se usar cores + tamanhos, gerencie estoque por combinaÁ„o (ex: M-Preto).
                             </p>
                           </div>
                         </div>
-
-                        {/* ERRCOM134: Pre√ßos diferenciados */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-2">Pre√ßo PDV Loja (R$)</label>
-                            <input type="number" step="0.01" value={productForm.pricePOS || ''} onChange={e => setProductForm({ ...productForm, pricePOS: parseFloat(e.target.value) })} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none text-slate-900" placeholder="Opcional" />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-2">Pre√ßo E-commerce (R$)</label>
-                            <input type="number" step="0.01" value={productForm.priceEcommerce || ''} onChange={e => setProductForm({ ...productForm, priceEcommerce: parseFloat(e.target.value) })} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none text-slate-900" placeholder="Opcional" />
-                          </div>
-                        </div>
-                        <p className="text-[10px] text-slate-500 italic mt-1">
-                          üí° ERRCOM134: Se deixado em branco, o sistema usar√° o Pre√ßo de Venda Padr√£o.
-                        </p>
 
                         <div>
                           <label className="block text-sm font-bold text-slate-700 mb-2">Descricao Detalhada *</label>
@@ -4142,8 +3785,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform ${productForm.active !== false ? 'translate-x-6' : ''}`}></div>
                             </div>
                             <div>
-                              <span className="text-sm font-bold text-slate-700">Produto Ativo (Vis√≠vel na loja)</span>
-                              <p className="text-[10px] text-slate-500">Inative o produto para remov√™-lo da vitrine sem exclu√≠-lo.</p>
+                              <span className="text-sm font-bold text-slate-700">Produto Ativo (VisÌvel na loja)</span>
+                              <p className="text-[10px] text-slate-500">Inative o produto para removÍ-lo da vitrine sem excluÌ-lo.</p>
                             </div>
                           </label>
                         </div>
@@ -4189,7 +3832,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           />
                         </div>
                         <div className="col-span-1">
-                          <label className="block text-sm font-bold text-slate-700 mb-2">Parcelamento M√°x. (x)</label>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Parcelamento M·x. (x)</label>
                           <input
                             type="number"
                             min="1"
@@ -4197,11 +3840,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             value={productForm.installments || 1}
                             onChange={event => setProductForm(prev => ({ ...prev, installments: parseInt(event.target.value, 10) }))}
                             className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-white text-slate-900 text-lg font-bold"
-                          />
-                          <p className="text-[10px] text-slate-500 mt-1">N√∫mero m√°ximo de parcelas sem juros.</p>
+                                                      />
+                          <p className="text-[10px] text-slate-500 mt-1">N˙mero m·ximo de parcelas sem juros.</p>
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-sm font-bold text-slate-700 mb-2">Estoque M√≠nimo (alerta) <span className="text-slate-400 font-normal">‚Äî padr√£o: 10</span></label>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Estoque MÌnimo (alerta) <span className="text-slate-400 font-normal">ó padr„o: 10</span></label>
                           <input
                             type="number"
                             min="0"
@@ -4372,13 +4015,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   >
                     <option value="none">Sem tamanhos</option>
                     <option value="clothing">Roupas (P, M, G, GG)</option>
-                    <option value="shoes">Cal√ßados (34, 35, 36...)</option>
-                    <option value="accessories">Acess√≥rios (√önico, P, M, G)</option>
+                    <option value="shoes">CalÁados (34, 35, 36...)</option>
+                    <option value="accessories">AcessÛrios (⁄nico, P, M, G)</option>
                   </select>
                 </div>
                 {categoryForm.sizeType !== 'none' && (
                   <div>
-                    <label className="block text-sm font-black text-gray-700 mb-2">Tamanhos Dispon√≠veis</label>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Tamanhos DisponÌveis</label>
                     <input
                       type="text"
                       value={categoryForm.availableSizes.join(', ')}
@@ -4387,9 +4030,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         availableSizes: event.target.value.split(',').map(s => s.trim()).filter(s => s)
                       }))}
                       className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                      placeholder={categoryForm.sizeType === 'clothing' ? 'P, M, G, GG' : categoryForm.sizeType === 'shoes' ? '34, 35, 36, 37, 38, 39, 40' : '√önico, P, M, G'}
+                      placeholder={categoryForm.sizeType === 'clothing' ? 'P, M, G, GG' : categoryForm.sizeType === 'shoes' ? '34, 35, 36, 37, 38, 39, 40' : '⁄nico, P, M, G'}
                     />
-                    <p className="text-xs text-gray-500 mt-1">Separe os tamanhos por v√≠rgula</p>
+                    <p className="text-xs text-gray-500 mt-1">Separe os tamanhos por vÌrgula</p>
                   </div>
                 )}
                 <div className="flex gap-4 pt-4">
@@ -4622,7 +4265,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {inventoryForm.productId && !products.find(p => p.id === parseInt(inventoryForm.productId))?.sizes && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-xs text-blue-800">
-                      üí° Este produto n√£o tem tamanhos configurados. Para adicionar tamanhos, edite o produto na aba "Produtos".
+                      ?? Este produto n„o tem tamanhos configurados. Para adicionar tamanhos, edite o produto na aba "Produtos".
                     </p>
                   </div>
                 )}
@@ -4747,7 +4390,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="submit"
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white font-black py-3 rounded-xl transition-all"
                   >
-                    {editingExpenseId ? 'Salvar Altera√ß√µes' : 'Lancar Despesa'}
+                    {editingExpenseId ? 'Salvar AlteraÁıes' : 'Lancar Despesa'}
                   </button>
                   <button
                     type="button"
@@ -4763,73 +4406,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )
       }
 
-      {/* ERRCOM136: Modal de Lan√ßamento de Receita */}
-      {isManualRevenueModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6">
-            <h3 className="text-xl font-black text-gray-900 mb-4">Lan√ßar Receita Avulsa</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-black text-gray-700 mb-2">Descri√ß√£o</label>
-                <input type="text" value={manualRevenueForm.description} onChange={e => setManualRevenueForm({ ...manualRevenueForm, description: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-black text-gray-700 mb-2">Categoria</label>
-                  <select value={manualRevenueForm.category} onChange={e => setManualRevenueForm({ ...manualRevenueForm, category: e.target.value as any })} className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none">
-                    <option value="PIX">PIX</option>
-                    <option value="Dinheiro">Dinheiro</option>
-                    <option value="Credito">Cr√©dito</option>
-                    <option value="Debito">D√©bito</option>
-                    <option value="Deposito">Dep√≥sito Banc√°rio</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
-                  <input type="number" step="0.01" value={manualRevenueForm.amount} onChange={e => setManualRevenueForm({ ...manualRevenueForm, amount: parseFloat(e.target.value) })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <button onClick={handleManualRevenueSubmit} className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl transition-all">Lan√ßar Receita</button>
-                <button onClick={() => setIsManualRevenueModalOpen(false)} className="flex-1 bg-gray-200 text-gray-800 font-black py-3 rounded-xl transition-all">Cancelar</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ERRCOM135: Modal de Baixa de Vendas Parceladas */}
-      {isInstallmentModalOpen && selectedOrderForInstallments && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[250] p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-8">
-            <div className="flex justify-between items-center mb-6 border-b pb-4">
-              <div>
-                <h3 className="text-xl font-black text-gray-900">Baixa Parcial - Pedido {formatOrderId(selectedOrderForInstallments.id)}</h3>
-                <p className="text-sm text-gray-500">{selectedOrderForInstallments.customerName} - {selectedOrderForInstallments.customerCpfCnpj}</p>
-              </div>
-              <button onClick={() => setIsInstallmentModalOpen(false)} className="text-gray-400 hover:text-gray-600">‚úï</button>
-            </div>
-            <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-              {(selectedOrderForInstallments.installmentDetails || []).map((inst) => (
-                <div key={inst.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div>
-                    <p className="font-bold text-slate-700">Parcela {inst.number}</p>
-                    <p className="text-lg font-black text-versiory-coral">{formatCurrency(inst.amount)}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    {inst.status === 'paid' ? (
-                      <span className="px-4 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-black">PAGA EM {formatDate(inst.paidAt!)}</span>
-                    ) : (
-                      <button onClick={() => handleInstallmentWriteOff(selectedOrderForInstallments.id, inst.id)} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold text-xs shadow-lg shadow-blue-600/20">Baixar Parcela</button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal de Checkout PDV */}
       <PdvCheckoutModal
         isOpen={isPdvCheckoutModalOpen}
@@ -4839,8 +4415,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onSubmit={handlePdvCheckoutSubmit}
         isSubmitting={isSubmitting}
         editingOrder={editingOrder}
-        discountAmount={pdvDiscount}
-        discountType={pdvDiscountType}
       />
 
       {/* Modal Gerenciador de Tamanhos */}
@@ -4920,7 +4494,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   }}
                   className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-4 rounded-xl font-black text-lg transition-all shadow-lg active:scale-95 disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Salvando...' : 'Salvar Altera√ß√µes'}
+                  {isSubmitting ? 'Salvando...' : 'Salvar AlteraÁıes'}
                 </button>
               </div>
             </div>
@@ -4933,12 +4507,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onClose={() => setIsFiscalConfigOpen(false)}
       />
 
-      {/* Modal de Sele√ß√£o de Produto PDV */}
+      {/* Modal de SeleÁ„o de Produto PDV */}
       {
         pdvProductModal.isOpen && pdvProductModal.product && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[200] p-0 sm:p-4">
             <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-none sm:rounded-[32px] shadow-2xl border-none sm:border border-white/20 w-full max-w-lg h-full sm:max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300">
-              {/* Header com Nome e Bot√£o Fechar */}
+              {/* Header com Nome e Bot„o Fechar */}
               <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5 shrink-0">
                 <div>
                   <h3 className="text-xl font-black text-white">{pdvProductModal.product.name}</h3>
@@ -4954,7 +4528,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
 
-              {/* Conte√∫do com Scroll */}
+              {/* Conte˙do com Scroll */}
               <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
                 <div className="lg:bg-white/5 p-2 rounded-2xl border border-white/10 flex justify-center bg-white shadow-inner">
                   <img src={pdvProductModal.product.image} className="h-40 sm:h-48 w-auto object-contain" alt="" />
@@ -5031,14 +4605,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Footer Fixo */}
               <div className="p-6 border-t border-white/10 bg-white/5 shrink-0">
                 <div className="flex justify-between items-center mb-4 px-1">
-                  <span className="text-white/40 text-xs font-bold uppercase tracking-widest">Pre√ßo Unit√°rio</span>
-                  <span className="text-3xl font-black text-white">{formatCurrency(pdvProductModal.product.pricePOS || pdvProductModal.product.price)}</span>
+                  <span className="text-white/40 text-xs font-bold uppercase tracking-widest">PreÁo Unit·rio</span>
+                  <span className="text-3xl font-black text-white">{formatCurrency(pdvProductModal.product.price)}</span>
                 </div>
                 <button
                   onClick={() => {
                     const product = pdvProductModal.product!;
-                    if (product.sizes && product.sizes.trim() !== '' && !pdvModalSelection.size) return alert('‚ö†Ô∏è Selecione um tamanho');
-                    if (product.colors && !pdvModalSelection.color) return alert('‚ö†Ô∏è Selecione uma cor');
+                    if (product.sizes && product.sizes.trim() !== '' && !pdvModalSelection.size) return alert('?? Selecione um tamanho');
+                    if (product.colors && !pdvModalSelection.color) return alert('?? Selecione uma cor');
                     setSelectedSizes(prev => ({ ...prev, [product.id]: pdvModalSelection.size }));
                     addToPdvCart(product);
                     setPdvProductModal({ isOpen: false, product: null });
@@ -5046,7 +4620,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   }}
                   className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-5 rounded-2xl font-black text-lg transition-all active:scale-[0.98] shadow-xl shadow-versiory-coral/20 flex items-center justify-center gap-3"
                 >
-                  <span>üõí</span> Adicionar ao Carrinho
+                  <span>??</span> Adicionar ao Carrinho
                 </button>
               </div>
             </div>
@@ -5060,38 +4634,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-black text-white">Pedido {formatOrderId(selectedOrderDetail.id)}</h3>
-              <button onClick={() => setSelectedOrderDetail(null)} className="text-white/60 hover:text-white">‚úï</button>
+              <button onClick={() => setSelectedOrderDetail(null)} className="text-white/60 hover:text-white">?</button>
             </div>
             <div className="space-y-2 text-sm text-slate-300 mb-4">
               <p><span className="font-bold text-white">Cliente:</span> {selectedOrderDetail.customerName}</p>
               <p><span className="font-bold text-white">E-mail:</span> {selectedOrderDetail.customerEmail}</p>
               {selectedOrderDetail.customerPhone && <p><span className="font-bold text-white">Telefone:</span> {selectedOrderDetail.customerPhone}</p>}
               {selectedOrderDetail.customerCpfCnpj && <p><span className="font-bold text-white">CPF/CNPJ:</span> {selectedOrderDetail.customerCpfCnpj}</p>}
-              <p><span className="font-bold text-white">Data:</span> {formatDate(selectedOrderDetail.date)} {selectedOrderDetail.orderTime ? `√†s ${selectedOrderDetail.orderTime}` : ''}</p>
+              <p><span className="font-bold text-white">Data:</span> {formatDate(selectedOrderDetail.date)} {selectedOrderDetail.orderTime ? `‡s ${selectedOrderDetail.orderTime}` : ''}</p>
               <p><span className="font-bold text-white">Status:</span> <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[selectedOrderDetail.status]}`}>{STATUS_LABELS[selectedOrderDetail.status]}</span></p>
-              <p><span className="font-bold text-white">Canal:</span> {selectedOrderDetail.salesChannel === 'physical' ? 'üè™ PDV Loja' : 'üåê Online'}</p>
-              {/* ERRCOM123: Forma de pagamento */}
-              {selectedOrderDetail.paymentMethod && (
-                <p><span className="font-bold text-white">Forma de Pagamento:</span> <span className="text-versiory-coral font-bold uppercase">{selectedOrderDetail.paymentMethod}</span></p>
-              )}
-              {selectedOrderDetail.address && <p><span className="font-bold text-white">Endere√ßo:</span> {selectedOrderDetail.address}</p>}
-              {selectedOrderDetail.discountAmount && selectedOrderDetail.discountAmount > 0 && (
-                <p><span className="font-bold text-white">Desconto:</span> -{formatCurrency(selectedOrderDetail.discountAmount)}
-                  {selectedOrderDetail.couponCode && <span className="ml-1 text-xs text-emerald-400">(Cupom: {selectedOrderDetail.couponCode})</span>}
-                </p>
-              )}
-              {selectedOrderDetail.notes && <p><span className="font-bold text-white">Observa√ß√£o:</span> {selectedOrderDetail.notes}</p>}
+              <p><span className="font-bold text-white">Canal:</span> {selectedOrderDetail.salesChannel === 'physical' ? 'PDV' : 'Online'}</p>
+              {selectedOrderDetail.address && <p><span className="font-bold text-white">EndereÁo:</span> {selectedOrderDetail.address}</p>}
+              {selectedOrderDetail.notes && <p><span className="font-bold text-white">ObservaÁ„o:</span> {selectedOrderDetail.notes}</p>}
 
               <div className="pt-4 flex flex-wrap gap-2">
                 <button
                   onClick={() => {
                     let phone = selectedOrderDetail.customerPhone || '';
+                    
                     if (!phone && selectedOrderDetail.customerEmail?.includes('@pdv.local')) {
                       phone = selectedOrderDetail.customerEmail.replace('@pdv.local', '');
                     }
+
                     const cleanPhone = phone.replace(/\D/g, '');
-                    if (!cleanPhone) { window.alert('Telefone do cliente n√£o dispon√≠vel.'); return; }
-                    const message = `Ol√° ${selectedOrderDetail.customerName}, o status do seu pedido ${formatOrderId(selectedOrderDetail.id)} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`;
+                    if (!cleanPhone) {
+                      window.alert('Telefone do cliente n„o disponÌvel.');
+                      return;
+                    }
+
+                    const message = `Ol· ${selectedOrderDetail.customerName}, o status do seu pedido ${formatOrderId(selectedOrderDetail.id)} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`;
                     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
                   }}
                   className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
@@ -5106,58 +4677,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onClick={() => handleEditOrder(selectedOrderDetail)}
                   className="bg-versiory-ink hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
                 >
-                  ‚úèÔ∏è Editar Pedido
-                </button>
-
-                {/* ERRCOM121: Bot√£o Imprimir Pedido */}
-                <button
-                  onClick={async () => {
-                    const order = selectedOrderDetail;
-                    const paymentMethodLabel: Record<string, string> = {
-                      dinheiro: 'Dinheiro', pix: 'PIX', debito: 'D√©bito', credito: 'Cr√©dito',
-                      whatsapp: 'A combinar', credit: 'Cr√©dito', online: 'Online'
-                    };
-                    const channelLabel = order.salesChannel === 'physical' ? 'PDV Loja' : 'E-commerce (Site)';
-                    const itemsHtml = (order.items || []).map(item =>
-                      `<tr><td style="padding:4px 8px;">${item.name || `Produto #${item.productId}`}${item.selectedSize ? ` (${item.selectedSize})` : ''}${item.selectedColor ? ` / ${item.selectedColor}` : ''}</td><td style="padding:4px 8px;text-align:center;">${item.quantity}</td><td style="padding:4px 8px;text-align:right;">R$ ${(item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="padding:4px 8px;text-align:right;">R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>`
-                    ).join('');
-                    const subtotalVal = (order.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
-                    const html = `<!DOCTYPE html><html><head><title>Pedido ${formatOrderId(order.id)}</title><style>body{font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:0 auto;}h1{font-size:18px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;}table{width:100%;border-collapse:collapse;}th{background:#f0f0f0;padding:6px 8px;text-align:left;font-size:12px;}td{font-size:12px;border-bottom:1px solid #eee;}.total{font-size:16px;font-weight:bold;text-align:right;padding-top:8px;}.info{margin:8px 0;font-size:13px;}.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5e7eb;font-size:11px;}</style></head><body><h1>VERSIORY STORE ‚Äî PEDIDO ${formatOrderId(order.id)}</h1><div class="info"><b>Cliente:</b> ${order.customerName}</div>${order.customerEmail ? `<div class="info"><b>E-mail:</b> ${order.customerEmail}</div>` : ''} ${order.customerPhone ? `<div class="info"><b>Telefone:</b> ${order.customerPhone}</div>` : ''} ${order.customerCpfCnpj ? `<div class="info"><b>CPF/CNPJ:</b> ${order.customerCpfCnpj}</div>` : ''} <div class="info"><b>Data:</b> ${new Date(order.date).toLocaleString('pt-BR')}</div><div class="info"><b>Canal:</b> ${channelLabel}</div><div class="info"><b>Forma de Pagamento:</b> ${paymentMethodLabel[order.paymentMethod || ''] || order.paymentMethod || 'A combinar'}</div><div class="info"><b>Status:</b> <span class="badge">${(order.status || '').toUpperCase()}</span></div>${order.address ? `<div class="info"><b>Endere√ßo:</b> ${order.address}</div>` : ''}<br><table><thead><tr><th>Produto</th><th>Qtd</th><th>Pre√ßo</th><th>Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><div class="total">Subtotal: R$ ${subtotalVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.discountAmount && order.discountAmount > 0 ? `<div style="text-align:right;font-size:13px;color:green;">Desconto${order.couponCode ? ` (${order.couponCode})` : ''}:-R$ ${order.discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>` : ''}<div class="total">TOTAL: R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.notes ? `<div class="info" style="margin-top:12px;"><b>Observa√ß√µes:</b> ${order.notes}</div>` : ''}<div style="text-align:center;margin-top:24px;font-size:11px;color:#666;">www.versiory.store</div></body></html>`;
-                    const w = window.open('', '_blank', 'width=640,height=800');
-                    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
-                >
-                  üñ®Ô∏è Imprimir Pedido
+                  ?? Editar Pedido
                 </button>
 
                 <button
-                  disabled={selectedOrderDetail.status === 'cancelled'} // ERRCOM133: Bloqueio de cancelamento duplo
                   onClick={() => {
-                    if (selectedOrderDetail.status === 'cancelled') return;
                     if (window.confirm('Deseja cancelar este pedido?')) {
                       orderStatusForm.orderId = selectedOrderDetail.id;
                       orderStatusForm.status = 'cancelled';
                       handleOrderStatusSubmit(new Event('submit') as any);
                       setSelectedOrderDetail(null);
-                      alert('Pedido cancelado e estoque estornado!');
                     }
                   }}
                   className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
                 >
-                  üóëÔ∏è Cancelar
+                  ??? Cancelar
                 </button>
               </div>
-
-              {/* ERRCOM135: Bot√£o Baixa Parcial */}
-              {selectedOrderDetail.paymentMethod === 'credito' && selectedOrderDetail.installments && selectedOrderDetail.installments > 1 && (
-                <button
-                  onClick={() => { setSelectedOrderForInstallments(selectedOrderDetail); setIsInstallmentModalOpen(true); }}
-                  className="w-full mt-4 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-black transition-all shadow-lg flex items-center justify-center gap-2"
-                >
-                  üí≥ Gest√£o de Parcelas (Baixa Parcial)
-                </button>
-              )}
             </div>
             <h4 className="font-bold text-white mb-2">Itens</h4>
             <div className="space-y-2 mb-4">
@@ -5175,38 +4711,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               ))}
             </div>
-            {selectedOrderDetail.discountAmount && selectedOrderDetail.discountAmount > 0 ? (
-              <>
-                <div className="flex justify-between text-sm text-slate-300 mb-1">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency((selectedOrderDetail.items || []).reduce((s, i) => s + i.price * i.quantity, 0))}</span>
-                </div>
-                <div className="flex justify-between text-sm text-emerald-400 mb-1">
-                  <span>Desconto{selectedOrderDetail.couponCode ? ` (${selectedOrderDetail.couponCode})` : ''}</span>
-                  <span>-{formatCurrency(selectedOrderDetail.discountAmount)}</span>
-                </div>
-                <div className="border-t border-white/10 pt-3 flex justify-between">
-                  <span className="text-white font-bold">Total</span>
-                  <span className="text-2xl font-black text-versiory-coral">{formatCurrency(selectedOrderDetail.total)}</span>
-                </div>
-              </>
-            ) : (
-              <div className="border-t border-white/10 pt-3 flex justify-between">
-                <span className="text-white font-bold">Total</span>
-                <span className="text-2xl font-black text-versiory-coral">{formatCurrency(selectedOrderDetail.total)}</span>
-              </div>
-            )}
+            <div className="border-t border-white/10 pt-3 flex justify-between">
+              <span className="text-white font-bold">Total</span>
+              <span className="text-2xl font-black text-versiory-coral">{formatCurrency(selectedOrderDetail.total)}</span>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ERRCOM022: Modal de Hist√≥rico do Cliente */}
+      {/* ERRCOM022: Modal de HistÛrico do Cliente */}
       {customerOrderHistory && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setCustomerOrderHistory(null)}>
           <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-black text-white">Hist√≥rico: {customerOrderHistory.customer.name}</h3>
-              <button onClick={() => setCustomerOrderHistory(null)} className="text-white/60 hover:text-white">‚úï</button>
+              <h3 className="text-xl font-black text-white">HistÛrico: {customerOrderHistory.customer.name}</h3>
+              <button onClick={() => setCustomerOrderHistory(null)} className="text-white/60 hover:text-white">?</button>
             </div>
             {customerOrderHistory.orders.length === 0 ? (
               <p className="text-slate-400 text-sm">Nenhum pedido encontrado.</p>
@@ -5236,12 +4755,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="bg-gradient-to-br from-[#0b1f4b] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 max-w-md w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-black text-white">Vendas {paymentBreakdownModal.channel === 'pdv' ? 'PDV' : 'Online'} por Pagamento</h3>
-              <button onClick={() => setPaymentBreakdownModal(null)} className="text-white/60 hover:text-white">‚úï</button>
+              <button onClick={() => setPaymentBreakdownModal(null)} className="text-white/60 hover:text-white">?</button>
             </div>
             {(() => {
               const byMethod: Record<string, number> = {};
               paymentBreakdownModal.orders.forEach(o => {
-                const method = (o as any).paymentMethod || 'N√£o informado';
+                const method = (o as any).paymentMethod || 'N„o informado';
                 byMethod[method] = (byMethod[method] || 0) + o.total;
               });
               return (
@@ -5272,8 +4791,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <h3 className="text-2xl font-black text-white">Pedidos do Dia {drillDownData.date}</h3>
                 <p className="text-white/60 text-sm">{drillDownData.orderIds.length} pedidos encontrados</p>
               </div>
-              <button
-                onClick={() => setIsDrillDownModalOpen(false)}
+              <button 
+                onClick={() => setIsDrillDownModalOpen(false)} 
                 className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-white transition-all"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5289,21 +4808,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="col-span-2">Cliente</div>
                 <div className="col-span-1 text-right">Total</div>
               </div>
-
+              
               <div className="max-h-[50vh] overflow-y-auto custom-scrollbar pr-2 space-y-2">
                 {drillDownData.orderIds.length > 0 ? (
                   drillDownData.orderIds.map(id => {
                     const order = orders.find(o => o.id === id);
                     if (!order) return null;
-
+                    
                     const hasService = order.items?.some(item => {
                       const p = products.find(prod => prod.id === item.productId);
-                      return p?.category === 'Servi√ßos';
+                      return p?.category === 'ServiÁos';
                     });
 
                     return (
-                      <div
-                        key={id}
+                      <div 
+                        key={id} 
                         onClick={() => {
                           setSelectedOrderDetail(order);
                           setIsDrillDownModalOpen(false);
@@ -5315,14 +4834,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                         <div className="col-span-1">
                           {order.isBudget ? (
-                            <span className="text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full font-bold border border-purple-500/30">Or√ßamento</span>
+                            <span className="text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full font-bold border border-purple-500/30">OrÁamento</span>
                           ) : order.salesChannel === 'physical' ? (
                             <span className="text-[10px] px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full font-bold border border-blue-500/30">Loja/PDV</span>
                           ) : (
                             <span className="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full font-bold border border-emerald-500/30">Site</span>
                           )}
                           {hasService && (
-                            <span className="ml-1 text-[10px] px-2 py-0.5 bg-orange-500/20 text-orange-400 rounded-full font-bold border border-orange-500/30">üõ†Ô∏è</span>
+                            <span className="ml-1 text-[10px] px-2 py-0.5 bg-orange-500/20 text-orange-400 rounded-full font-bold border border-orange-500/30">???</span>
                           )}
                         </div>
                         <div className="col-span-2 text-white font-medium truncate text-sm">
@@ -5395,7 +4914,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
                   >
-                    üí∏ Sangria
+                    ?? Sangria
                   </button>
                   <button
                     onClick={() => {
@@ -5404,7 +4923,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }}
                     className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
                   >
-                    üí∞ Suprimento
+                    ?? Suprimento
                   </button>
                 </div>
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/10 space-y-3">
@@ -5413,7 +4932,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <span className="text-white font-bold">{formatCurrency(cashRegister.openingAmount)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Vendas no per√≠odo:</span>
+                    <span className="text-slate-400">Vendas no perÌodo:</span>
                     <span className="text-white font-bold">{formatCurrency(cashRegister.currentBalance - cashRegister.openingAmount)}</span>
                   </div>
                   <div className="pt-3 border-t border-white/10 flex justify-between items-baseline">
@@ -5423,7 +4942,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <p className="text-red-400 text-xs font-bold text-center">
-                  ‚ö†Ô∏è Ao fechar o caixa, voc√™ n√£o poder√° realizar novas vendas no PDV at√© abri-lo novamente.
+                  ?? Ao fechar o caixa, vocÍ n„o poder· realizar novas vendas no PDV atÈ abri-lo novamente.
                 </p>
 
                 <button
@@ -5445,7 +4964,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* Modal de Movimenta√ß√£o de Caixa */}
+      {/* Modal de MovimentaÁ„o de Caixa */}
       {isCashMovementModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[250] p-4">
           <div className="bg-gradient-to-br from-[#0b1f4b] via-[#0a1b3d] to-[#08122b] rounded-3xl shadow-2xl border border-white/20 p-8 max-w-sm w-full">
@@ -5466,18 +4985,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="w-full bg-white/5 border border-white/20 text-white rounded-xl pl-12 pr-4 py-4 text-xl font-bold focus:ring-2 focus:ring-versiory-coral outline-none"
                     placeholder="0,00"
                   />
-                </div>
-              </div>
-
-              {/* ERRCOM134: Campos para pre√ßos diferenciados */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Pre√ßo PDV Loja (R$)</label>
-                  <input type="number" step="0.01" value={productForm.pricePOS || ''} onChange={e => setProductForm({ ...productForm, pricePOS: parseFloat(e.target.value) })} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none text-slate-900" placeholder="Pre√ßo na loja f√≠sica" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Pre√ßo E-commerce (R$)</label>
-                  <input type="number" step="0.01" value={productForm.priceEcommerce || ''} onChange={e => setProductForm({ ...productForm, priceEcommerce: parseFloat(e.target.value) })} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none text-slate-900" placeholder="Pre√ßo no site" />
                 </div>
               </div>
 
@@ -5506,7 +5013,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     : 'bg-blue-500 hover:bg-blue-600'
                     } text-white`}
                 >
-                  {cashMovementForm.type === 'withdrawal' ? 'üí∏ Sangria' : 'üí∞ Suprimento'}
+                  {cashMovementForm.type === 'withdrawal' ? '?? Sangria' : '?? Suprimento'}
                 </button>
               </div>
             </div>
@@ -5514,20 +5021,273 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-
-      {/* ERRCOM119: Modal de Relat√≥rio de Caixa ‚Äî usa currentCashReport para evitar race condition */}
-      {isCashReportOpen && currentCashReport && (
+      {/* Modal de RelatÛrio de Caixa */}
+      {isCashReportOpen && cashRegisterHistory.length > 0 && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-md transition-all duration-500" />
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md transition-all duration-500" onClick={() => {
+            const last = cashRegisterHistory[cashRegisterHistory.length - 1];
+            if (last?.id?.startsWith('PARTIAL-')) {
+              setCashRegisterHistory(prev => prev.filter(h => h.id !== last.id));
+            }
+            setIsCashReportOpen(false);
+          }} />
+
+          {/* Modal Container with Glassmorphism */}
+          <div className="relative w-full max-w-2xl bg-gradient-to-br from-[#0b1f4b]/95 via-[#0a1b3d]/98 to-[#08122b] backdrop-blur-2xl rounded-[40px] shadow-[0_0_100px_rgba(37,99,235,0.2)] border border-white/20 max-h-[92vh] overflow-y-auto custom-scrollbar transform transition-all animate-in fade-in zoom-in duration-300">
+            {/* Animated Background Glows */}
+            <div className="absolute -top-24 -left-24 w-64 h-64 bg-blue-500/20 rounded-full blur-[100px] pointer-events-none"></div>
+            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-versiory-coral/10 rounded-full blur-[100px] pointer-events-none"></div>
+
+            {/* Header */}
+            <div className="p-10 pb-6 flex justify-between items-start sticky top-0 bg-transparent backdrop-blur-lg z-10">
+              <div>
+                <div className="flex items-center gap-3 mb-1">
+                  <span className="bg-blue-500/20 text-blue-400 p-2 rounded-xl border border-blue-500/30">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </span>
+                  <h3 className="text-3xl font-black text-white tracking-tight">
+                    {cashRegisterHistory[cashRegisterHistory.length - 1]?.id?.startsWith('PARTIAL-') ? 'Leitura X' : 'Fechamento de Caixa'}
+                  </h3>
+                </div>
+                <p className="text-slate-400 font-bold text-sm ml-11 italic opacity-80">
+                  ID: <span className="text-blue-400 font-black">#{cashRegisterHistory[cashRegisterHistory.length - 1]?.id?.slice(-8)}</span>
+                </p>
+              </div>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    const report = cashRegisterHistory[cashRegisterHistory.length - 1];
+                    // ERRCOM099: Trava de confirmaÁ„o para impress„o
+                    const confirmPrint = window.confirm(
+                      `Confirmar Impress„o de RelatÛrio\n\n` +
+                      `ID: #${report.id.slice(-8)}\n` +
+                      `Tipo: ${report.id?.startsWith('PARTIAL-') ? 'Leitura X' : 'Fechamento de Caixa'}\n` +
+                      `Data: ${new Date(report.openedAt).toLocaleString('pt-BR')}\n\n` +
+                      `Esta aÁ„o n„o pode ser desfeita. Deseja imprimir?`
+                    );
+                    
+                    if (confirmPrint) {
+                      handlePrintCashReport(report);
+                    }
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-black transition-all shadow-xl shadow-blue-600/20 active:scale-95 group"
+                >
+                  <svg className="w-5 h-5 group-hover:rotate-12 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Imprimir
+                </button>
+                <button
+                  onClick={() => {
+                    const last = cashRegisterHistory[cashRegisterHistory.length - 1];
+                    if (last?.id?.startsWith('PARTIAL-')) {
+                      setCashRegisterHistory(prev => prev.filter(h => h.id !== last.id));
+                    }
+                    setIsCashReportOpen(false);
+                  }}
+                  className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition-all text-slate-400 hover:text-white"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="px-10 pb-12 space-y-8">
+              {cashRegisterHistory.slice(-1).map(register => (
+                <div key={register.id} className="space-y-10 animate-in slide-in-from-bottom-4 duration-500">
+                  {/* Info Grid - Modern Glass Style */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-6 bg-white/5 rounded-3xl border border-white/10">
+                    <div className="space-y-1">
+                      <span className="text-slate-500 font-bold text-[10px] uppercase tracking-tighter">Abertura</span>
+                      <p className="text-white font-black text-sm">{new Date(register.openedAt).toLocaleString('pt-BR')}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-slate-500 font-bold text-[10px] uppercase tracking-tighter">Fechamento</span>
+                      <p className="text-white font-black text-sm">
+                        {register.closedAt ? new Date(register.closedAt).toLocaleString('pt-BR') : '-'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-slate-500 font-bold text-[10px] uppercase tracking-tighter">Operador</span>
+                      <p className="text-white font-black text-sm">{register.openedBy}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-slate-500 font-bold text-[10px] uppercase tracking-tighter">Status Atual</span>
+                      <p className={`font-black text-sm uppercase flex items-center gap-1.5 ${register.status === 'open' ? 'text-blue-400' : 'text-emerald-400'}`}>
+                        <span className={`w-2 h-2 rounded-full animate-pulse ${register.status === 'open' ? 'bg-blue-400' : 'bg-emerald-400'}`}></span>
+                        {register.status === 'open' ? 'Aberto' : 'Fechado'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Main Metrics Card Container */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Abertura */}
+                    <div className="relative group overflow-hidden bg-gradient-to-br from-blue-600/20 to-blue-900/40 p-6 rounded-[32px] border border-blue-500/30 hover:shadow-[0_0_30px_rgba(37,99,235,0.1)] transition-all">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-blue-500/20 transition-all"></div>
+                      <span className="text-blue-400 font-black text-[11px] uppercase tracking-widest block mb-1">Fundo de Caixa</span>
+                      <span className="text-white font-black text-3xl tracking-tighter">{formatCurrency(register.initialAmount)}</span>
+                      <div className="mt-4 flex items-center gap-2 text-blue-300/60 text-[10px] font-bold">
+                        <span>?? Capital Inicial</span>
+                      </div>
+                    </div>
+
+                    {/* Vendas */}
+                    <div className="relative group overflow-hidden bg-gradient-to-br from-emerald-600/20 to-emerald-900/40 p-6 rounded-[32px] border border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.1)] transition-all">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-emerald-500/20 transition-all"></div>
+                      <span className="text-emerald-400 font-black text-[11px] uppercase tracking-widest block mb-1">Total em Vendas</span>
+                      <span className="text-white font-black text-3xl tracking-tighter">{formatCurrency(register.totalSales)}</span>
+                      <div className="mt-4 flex items-center gap-2 text-emerald-300/60 text-[10px] font-bold">
+                        <span>?? {register.totalOrders} Pedidos</span>
+                      </div>
+                    </div>
+
+                    {/* Apurado */}
+                    <div className="relative group overflow-hidden bg-gradient-to-br from-purple-600/20 to-purple-900/40 p-6 rounded-[32px] border border-purple-500/30 hover:shadow-[0_0_30px_rgba(147,51,234,0.1)] transition-all">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-purple-500/20 transition-all"></div>
+                      <span className="text-purple-400 font-black text-[11px] uppercase tracking-widest block mb-1">Saldo Estimado</span>
+                      <span className="text-white font-black text-3xl tracking-tighter">{formatCurrency(register.expectedAmount)}</span>
+                      <div className="mt-4 flex items-center gap-2 text-purple-300/60 text-[10px] font-bold">
+                        <span>?? DisponÌvel em Caixa</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Movements Sections */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Sangrias */}
+                    <div className="bg-white/5 rounded-3xl border border-white/10 p-6">
+                      <div className="flex items-center justify-between mb-6">
+                        <h4 className="font-black text-white text-lg flex items-center gap-2">
+                          <span className="p-2 bg-orange-500/20 rounded-xl text-orange-400">??</span>
+                          Sangrias
+                        </h4>
+                        <span className="px-3 py-1 bg-white/5 rounded-full text-xs font-bold text-slate-400 border border-white/10">
+                          {register.withdrawals.length} itens
+                        </span>
+                      </div>
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        {register.withdrawals.length > 0 ? register.withdrawals.map((withdrawal: any, i: number) => (
+                          <div key={i} className="flex justify-between items-center bg-red-500/5 hover:bg-red-500/10 p-4 rounded-2xl border border-red-500/10 transition-colors group">
+                            <div className="flex flex-col">
+                              <span className="text-red-300 text-xs font-bold">{withdrawal.reason}</span>
+                              <span className="text-[10px] text-slate-500 font-medium">{new Date(withdrawal.timestamp).toLocaleTimeString('pt-BR')}</span>
+                            </div>
+                            <span className="text-red-400 font-black text-base group-hover:scale-110 transition-transform">-{formatCurrency(withdrawal.amount)}</span>
+                          </div>
+                        )) : (
+                          <p className="text-slate-600 text-xs text-center py-4 italic">Nenhuma sangria registrada.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Suprimentos */}
+                    <div className="bg-white/5 rounded-3xl border border-white/10 p-6">
+                      <div className="flex items-center justify-between mb-6">
+                        <h4 className="font-black text-white text-lg flex items-center gap-2">
+                          <span className="p-2 bg-blue-500/20 rounded-xl text-blue-400">??</span>
+                          Suprimentos
+                        </h4>
+                        <span className="px-3 py-1 bg-white/5 rounded-full text-xs font-bold text-slate-400 border border-white/10">
+                          {register.deposits.length} itens
+                        </span>
+                      </div>
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        {register.deposits.length > 0 ? register.deposits.map((deposit: any, i: number) => (
+                          <div key={i} className="flex justify-between items-center bg-blue-500/5 hover:bg-blue-500/10 p-4 rounded-2xl border border-blue-500/10 transition-colors group">
+                            <div className="flex flex-col">
+                              <span className="text-blue-300 text-xs font-bold">{deposit.reason}</span>
+                              <span className="text-[10px] text-slate-500 font-medium">{new Date(deposit.timestamp).toLocaleTimeString('pt-BR')}</span>
+                            </div>
+                            <span className="text-blue-400 font-black text-base group-hover:scale-110 transition-transform">+{formatCurrency(deposit.amount)}</span>
+                          </div>
+                        )) : (
+                          <p className="text-slate-600 text-xs text-center py-4 italic">Nenhum suprimento registrado.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment Methods Section */}
+                  <div className="bg-white/5 rounded-[40px] border border-white/10 p-8 shadow-inner">
+                    <h4 className="font-black text-white text-xl mb-8 flex items-center gap-2">
+                      <span className="p-2 bg-versiory-coral/20 rounded-2xl text-versiory-coral">??</span>
+                      Divis„o por Forma de Pagamento
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                      <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
+                        <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">Dinheiro</span>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.dinheiro)} <span className="text-[10px] text-slate-400 font-bold opacity-70">({register.salesByPaymentCount?.dinheiro || 0})</span></p>
+                      </div>
+                      <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
+                        <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">PIX</span>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.pix)} <span className="text-[10px] text-slate-400 font-bold opacity-70">({register.salesByPaymentCount?.pix || 0})</span></p>
+                      </div>
+                      <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
+                        <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">DÈbito</span>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.debito)} <span className="text-[10px] text-slate-400 font-bold opacity-70">({register.salesByPaymentCount?.debito || 0})</span></p>
+                      </div>
+                      <div className="p-5 bg-white/5 rounded-[24px] border border-white/10 hover:bg-white/10 transition-all cursor-default">
+                        <span className="text-slate-500 font-bold text-[10px] uppercase block mb-1">CrÈdito</span>
+                        <p className="text-white font-black text-xl tracking-tighter">{formatCurrency(register.salesByPayment.credito)} <span className="text-[10px] text-slate-400 font-bold opacity-70">({register.salesByPaymentCount?.credito || 0})</span></p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Final Reconciliation Section (Only for closed reports or if difference is set) */}
+                  {(register.status === 'closed' || register.difference !== 0) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 bg-black/40 rounded-[40px] border border-white/10">
+                      <div className="flex justify-between items-center p-6 bg-white/5 rounded-[32px] border border-white/10">
+                        <div className="flex flex-col">
+                          <span className="text-slate-500 font-black text-[10px] uppercase tracking-widest">Informado</span>
+                          <span className="text-white font-black text-2xl tracking-tighter">{formatCurrency(register.actualAmount)}</span>
+                        </div>
+                        <div className={`p-4 rounded-3xl font-black text-sm shadow-xl flex flex-col items-center ${register.difference === 0 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                          register.difference < 0 ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' :
+                            'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                          }`}>
+                          <span className="text-[10px] opacity-70 mb-0.5">ESTADO</span>
+                          {register.difference === 0 ? 'COMPLETO' : register.difference < 0 ? 'QUEBRA' : 'SOBRA'}
+                        </div>
+                      </div>
+
+                      <div className={`flex flex-col justify-center items-center p-6 rounded-[32px] border transition-all ${register.difference === 0 ? 'bg-emerald-500/10 border-emerald-500/20' :
+                        register.difference < 0 ? 'bg-red-500/10 border-red-500/20' :
+                          'bg-blue-500/10 border-blue-500/20'
+                        }`}>
+                        <span className="text-slate-500 font-black text-[10px] uppercase tracking-widest mb-1">DivergÍncia Total</span>
+                        <span className={`text-3xl font-black tracking-tighter ${register.difference === 0 ? 'text-emerald-400' :
+                          register.difference < 0 ? 'text-red-400' : 'text-blue-400'
+                          }`}>
+                          {register.difference === 0 ? 'R$ 0,00' : formatCurrency(register.difference)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ERRCOM051: Modal de RelatÛrio de Caixa */}
+      {isCashReportOpen && cashRegisterHistory.length > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md transition-all duration-500" onClick={() => {
+            const last = cashRegisterHistory[cashRegisterHistory.length - 1];
+            if (last?.id?.startsWith('PARTIAL-')) {
+              setCashRegisterHistory(prev => prev.filter(h => h.id !== last.id));
+            }
+            setIsCashReportOpen(false);
+          }} />
           <CashRegisterReport
-            cashRegister={currentCashReport}
-            onClose={() => {
-              if (currentCashReport?.id?.startsWith('PARTIAL-')) {
-                setCashRegisterHistory(prev => prev.filter(h => h.id !== currentCashReport.id));
-              }
-              setCurrentCashReport(null);
-              setIsCashReportOpen(false);
-            }}
+            cashRegister={cashRegisterHistory[cashRegisterHistory.length - 1]}
+            onClose={() => setIsCashReportOpen(false)}
           />
         </div>
       )}
@@ -5535,14 +5295,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Footer */}
       <footer className="bg-gradient-to-r from-versiory-ink to-slate-900 text-white py-8 mt-12 border-t border-white/10 text-center">
         <div className="max-w-7xl mx-auto px-4 flex flex-col items-center gap-4">
-          <p className="text-white/80 text-sm font-medium">√Årea restrita. Acesso exclusivo para administradores. Todas as a√ß√µes s√£o monitoradas.</p>
+          <p className="text-white/80 text-sm font-medium">¡rea restrita. Acesso exclusivo para administradores. Todas as aÁıes s„o monitoradas.</p>
           <button
             onClick={onLogout}
             className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-xl font-medium transition-all mt-2"
           >
             Sair
           </button>
-          <p className="text-white/60 text-xs mt-2">¬© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Vers√£o 2.4.6 (Est√°vel)</span></p>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Vers„o 2.4.6 (Est·vel)</span></p>
         </div>
       </footer>
     </div>

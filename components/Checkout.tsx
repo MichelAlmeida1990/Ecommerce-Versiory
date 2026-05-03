@@ -113,7 +113,11 @@ const Checkout: React.FC<CheckoutProps> = ({
     }
   }, [isOpen, effectiveEmail, customerAddress]);
 
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  // ERRCOM134: No checkout online, priorizar priceEcommerce
+  const subtotal = items.reduce((sum, item) => {
+    const activePrice = item.priceEcommerce || item.price;
+    return sum + activePrice * item.quantity;
+  }, 0);
   const total = Math.max(0, subtotal - discount);
 
   // ERRCOM124: Validação dinâmica de cupons via Firebase (substituindo hardcoded)
@@ -242,7 +246,7 @@ const Checkout: React.FC<CheckoutProps> = ({
             productId: item.id,
             name: item.name,
             quantity: item.quantity,
-            price: item.price,
+            price: item.priceEcommerce || item.price, // ERRCOM134
             image: item.image,
             description: item.description,
             selectedSize: item.selectedSize,
@@ -539,8 +543,8 @@ const Checkout: React.FC<CheckoutProps> = ({
                   <label
                     key={addr.id || idx}
                     className={`flex items-start p-3 border-2 rounded-xl cursor-pointer transition-all ${selectedAddressId === (addr.id || String(idx))
-                        ? 'border-versiory-coral bg-versiory-coral/5'
-                        : 'border-slate-100 hover:border-slate-200 bg-white'
+                      ? 'border-versiory-coral bg-versiory-coral/5'
+                      : 'border-slate-100 hover:border-slate-200 bg-white'
                       }`}
                   >
                     <input
@@ -563,8 +567,8 @@ const Checkout: React.FC<CheckoutProps> = ({
                 ))}
 
                 <label className={`flex items-center p-3 border-2 rounded-xl cursor-pointer transition-all ${selectedAddressId === 'manual'
-                    ? 'border-versiory-coral bg-versiory-coral/5'
-                    : 'border-slate-100 hover:border-slate-200 bg-white'
+                  ? 'border-versiory-coral bg-versiory-coral/5'
+                  : 'border-slate-100 hover:border-slate-200 bg-white'
                   }`}>
                   <input
                     type="radio"
