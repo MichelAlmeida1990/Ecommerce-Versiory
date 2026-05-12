@@ -1837,8 +1837,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (!order.customerPhone) delete (order as any).customerPhone;
 
       // 1. Atualizar ou Criar Cliente (Sanitizado para evitar erro de 'undefined' no Firestore)
-      if (customer && !editingOrder) { // REFCOM143: Não incrementar estatísticas se for edição
-        if (!isBudget) {
+      if (customer) {
+        // REFCOM143: Se for edição, não incrementar estatísticas
+        if (!editingOrder && !isBudget) {
           customer.totalOrders = (customer.totalOrders || 0) + 1;
           customer.totalSpent = (customer.totalSpent || 0) + order.total;
         }
@@ -5184,8 +5185,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onClick={() => {
                     if (selectedOrderDetail.status === 'cancelled') return;
                     if (window.confirm('Deseja cancelar este pedido?')) {
-                      orderStatusForm.orderId = selectedOrderDetail.id;
-                      orderStatusForm.status = 'cancelled';
+                      setOrderStatusForm({
+                        orderId: selectedOrderDetail.id,
+                        status: 'cancelled',
+                        notes: selectedOrderDetail.notes || ''
+                      });
                       handleOrderStatusSubmit(new Event('submit') as any);
                       setSelectedOrderDetail(null);
                       alert('Pedido cancelado e estoque estornado!');
