@@ -458,7 +458,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                     <div className="text-3xl">💳</div>
                     <div className="flex-1">
                       <h5 className="font-black text-amber-900 text-lg leading-none mb-2">Aguardando seu Pagamento</h5>
-                      <p className="text-amber-700 text-xs font-medium mb-4 leading-relaxed">Seu pedido foi reservado, mas só será processado após a confirmação do pagamento no sistema.</p>
+                      <p className="text-amber-700 text-xs font-medium mb-4 leading-relaxed">Seu pedido foi reservado, mas só será processado após a confirmação do pagamento no sistema e disponibilidade em estoque.</p>
                       <button
                         onClick={() => {
                           const itemsList = selectedOrder.items.map(item =>
@@ -473,7 +473,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                             '',
                             `*TOTAL: R$ ${selectedOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*`,
                             '',
-                            'Olá! Gostaria de finalizar o pagamento deste pedido. Quais são as chaves PIX ou próximos passos?'
+                            'Olá! Gostaria de finalizar o pagamento deste pedido, poderia verificar se ainda tem em estoque, quais são as formas de pagamento e os próximos passos?'
                           ].join('\n');
 
                           const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;

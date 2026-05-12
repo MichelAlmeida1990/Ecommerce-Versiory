@@ -571,7 +571,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ERRCOM136: Lançamento de Receita Manual
   const handleManualRevenueSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualRevenueForm.description?.trim() || !manualRevenueForm.amount) return;
+    if (!manualRevenueForm.description?.trim() || !manualRevenueForm.amount) {
+      alert('Preencha todos os campos obrigatórios!');
+      return;
+    }
 
     try {
       const { saveManualRevenue } = await import('../services/firebase');
@@ -588,7 +591,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setManualRevenues(prev => [...prev, revenue]); // Atualiza o gráfico e cards imediatamente
       alert('Receita lançada com sucesso!');
       setIsManualRevenueModalOpen(false);
-    } catch (error) { console.error(error); }
+      // Resetar formulário
+      setManualRevenueForm({
+        description: '',
+        category: 'PIX',
+        amount: 0,
+        date: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+    } catch (error) {
+      console.error('Erro ao lançar receita:', error);
+      alert('Erro ao lançar receita. Tente novamente.');
+    }
   };
 
   const categoryOptions = useMemo(() => {
@@ -5092,6 +5106,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               )}
               {selectedOrderDetail.notes && <p><span className="font-bold text-white">Observação:</span> {selectedOrderDetail.notes}</p>}
+
+              {/* REFCOM134: Exibir informações de parcelamento */}
+              {selectedOrderDetail.paymentMethod === 'credito' && selectedOrderDetail.installments && selectedOrderDetail.installments > 1 && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3 mb-4">
+                  <p className="text-blue-400 font-bold text-sm mb-2">💳 Pagamento Parcelado</p>
+                  <p className="text-white text-xs">
+                    {selectedOrderDetail.installments}x de {formatCurrency(selectedOrderDetail.total / selectedOrderDetail.installments)} 
+                    <span className="text-slate-400 ml-2">(Total: {formatCurrency(selectedOrderDetail.total)})</span>
+                  </p>
+                  {selectedOrderDetail.installmentDetails && (
+                    <div className="mt-2 space-y-1">
+                      {selectedOrderDetail.installmentDetails.map((inst, i) => (
+                        <div key={i} className="flex justify-between items-center text-xs">
+                          <span className="text-slate-300">Parcela {inst.number}</span>
+                          <span className={`font-bold ${inst.status === 'paid' ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {formatCurrency(inst.amount)} {inst.status === 'paid' ? '✓' : '⏳'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="pt-4 flex flex-wrap gap-2">
                 <button
