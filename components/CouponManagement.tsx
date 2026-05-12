@@ -145,32 +145,32 @@ const CouponManagement: React.FC = () => {
 
             <div className="mb-6 p-4 border border-white/10 rounded-xl bg-white/5">
                 <h3 className="text-xl font-bold mb-3 text-white">{editingCouponId ? 'Editar Cupom' : 'Adicionar Novo Cupom'}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label htmlFor="codigo" className="block text-sm font-bold text-slate-300">Código</label>
+                        <label htmlFor="codigo" className="block text-sm font-bold text-slate-300">Código do Cupom</label>
                         <input type="text" id="codigo" name="codigo" value={newCoupon.codigo || ''} onChange={handleInputChange} className="mt-1 block w-full bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm p-2 outline-none focus:ring-2 focus:ring-versiory-coral" placeholder="EX: VERSIORY10" />
                     </div>
                     <div>
-                        <label htmlFor="tipo" className="block text-sm font-bold text-slate-300">Tipo</label>
+                        <label htmlFor="tipo" className="block text-sm font-bold text-slate-300">Tipo de Desconto</label>
                         <select id="tipo" name="tipo" value={newCoupon.tipo || 'fixo'} onChange={handleInputChange} className="mt-1 block w-full bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm p-2 outline-none focus:ring-2 focus:ring-versiory-coral">
                             <option value="fixo" className="bg-slate-800">Valor Fixo (R$)</option>
                             <option value="percentual" className="bg-slate-800">Percentual (%)</option>
                         </select>
                     </div>
                     <div>
-                        <label htmlFor="valor" className="block text-sm font-bold text-slate-300">Valor</label>
+                        <label htmlFor="valor" className="block text-sm font-bold text-slate-300">Valor do Desconto</label>
                         <input type="number" id="valor" name="valor" value={newCoupon.valor || 0} onChange={handleInputChange} className="mt-1 block w-full bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm p-2 outline-none focus:ring-2 focus:ring-versiory-coral" />
                     </div>
                     <div>
-                        <label htmlFor="valorMinimo" className="block text-sm font-bold text-slate-300">Valor Mínimo (Opcional)</label>
+                        <label htmlFor="valorMinimo" className="block text-sm font-bold text-slate-300">Valor Mínimo do Pedido</label>
                         <input type="number" id="valorMinimo" name="valorMinimo" value={newCoupon.valorMinimo || ''} onChange={handleInputChange} className="mt-1 block w-full bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm p-2 outline-none focus:ring-2 focus:ring-versiory-coral" />
                     </div>
                     <div>
-                        <label htmlFor="usoMaximo" className="block text-sm font-bold text-slate-300">Limite de Usos (Opcional)</label>
+                        <label htmlFor="usoMaximo" className="block text-sm font-bold text-slate-300">Limite de Usos</label>
                         <input type="number" id="usoMaximo" name="usoMaximo" value={newCoupon.usoMaximo || ''} onChange={handleInputChange} className="mt-1 block w-full bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm p-2 outline-none focus:ring-2 focus:ring-versiory-coral" />
                     </div>
                     <div>
-                        <label htmlFor="dataFim" className="block text-sm font-bold text-slate-300">Data de Expiração (Opcional)</label>
+                        <label htmlFor="dataFim" className="block text-sm font-bold text-slate-300">Data de Expiração</label>
                         <input type="date" id="dataFim" name="dataFim" value={newCoupon.dataFim ? newCoupon.dataFim.split('T')[0] : ''} onChange={handleInputChange} className="mt-1 block w-full bg-slate-900/50 border border-white/20 rounded-xl text-white shadow-sm p-2 outline-none focus:ring-2 focus:ring-versiory-coral" />
                     </div>
                 </div>
