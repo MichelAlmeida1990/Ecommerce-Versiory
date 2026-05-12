@@ -54,8 +54,9 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
       <style>{`
         @media print {
           @page { margin: 0; size: 80mm auto; }
-          body { background: white !important; padding: 0 !important; margin: 0 !important; }
+          body { background: white !important; padding: 0 !important; margin: 0 !important; -webkit-print-color-adjust: exact; }
           .print-hidden { display: none !important; }
+          .receipt-paper { border: none !important; box-shadow: none !important; width: 100% !important; margin: 0 !important; }
           .receipt-paper {
             width: 76mm !important;
             max-width: 100% !important;

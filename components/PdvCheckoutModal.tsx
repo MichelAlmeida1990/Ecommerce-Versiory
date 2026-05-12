@@ -70,7 +70,8 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     }
   }, [isOpen, editingOrder]);
 
-  const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+  // REFCOM134: Utilizar pricePOS para vendas no PDV
+  const subtotal = cart.reduce((sum, item) => sum + ((item.product.pricePOS || item.product.price) * item.quantity), 0);
   const actualDiscount = discountType === 'percentual' ? subtotal * (discountAmount / 100) : discountAmount;
   const total = Math.max(0, subtotal - actualDiscount);
 

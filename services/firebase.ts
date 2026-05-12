@@ -19,7 +19,8 @@ import {
     CategoryItem,
     TrackingItem,
     InventoryMovement,
-    Expense
+    Expense,
+    ManualRevenue
 } from "../types";
 
 const firebaseConfig = {
@@ -218,6 +219,11 @@ export const subscribeToExpenses = (callback: (expenses: Expense[]) => void) => 
 };
 export const saveExpense = (expense: Expense) => setDocument("expenses", expense.id, expense);
 export const deleteExpense = (id: number) => deleteDocument("expenses", id);
+
+// ---- Manual Revenues ----
+export const getManualRevenues = () => getCollection<ManualRevenue>("manualRevenues");
+export const saveManualRevenue = (revenue: ManualRevenue) => setDocument("manualRevenues", revenue.id, revenue);
+export const deleteManualRevenue = (id: number) => deleteDocument("manualRevenues", id);
 
 // ---- User Session ----
 // Cada usuário tem sua própria sessão baseada no email

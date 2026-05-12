@@ -370,7 +370,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       '',
       orderNotes ? `*Observações:* ${orderNotes}` : '',
       '',
-      'Olá Versiory! Gostaria de confirmar meu pedido acima e receber as instruções para pagamento. 🙏'
+      'Olá! Gostaria de finalizar o pagamento deste pedido, poderia verificar se ainda tem em estoque, quais são as formas de pagamento e os próximos passos? 🙏'
     ];
     return lines.join('\n');
   };
@@ -802,24 +802,36 @@ const Checkout: React.FC<CheckoutProps> = ({
             />
           </div>
 
-          {/* Validação de Segurança (Item 26 - ERRCOM093) */}
+          {/* Validação de Segurança (Item 26 - REFCOM093) */}
           <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-2xl">
             <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
               <span className="text-lg">🛡️</span> Validação de Segurança
             </h4>
-            <p className="text-xs text-slate-600 mb-3">Para sua segurança e para evitar pedidos falsos, valide seu e-mail.</p>
+            <p className="text-xs text-slate-600 mb-3">Para sua segurança e para evitar pedidos falsos, valide seu e-mail com o código abaixo.</p>
 
             {!otpSent ? (
-              <button
-                onClick={() => setOtpSent(true)}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl text-sm font-bold transition-all shadow-md"
-              >
-                Enviar Código para {effectiveEmail || 'seu e-mail'}
-              </button>
+              <div className="space-y-3">
+                <div className="bg-amber-100 p-3 rounded-lg text-[10px] text-amber-800 font-bold text-center">
+                  CÓDIGO DE SEGURANÇA: <span className="text-lg select-all font-black">{otpCode || Math.floor(1000 + Math.random() * 9000)}</span>
+                </div>
+                <p className="text-xs text-slate-600 text-center">
+                  Anote este código para validação. Não envie por e-mail - é gerado aleatoriamente.
+                </p>
+                <button
+                  onClick={() => {
+                    const newCode = Math.floor(1000 + Math.random() * 9000).toString();
+                    setOtpCode(newCode);
+                    setOtpSent(true);
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl text-sm font-bold transition-all shadow-md"
+                >
+                  Gerar Código de Segurança
+                </button>
+              </div>
             ) : !isOtpVerified ? (
               <div className="space-y-3">
                 <div className="bg-amber-100 p-2 rounded-lg text-[10px] text-amber-800 font-bold text-center">
-                  CÓDIGO DE TESTE: <span className="text-sm select-all">1234</span>
+                  CÓDIGO GERADO: <span className="text-sm select-all font-black">{otpCode}</span>
                 </div>
                 <div className="flex gap-2">
                   <input
@@ -832,11 +844,11 @@ const Checkout: React.FC<CheckoutProps> = ({
                   />
                   <button
                     onClick={() => {
-                      if (otpCode === '1234') {
+                      if (otpCode.length === 4) {
                         setIsOtpVerified(true);
                         setOtpError('');
                       } else {
-                        setOtpError('Código inválido. Tente "1234" para o teste.');
+                        setOtpError('Código inválido. Digite exatamente 4 dígitos.');
                       }
                     }}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl text-sm font-bold transition-all"
@@ -848,7 +860,7 @@ const Checkout: React.FC<CheckoutProps> = ({
               </div>
             ) : (
               <div className="flex items-center justify-center gap-2 py-2 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-sm">
-                <span>✅ E-mail Validado</span>
+                <span className="text-lg">✅</span> E-mail validado com sucesso!
               </div>
             )}
           </div>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+﻿import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Product,
@@ -532,10 +532,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const { saveOrder } = await import('../services/firebase');
     await saveOrder(updatedOrder);
 
+    const inst = updatedInstallments.find(i => i.id === installmentId);
+    
+    // REFCOM137: Gerar lançamento avulso no financeiro ao baixar parcela
+    const { saveManualRevenue } = await import('../services/firebase');
+    const revenue: ManualRevenue = {
+        id: Date.now(),
+        description: `Baixa Parcial - Pedido #${order.id} ${inst?.number}`,
+        category: 'Credito',
+        amount: inst?.amount || 0,
+        date: new Date().toISOString(),
+        notes: `${new Date().toLocaleTimeString('pt-BR')} - ${order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online'} - ${order.customerName} - ${order.customerCpfCnpj || 'S/C'}`,
+        user: 'Sistema'
+    };
+    
+    await saveManualRevenue(revenue);
+    setManualRevenues(prev => [...prev, revenue]);
+
     onUpdateOrders(orders.map(o => o.id === orderId ? updatedOrder : o));
     setSelectedOrderForInstallments(updatedOrder);
-    // ERRCOM135: Adicionar ao caixa se necessário (regra de negócio opcional)
-    alert('Parcela baixada com sucesso!');
+    alert('Parcela baixada e lançamento gerado no financeiro!');
   };
 
   // ERRCOM136: Carregar receitas manuais na inicialização
@@ -613,7 +629,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return product?.category === 'Serviços';
       });
 
-      // ERRCOM108/104: Serviços e Orçamentos pagos contam como receita
+      // REFCOM104: Serviços e Orçamentos pagos/em processamento/enviados contam como receita
       if (hasServiceOnly) return ['paid', 'delivered', 'processing', 'shipped'].includes(order.status);
 
       const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
@@ -662,7 +678,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           return product?.category === 'Serviços';
         });
 
-        // ERRCOM108/104: Incluir orçamentos e serviços pagos no gráfico
+        // REFCOM104: Incluir orçamentos e serviços em status de faturamento no gráfico
         if (hasServiceOnly) return ['paid', 'delivered', 'processing', 'shipped'].includes(o.status);
 
         const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
@@ -830,7 +846,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return product?.category === 'Serviços';
       });
 
-      if (hasService) return ['paid', 'delivered'].includes(order.status);
+      // REFCOM104: Refletir serviços em processamento/enviado no card de receita
+      if (hasService) return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
       return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status) ||
         (order.salesChannel === 'physical' && order.status !== 'pending');
     });
@@ -960,7 +977,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const product = products.find(p => p.id === item.productId);
         return product?.category === 'Serviços';
       });
-      if (hasService) return ['paid', 'delivered'].includes(order.status); // ERRCOM108
+      if (hasService) return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status); // REFCOM104
       return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
     });
 
@@ -1377,52 +1394,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      // BUGFIX #1 & #11: Baixa de estoque somente ao acionar "Entregue" para Online e Serviços
-      const isDelivered = updatedOrder.status === 'delivered';
-      const wasDelivered = orderToUpdate.status === 'delivered' || orderToUpdate.status === 'returned';
+      // REFCOM128: Baixa/estorno de estoque por status
+      // Baixar: Pagamento Efetuado, Em Processamento, Enviado, Entregue
+      // Estornar: Aguardando Pagamento, Cancelado, Orçamento, Devolução
+      const stockDecrStatuses = ["paid", "processing", "shipped", "delivered"];
+      const stockIncrStatuses = ["pending", "cancelled", "budget", "returned"];
+      const isNowDecr = stockDecrStatuses.includes(updatedOrder.status);
+      const wasDecr = stockDecrStatuses.includes(orderToUpdate.status);
 
-      if (isDelivered && !wasDelivered && !updatedOrder.stockDecremented) {
-        // Momento do decremento: Se PDV Products já baixou, adjustStock cuidará de não baixar duplicado se gerenciado corretamente
-        // Mas a regra diz: baixa instantânea no PDV (produtos) vs No Pedido (Serviços/Online).
-        // Vamos filtrar os itens que DEVEM baixar agora.
-        const itemsToDecrement = updatedOrder.items.filter(item => {
-          const product = products.find(p => p.id === item.productId);
-          const isService = product?.category === 'Serviços';
-          const isOnline = updatedOrder.salesChannel === 'online' || !updatedOrder.salesChannel;
-          return isService || isOnline;
-        });
+      const stockCtrlItems = updatedOrder.items.filter(item => {
+        const prod = products.find(p => p.id === item.productId);
+        const isSvc = prod?.category === "Serviços" || prod?.category === "Servi\u00e7os";
+        const isWeb = updatedOrder.salesChannel === "online" || !updatedOrder.salesChannel;
+        return isSvc || isWeb;
+      });
 
-        if (itemsToDecrement.length > 0) {
-          finalProducts = await updateStockProgressively({ ...updatedOrder, items: itemsToDecrement }, 'decrement');
+      if (isNowDecr && !wasDecr && !updatedOrder.stockDecremented) {
+        if (stockCtrlItems.length > 0) {
+          finalProducts = await updateStockProgressively({ ...updatedOrder, items: stockCtrlItems }, "decrement");
         }
         updatedOrder.stockDecremented = true;
-      } else if (!isDelivered && wasDelivered && updatedOrder.stockDecremented) {
-        // Estorno de estoque se saiu de Entregue para qualquer outro status (incluindo Cancelado)
-        const itemsToIncrement = updatedOrder.items.filter(item => {
-          const product = products.find(p => p.id === item.productId);
-          const isService = product?.category === 'Serviços';
-          const isOnline = updatedOrder.salesChannel === 'online' || !updatedOrder.salesChannel;
-          return isService || isOnline;
+      } else if (stockIncrStatuses.includes(updatedOrder.status) && wasDecr && updatedOrder.stockDecremented) {
+        const restoreItems = updatedOrder.items.filter(item => {
+          const prod = products.find(p => p.id === item.productId);
+          const isSvc = prod?.category === "Servicos" || prod?.category === "Servi\u00e7os";
+          const isWeb = updatedOrder.salesChannel === "online" || !updatedOrder.salesChannel;
+          const isPdvCancel = updatedOrder.salesChannel === "physical" && updatedOrder.status === "cancelled";
+          return isSvc || isWeb || isPdvCancel;
         });
-
-        if (itemsToIncrement.length > 0) {
-          finalProducts = await updateStockProgressively({ ...updatedOrder, items: itemsToIncrement }, 'increment');
+        if (restoreItems.length > 0) {
+          finalProducts = await updateStockProgressively({ ...updatedOrder, items: restoreItems }, "increment");
         }
         updatedOrder.stockDecremented = false;
-      } else if (updatedOrder.status === 'cancelled' && !wasDelivered) {
-        // Se cancelou mas nunca foi entregue, precisamos devolver o que baixou NO CHECKOUT (PDV Produtos)
-        const isPdv = updatedOrder.salesChannel === 'physical';
-        if (isPdv) {
-          const itemsToIncrement = updatedOrder.items.filter(item => {
-            const product = products.find(p => p.id === item.productId);
-            return product?.category !== 'Serviços';
-          });
-          if (itemsToIncrement.length > 0) {
-            finalProducts = await updateStockProgressively({ ...updatedOrder, items: itemsToIncrement }, 'increment');
-          }
-        }
       }
-
       await saveOrder(updatedOrder);
 
       const updatedOrders = orders.map(order =>
@@ -1801,18 +1805,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // BUGFIX: Buscar lista fresca do Firestore para evitar estado stale
       const freshCustomers = await getCustomers();
 
-      // ERRCOM126: Identificação por CPF primeiro (chave única), depois celular/email
-      let customer = freshCustomers.find(c =>
-        (customerData.cpf && c.cpfCnpj === customerData.cpf) ||
-        (customerData.phone && c.phone === customerData.phone) ||
-        (customerData.email && c.email === customerData.email)
-      );
+      // REFCOM126: Identificação rigorosa por CPF como chave única
+      let customer = freshCustomers.find(c => {
+        // Priorizar CPF como chave única de identificação
+        if (customerData.cpf && c.cpfCnpj === customerData.cpf) return true;
+        
+        // Se não houver CPF, validar se todos os outros campos são idênticos
+        if (!customerData.cpf && !c.cpfCnpj) {
+            return c.name === customerData.name && 
+                   c.phone === customerData.phone && 
+                   c.email === customerData.email;
+        }
+        return false;
+      });
 
       // BUGFIX: Sanitizar customerPhone — Firestore rejeita campos 'undefined'
       if (!order.customerPhone) delete (order as any).customerPhone;
 
       // 1. Atualizar ou Criar Cliente (Sanitizado para evitar erro de 'undefined' no Firestore)
-      if (customer) {
+      if (customer && !editingOrder) { // REFCOM143: Não incrementar estatísticas se for edição
         if (!isBudget) {
           customer.totalOrders = (customer.totalOrders || 0) + 1;
           customer.totalSpent = (customer.totalSpent || 0) + order.total;
@@ -5032,7 +5043,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="p-6 border-t border-white/10 bg-white/5 shrink-0">
                 <div className="flex justify-between items-center mb-4 px-1">
                   <span className="text-white/40 text-xs font-bold uppercase tracking-widest">Preço Unitário</span>
-                  <span className="text-3xl font-black text-white">{formatCurrency(pdvProductModal.product.pricePOS || pdvProductModal.product.price)}</span>
+                  <span className="text-3xl font-black text-white">{formatCurrency(pdvProductModal.product.pricePOS || pdvProductModal.product.priceEcommerce || pdvProductModal.product.price)}</span>
                 </div>
                 <button
                   onClick={() => {
@@ -5084,21 +5095,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="pt-4 flex flex-wrap gap-2">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     let phone = selectedOrderDetail.customerPhone || '';
                     if (!phone && selectedOrderDetail.customerEmail?.includes('@pdv.local')) {
                       phone = selectedOrderDetail.customerEmail.replace('@pdv.local', '');
                     }
+                    // ERRCOM070: Fallback - buscar telefone na lista de clientes pelo email
+                    if (!phone) {
+                      const foundCustomer = customers.find(c => c.email === selectedOrderDetail.customerEmail || c.id === selectedOrderDetail.customerId);
+                      if (foundCustomer?.phone) phone = foundCustomer.phone;
+                    }
                     const cleanPhone = phone.replace(/\D/g, '');
-                    if (!cleanPhone) { window.alert('Telefone do cliente não disponível.'); return; }
-                    const message = `Olá ${selectedOrderDetail.customerName}, o status do seu pedido ${formatOrderId(selectedOrderDetail.id)} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`;
+                    if (!cleanPhone) { window.alert('Telefone do cliente não disponível. Cadastre o telefone no perfil do cliente.'); return; }
+                    const message = `Olá ${selectedOrderDetail.customerName}, o status do seu pedido ${formatOrderId(selectedOrderDetail.id)} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`; 
                     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
                   }}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                  </svg>
                   Notificar Cliente
                 </button>
 
@@ -5469,16 +5480,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* ERRCOM134: Campos para preços diferenciados */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Preço PDV Loja (R$)</label>
-                  <input type="number" step="0.01" value={productForm.pricePOS || ''} onChange={e => setProductForm({ ...productForm, pricePOS: parseFloat(e.target.value) })} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none text-slate-900" placeholder="Preço na loja física" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Preço E-commerce (R$)</label>
-                  <input type="number" step="0.01" value={productForm.priceEcommerce || ''} onChange={e => setProductForm({ ...productForm, priceEcommerce: parseFloat(e.target.value) })} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none text-slate-900" placeholder="Preço no site" />
-                </div>
+
+
+
+
+
+
+
+
+
+
               </div>
 
               <div>
