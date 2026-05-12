@@ -5507,33 +5507,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-black text-white mb-2">Valor (R$)</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">R$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={cashMovementForm.amount}
-                    onChange={e => setCashMovementForm(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
-                    className="w-full bg-white/5 border border-white/20 text-white rounded-xl pl-12 pr-4 py-4 text-xl font-bold focus:ring-2 focus:ring-versiory-coral outline-none"
-                    placeholder="0,00"
-                  />
-                </div>
-              </div>
-
-
-
-
-
-
-
-
-
-
-
-              </div>
-
-              <div>
                 <label className="block text-sm font-black text-white mb-2">Motivo</label>
                 <textarea
                   value={cashMovementForm.reason}
