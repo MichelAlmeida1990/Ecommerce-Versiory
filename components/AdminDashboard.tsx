@@ -258,6 +258,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  // REFCOM150: Função de sincronização em tempo real do estoque entre PDV e e-commerce
+  const syncStockRealtime = async (productId: number, newStock: number, stockBySize?: any, stockBySizeColor?: any) => {
+    try {
+      const { saveProduct } = await import('../services/firebase');
+      
+      // Atualizar o produto no Firebase
+      const productIndex = products.findIndex(p => p.id === productId);
+      if (productIndex === -1) return;
+
+      const updatedProduct: Product = {
+        ...products[productIndex],
+        stock: newStock,
+        stockBySize: stockBySize || products[productIndex].stockBySize,
+        stockBySizeColor: stockBySizeColor || products[productIndex].stockBySizeColor,
+        lastStockUpdate: new Date().toISOString()
+      };
+
+      const sanitized = sanitizeData(updatedProduct);
+      await saveProduct(sanitized);
+      
+      // Atualizar estado local imediatamente
+      const updatedProducts = [...products];
+      updatedProducts[productIndex] = sanitized;
+      onUpdateProducts(updatedProducts);
+
+      // Disparar evento de sincronização para outros componentes ouvirem
+      window.dispatchEvent(new CustomEvent('stockUpdated', {
+        detail: {
+          productId,
+          newStock,
+          stockBySize,
+          stockBySizeColor,
+          timestamp: new Date().toISOString()
+        }
+      }));
+
+      console.log(`✅ Estoque sincronizado em tempo real - Produto #${productId} - Novo estoque: ${newStock}`);
+    } catch (error) {
+      console.error('❌ Erro ao sincronizar estoque em tempo real:', error);
+    }
+  };
+
   // BUGFIX #1 & #11: Função auxiliar para gerenciar baixa de estoque de forma consistente
   const updateStockProgressively = async (order: Order, type: 'decrement' | 'increment'): Promise<Product[]> => {
     const { saveProduct, saveInventoryMovement } = await import('../services/firebase');
@@ -298,6 +340,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const sanitized = sanitizeData(updatedProduct);
       const saved = await saveProduct(sanitized);
       updatedProductsList[productIndex] = saved;
+
+      // REFCOM150: Sincronizar em tempo real após atualização de estoque
+      await syncStockRealtime(
+        p.id,
+        newTotalStock,
+        newStockBySize,
+        newStockBySizeColor
+      );
 
       // Registrar movimento de estoque
       movements.push({
@@ -625,9 +675,52 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     loadManualRevenues();
   }, []);
 
+  useEffect(() => {
+    // Carregar configurações SMTP salvas
+    const savedSmtp = localStorage.getItem('versiory_smtp');
+    if (savedSmtp) {
+      try {
+        setSmtpSettings(JSON.parse(savedSmtp));
+      } catch (error) {
+        console.error('Erro ao carregar configurações SMTP:', error);
+      }
+    }
+
+    // REFCOM150: Listener para eventos de sincronização de estoque em tempo real
+    const handleStockUpdate = (event: CustomEvent) => {
+      const { productId, newStock, stockBySize, stockBySizeColor } = event.detail;
+      
+      // Atualizar estado local dos produtos
+      onUpdateProducts(prevProducts => 
+        prevProducts.map(product => 
+          product.id === productId 
+            ? {
+                ...product,
+                stock: newStock,
+                stockBySize: stockBySize || product.stockBySize,
+                stockBySizeColor: stockBySizeColor || product.stockBySizeColor,
+                lastStockUpdate: new Date().toISOString()
+              }
+            : product
+        )
+      );
+
+      console.log(` Estoque atualizado via evento - Produto #${productId}`);
+    };
+
+    // Adicionar listener
+    window.addEventListener('stockUpdated', handleStockUpdate as EventListener);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('stockUpdated', handleStockUpdate as EventListener);
+    };
+  }, []);
+
   // ERRCOM136: Lançamento de Receita Manual
   const handleManualRevenueSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // ...
     if (!manualRevenueForm.description?.trim() || !manualRevenueForm.amount) {
       alert('Preencha todos os campos obrigatórios!');
       return;
