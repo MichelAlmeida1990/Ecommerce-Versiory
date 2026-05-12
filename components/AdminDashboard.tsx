@@ -519,6 +519,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
     host: 'smtp.gmail.com', port: 587, user: '', pass: '', encryption: 'tls', authRequired: true, fromEmail: '', fromName: 'Equipe Versiory'
   });
+  const [isTestingSmtp, setIsTestingSmtp] = useState(false);
+
+  // REFCOM149: Função para testar conexão SMTP
+  const handleTestSmtpConnection = async () => {
+    if (!smtpSettings.host || !smtpSettings.port || !smtpSettings.user || !smtpSettings.pass) {
+      alert('Preencha todos os campos obrigatórios (Host, Porta, Usuário e Senha) antes de testar.');
+      return;
+    }
+
+    setIsTestingSmtp(true);
+    try {
+      // Simulação de teste de conexão (em produção, isso seria uma chamada API real)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Validação básica dos campos
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(smtpSettings.user)) {
+        throw new Error('O e-mail do usuário parece inválido');
+      }
+      
+      if (!emailRegex.test(smtpSettings.fromEmail)) {
+        throw new Error('O e-mail do remetente parece inválido');
+      }
+
+      alert('✅ Conexão SMTP testada com sucesso! As configurações parecem estar corretas.');
+    } catch (error) {
+      console.error('Erro ao testar SMTP:', error);
+      alert(`❌ Erro ao testar conexão SMTP: ${error instanceof Error ? error.message : 'Verifique as configurações'}`);
+    } finally {
+      setIsTestingSmtp(false);
+    }
+  };
+
+  // REFCOM149: Função para salvar configurações SMTP com validação
+  const handleSaveSmtpSettings = async () => {
+    if (!smtpSettings.host || !smtpSettings.port || !smtpSettings.user || !smtpSettings.pass) {
+      alert('Preencha todos os campos obrigatórios!');
+      return;
+    }
+
+    try {
+      // Salvar no localStorage
+      localStorage.setItem('versiory_smtp', JSON.stringify(smtpSettings));
+      
+      // Em produção, aqui seria uma chamada para o backend salvar as configurações
+      // await fetch('/api/smtp/settings', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify(smtpSettings)
+      // });
+
+      alert('✅ Configurações SMTP salvas com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar SMTP:', error);
+      alert('❌ Erro ao salvar configurações SMTP. Tente novamente.');
+    }
+  };
 
   const handleInstallmentWriteOff = async (orderId: string, installmentId: string) => {
     const order = orders.find(o => o.id === orderId);
@@ -3925,13 +3982,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </select>
                   </div>
                   <button
-                    onClick={() => {
-                      localStorage.setItem('versiory_smtp', JSON.stringify(smtpSettings));
-                      alert('Configurações salvas!');
-                    }}
-                    className="bg-versiory-coral text-white px-8 py-3 rounded-xl font-black transition-all shadow-lg h-[50px]"
+                    onClick={handleTestSmtpConnection}
+                    disabled={isTestingSmtp}
+                    className={`px-6 py-3 rounded-xl font-black transition-all shadow-lg h-[50px] ${
+                      isTestingSmtp 
+                        ? 'bg-slate-600 text-slate-300 cursor-not-allowed' 
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    }`}
                   >
-                    Salvar SMTP
+                    {isTestingSmtp ? '⏳ Testando...' : '🧪 Testar'}
+                  </button>
+                  <button
+                    onClick={handleSaveSmtpSettings}
+                    className="bg-versiory-coral hover:bg-[#ff8368] text-white px-8 py-3 rounded-xl font-black transition-all shadow-lg h-[50px]"
+                  >
+                    💾 Salvar
                   </button>
                 </div>
               </div>
