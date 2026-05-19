@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Product, CartItem, Category } from './types';
 import Header from './components/Header';
@@ -120,10 +120,24 @@ const App: React.FC = () => {
     const closeHandler = () => setIsProfileOpen(false);
     window.addEventListener('openProfileModal', openHandler);
     window.addEventListener('closeProfileModal', closeHandler as EventListener);
+
+    // REFCOM150: Escutar atualizações de estoque em tempo real disparadas pelo AdminDashboard
+    const onStockUpdated = async () => {
+      try {
+        const { getProducts } = await import('./services/firebase');
+        const updatedProducts = await getProducts();
+        setProducts(updatedProducts);
+      } catch (e) {
+        console.error('Erro ao sincronizar estoque:', e);
+      }
+    };
+    window.addEventListener('stockUpdated', onStockUpdated as EventListener);
+
     return () => {
       window.removeEventListener('addToCart', onAddToCartEvent as EventListener);
       window.removeEventListener('openProfileModal', openHandler);
       window.removeEventListener('closeProfileModal', closeHandler as EventListener);
+      window.removeEventListener('stockUpdated', onStockUpdated as EventListener);
     };
   }, []);
 

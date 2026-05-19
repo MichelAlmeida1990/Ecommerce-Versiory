@@ -96,18 +96,20 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         <tbody>
           ${items.map(item => {
     const variantInfo = [item.selectedSize, item.selectedColor].filter(Boolean).join(' / ');
+    const itemPrice = (item as any).pricePOS || item.price; // REFCOM134: PDV usa pricePOS
+    const displayInstallments = (item as any).installments || item.installments;
     return `
               <tr>
                 <td>
                   ${item.name}${variantInfo ? ' (' + variantInfo + ')' : ''}
-                  ${item.installments && item.installments > 1 ? `
+                  ${displayInstallments && displayInstallments > 1 ? `
                     <div class="installments">
-                      Em até ${item.installments}x de R$ ${(item.price / item.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      Parcelado em ${displayInstallments}x de R$ ${(itemPrice / displayInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </div>
                   ` : ''}
                 </td>
                 <td style="text-align:right">${item.quantity}</td>
-                <td style="text-align:right">R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align:right">R$ ${(itemPrice * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
               </tr>
             `;
   }).join('')}
@@ -123,6 +125,13 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
       <div class="payment-method">
         <span>FORMA PAGTO:</span>
         <span>${paymentMethod.toUpperCase()}</span>
+      </div>
+      ` : ''}
+
+      ${(data as any).installments && (data as any).installments > 1 && paymentMethod && !isBudget ? `
+      <div class="payment-method" style="font-size:0.85em; color:#444;">
+        <span>PARCELAMENTO:</span>
+        <span>Parcelado em ${(data as any).installments}x de R$ ${((data.total) / (data as any).installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
       </div>
       ` : ''}
 

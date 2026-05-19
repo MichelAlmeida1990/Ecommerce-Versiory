@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Product,
@@ -311,8 +311,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (productIndex === -1) continue;
 
       const p = updatedProductsList[productIndex];
-      // Ignorar se for item sem estoque (opcional, dependendo se serviços tem estoque)
-      // Mas a regra diz baixar estoque se tiver, então seguimos:
+      if (p.category === 'Serviços') continue; // Serviços não possuem controle de estoque físico
 
       const qty = item.quantity;
       const factor = type === 'decrement' ? -1 : 1;
@@ -565,9 +564,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
   const [selectedOrderForInstallments, setSelectedOrderForInstallments] = useState<Order | null>(null);
 
-  // ERRCOM093: Configuração SMTP
-  const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
-    host: 'smtp.gmail.com', port: 587, user: '', pass: '', encryption: 'tls', authRequired: true, fromEmail: '', fromName: 'Equipe Versiory'
+  // REFCOM149: Lazy init — carrega SMTP do localStorage imediatamente, sem depender de useEffect
+  const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>(() => {
+    try {
+      const saved = localStorage.getItem('versiory_smtp');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return { host: 'smtp.gmail.com', port: 587, user: '', pass: '', encryption: 'tls', authRequired: true, fromEmail: '', fromName: 'Equipe Versiory' };
   });
   const [isTestingSmtp, setIsTestingSmtp] = useState(false);
 
@@ -631,8 +634,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const order = orders.find(o => o.id === orderId);
     if (!order || !order.installmentDetails) return;
 
+    const now = new Date();
     const updatedInstallments = order.installmentDetails.map(inst =>
-      inst.id === installmentId ? { ...inst, status: 'paid' as const, paidAt: new Date().toISOString() } : inst
+      inst.id === installmentId
+        ? { ...inst, status: 'paid' as const, paidAt: now.toISOString() }
+        : inst
     );
 
     const updatedOrder = { ...order, installmentDetails: updatedInstallments };
@@ -640,19 +646,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     await saveOrder(updatedOrder);
 
     const inst = updatedInstallments.find(i => i.id === installmentId);
-    
-    // REFCOM137: Gerar lançamento avulso no financeiro ao baixar parcela
+
+    // REFCOM137: Gerar lançamento avulso com Data/Hora completo
     const { saveManualRevenue } = await import('../services/firebase');
+    const dateStr = now.toLocaleDateString('pt-BR');
+    const timeStr = now.toLocaleTimeString('pt-BR');
+    const channel = order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online';
     const revenue: ManualRevenue = {
-        id: Date.now(),
-        description: `Baixa Parcial - Pedido #${order.id} ${inst?.number}`,
-        category: 'Credito',
-        amount: inst?.amount || 0,
-        date: new Date().toISOString(),
-        notes: `${new Date().toLocaleTimeString('pt-BR')} - ${order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online'} - ${order.customerName} - ${order.customerCpfCnpj || 'S/C'}`,
-        user: 'Sistema'
+      id: Date.now(),
+      description: `Baixa Parcial - Pedido #${order.id} ${inst?.number || ''}`,
+      category: 'Credito',
+      amount: inst?.amount || 0,
+      date: now.toISOString(),
+      notes: `${dateStr} - ${timeStr} - ${channel} ${order.customerName} - ${order.customerCpfCnpj || 'S/C'}`,
+      user: 'Sistema'
     };
-    
+
     await saveManualRevenue(revenue);
     setManualRevenues(prev => [...prev, revenue]);
 
@@ -720,9 +729,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ERRCOM136: Lançamento de Receita Manual
   const handleManualRevenueSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // ...
-    if (!manualRevenueForm.description?.trim() || !manualRevenueForm.amount) {
-      alert('Preencha todos os campos obrigatórios!');
+    // REFCOM136: Corrigido — 0 é falsy, então validação era !0 = true sempre bloqueava
+    if (!manualRevenueForm.description?.trim() || !manualRevenueForm.amount || manualRevenueForm.amount <= 0) {
+      alert('Preencha todos os campos obrigatórios e informe um valor maior que zero!');
       return;
     }
 
@@ -1558,7 +1567,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      // REFCOM128: Baixa/estorno de estoque por status
+      // REFCOM132: Baixa/estorno de estoque por status — todos os itens participam
       // Baixar: Pagamento Efetuado, Em Processamento, Enviado, Entregue
       // Estornar: Aguardando Pagamento, Cancelado, Orçamento, Devolução
       const stockDecrStatuses = ["paid", "processing", "shipped", "delivered"];
@@ -1566,30 +1575,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const isNowDecr = stockDecrStatuses.includes(updatedOrder.status);
       const wasDecr = stockDecrStatuses.includes(orderToUpdate.status);
 
-      const stockCtrlItems = updatedOrder.items.filter(item => {
-        const prod = products.find(p => p.id === item.productId);
-        const isSvc = prod?.category === "Serviços" || prod?.category === "Servi\u00e7os";
-        const isWeb = updatedOrder.salesChannel === "online" || !updatedOrder.salesChannel;
-        return isSvc || isWeb;
-      });
+      // REFCOM153: Guard — se já estava cancelado e continua cancelado, não processar estoque
+      const isSameCancelledStatus =
+        updatedOrder.status === "cancelled" && orderToUpdate.status === "cancelled";
 
-      if (isNowDecr && !wasDecr && !updatedOrder.stockDecremented) {
-        if (stockCtrlItems.length > 0) {
-          finalProducts = await updateStockProgressively({ ...updatedOrder, items: stockCtrlItems }, "decrement");
+      if (!isSameCancelledStatus) {
+        // REFCOM132: Todos os itens participam (não só serviços/online)
+        if (isNowDecr && !wasDecr && !updatedOrder.stockDecremented) {
+          finalProducts = await updateStockProgressively(updatedOrder, "decrement");
+          updatedOrder.stockDecremented = true;
+        } else if (stockIncrStatuses.includes(updatedOrder.status) && wasDecr && updatedOrder.stockDecremented) {
+          finalProducts = await updateStockProgressively(updatedOrder, "increment");
+          updatedOrder.stockDecremented = false;
         }
-        updatedOrder.stockDecremented = true;
-      } else if (stockIncrStatuses.includes(updatedOrder.status) && wasDecr && updatedOrder.stockDecremented) {
-        const restoreItems = updatedOrder.items.filter(item => {
-          const prod = products.find(p => p.id === item.productId);
-          const isSvc = prod?.category === "Servicos" || prod?.category === "Servi\u00e7os";
-          const isWeb = updatedOrder.salesChannel === "online" || !updatedOrder.salesChannel;
-          const isPdvCancel = updatedOrder.salesChannel === "physical" && updatedOrder.status === "cancelled";
-          return isSvc || isWeb || isPdvCancel;
-        });
-        if (restoreItems.length > 0) {
-          finalProducts = await updateStockProgressively({ ...updatedOrder, items: restoreItems }, "increment");
-        }
-        updatedOrder.stockDecremented = false;
       }
       await saveOrder(updatedOrder);
 
@@ -1974,11 +1972,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         // Priorizar CPF como chave única de identificação
         if (customerData.cpf && c.cpfCnpj === customerData.cpf) return true;
         
-        // Se não houver CPF, validar se todos os outros campos são idênticos
+        // Se não houver CPF, considerar somente o nome idêntico (case-insensitive) para consolidar
         if (!customerData.cpf && !c.cpfCnpj) {
-            return c.name === customerData.name && 
-                   c.phone === customerData.phone && 
-                   c.email === customerData.email;
+            return c.name.trim().toLowerCase() === customerData.name.trim().toLowerCase();
         }
         return false;
       });
@@ -2053,10 +2049,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             updatedProducts[productIndex] = saved;
           }
         }
-        // Se houve itens decrementados (produtos físicos), marcar no pedido
-        if (itemsToDecrement.length > 0) {
-          order.stockDecremented = itemsToDecrement.length === pdvCart.length; // Se todos baixaram, marca true. Se tem serviço pendente, false.
-        }
+        // REFCOM132: Marcar como decrementado no PDV para evitar duplicidade de baixa ao mudar status posteriormente
+        order.stockDecremented = true;
 
         onUpdateProducts(updatedProducts);
       }
@@ -3860,7 +3854,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-slate-100 font-medium text-sm">Receita Total — clique para detalhes</div>
               </button>
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && (['paid', 'processing', 'shipped', 'delivered'].includes(o.status) || (o.isBudget && o.status === 'paid'))) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
@@ -3939,7 +3933,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* ERRCOM029/030: Cards clicáveis PDV e Online por forma de pagamento */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && (['paid', 'processing', 'shipped', 'delivered'].includes(o.status) || (o.isBudget && o.status === 'paid'))) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 text-left hover:bg-white/20 transition-all"
               >
                 <div className="text-lg font-black text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
@@ -4157,7 +4151,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            <CouponManagement />
+            {/* REFCOM160: CouponManagement removido daqui — já renderizado na aba de configurações acima (linha 4100) */}
+            <div className="p-6 bg-white/5 rounded-2xl border border-white/10 text-center text-slate-400">
+              <p className="text-sm">⚙️ Para gerenciar cupons, acesse a seção <strong className="text-white">Configurações → E-mail</strong> no menu acima.</p>
+            </div>
           </div>
         )}
       </div>
@@ -5306,6 +5303,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const message = `Olá ${selectedOrderDetail.customerName}, o status do seu pedido ${formatOrderId(selectedOrderDetail.id)} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`; 
                     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
                   }}
+                >
                   Notificar Cliente
                 </button>
 
@@ -5673,6 +5671,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   rows={3}
                   placeholder="Informe o motivo..."
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-black text-white mb-2">Valor (R$)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={cashMovementForm.amount || ''}
+                    onChange={e => setCashMovementForm(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                    className="w-full bg-white/5 border border-white/20 text-white rounded-xl pl-12 pr-4 py-3 text-lg font-bold focus:ring-2 focus:ring-versiory-coral outline-none text-right"
+                    placeholder="0,00"
+                    required
+                  />
+                </div>
               </div>
 
               <div className="flex gap-3">

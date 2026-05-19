@@ -113,7 +113,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
 
     // Montar o pedido em memória (ainda NÃO salvo)
     const previewOrder: Order = {
-      id: 'ORC-PREVIEW',
+      id: editingOrder ? editingOrder.id : 'ORC-PREVIEW',
       customerId: 0,
       customerName: customerForm.name,
       customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''),
@@ -127,7 +127,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         productId: item.product.id,
         name: item.product.name,
         quantity: item.quantity,
-        price: item.product.price,
+        price: item.product.pricePOS || item.product.price, // REFCOM134: usar preço PDV
         image: item.product.image,
         selectedSize: item.selectedSize,
         selectedColor: item.selectedColor,
@@ -186,7 +186,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     if (!budgetPendingOrder) return;
     const saleOrder: Order = {
       ...budgetPendingOrder,
-      id: 'PDV-CONFIRM',
+      id: editingOrder ? editingOrder.id : `PDV-${Date.now()}`,
       isBudget: false,
       status: 'delivered',
       paymentMethod
@@ -216,7 +216,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     if (!validateForm()) return;
 
     const order: Order = {
-      id: `PDV-${Date.now()}`,
+      id: editingOrder ? editingOrder.id : `PDV-${Date.now()}`,
       customerId: 0,
       customerName: customerForm.name,
       customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''),
@@ -230,7 +230,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         productId: item.product.id,
         name: item.product.name,
         quantity: item.quantity,
-        price: item.product.price,
+        price: item.product.pricePOS || item.product.price, // REFCOM134: usar preço PDV
         image: item.product.image,
         selectedSize: item.selectedSize,
         selectedColor: item.selectedColor,

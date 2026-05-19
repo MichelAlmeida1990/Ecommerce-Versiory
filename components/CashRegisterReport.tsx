@@ -28,10 +28,12 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
   const totalWithdrawals = (cashRegister.withdrawals || []).reduce((acc, w) => acc + w.amount, 0);
   const totalDeposits = (cashRegister.deposits || []).reduce((acc, d) => acc + d.amount, 0);
 
-  // ERRCOM095: Apuração Final = Abertura + Vendas (Dinheiro/Pix) + Suprimentos - Sangrias
-  // Nota: Cartões são saldo futuro mas aparecem no resumo de vendas.
-  const apuracaoDinheiroEPix = (cashRegister.salesByPayment?.dinheiro || 0) + (cashRegister.salesByPayment?.pix || 0);
-  const saldo = (cashRegister.initialAmount || 0) + apuracaoDinheiroEPix + totalDeposits - totalWithdrawals;
+  // REFCOM128: SALDO REAL EM CAIXA = Abertura + TODAS as vendas (Dinheiro + PIX + Débito + Crédito) + Suprimentos - Sangrias
+  const totalVendas = (cashRegister.salesByPayment?.dinheiro || 0) +
+    (cashRegister.salesByPayment?.pix || 0) +
+    (cashRegister.salesByPayment?.debito || 0) +
+    (cashRegister.salesByPayment?.credito || 0);
+  const saldo = (cashRegister.initialAmount || 0) + totalVendas + totalDeposits - totalWithdrawals;
 
   const handlePrint = () => {
     setHasPrinted(true);
@@ -175,7 +177,7 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
             <div className="flex justify-between items-center py-1">
               <div>
                 <span className="font-black text-gray-900 uppercase text-sm">Saldo Real em Caixa:</span>
-                <p className="text-[9px] text-gray-400">(Abertura + Vendas Dinheiro/Pix + Suprimentos - Sangrias)</p>
+                <p className="text-[9px] text-gray-400">(Abertura + Todas as Vendas + Suprimentos - Sangrias)</p>
               </div>
               <span className="font-black text-green-600 text-sm">{formatCurrency(saldo)}</span>
             </div>
@@ -239,6 +241,18 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2"
             >
               🖨️ Imprimir
+            </button>
+            <button
+              onClick={async () => {
+                // REFCOM139: Abrir em janela dedicada para evitar duplicação
+                const { generateCashReportHTML } = await import('../utils/cashReportGenerator');
+                const html = generateCashReportHTML(cashRegister as any);
+                const win = window.open('', '_blank', 'width=420,height=700');
+                if (win) { win.document.write(html); win.document.close(); }
+              }}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2"
+            >
+              📄 PDF
             </button>
             <button
               onClick={handleClose}

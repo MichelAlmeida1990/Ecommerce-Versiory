@@ -32,7 +32,14 @@ const Checkout: React.FC<CheckoutProps> = ({
 
   // Resetar ao fechar
   React.useEffect(() => {
-    if (!isOpen) setOrderPlaced(false);
+    if (!isOpen) {
+      setOrderPlaced(false);
+      // REFCOM093: Gerar novo código a cada abertura do checkout
+      setOtpCode(Math.floor(1000 + Math.random() * 9000).toString());
+      setOtpSent(false);
+      setIsOtpVerified(false);
+      setOtpError('');
+    }
   }, [isOpen]);
   const [customerData, setCustomerData] = useState<Customer | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('default');
@@ -42,7 +49,8 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [couponError, setCouponError] = useState('');
   const [couponApplied, setCouponApplied] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
+  // REFCOM093: Gerar código automaticamente ao montar (sem etapa de clique)
+  const [otpCode, setOtpCode] = useState<string>(() => Math.floor(1000 + Math.random() * 9000).toString());
   const [isOtpVerified, setIsOtpVerified] = useState(false);
   const [otpError, setOtpError] = useState('');
   const [customerPhone, setCustomerPhone] = useState(''); // ERRCOM070
@@ -363,7 +371,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         if (item.selectedSize) details.push(`Tamanho: ${item.selectedSize}`);
         if (item.selectedColor) details.push(`Cor: ${item.selectedColor}`);
         const detailsStr = details.length > 0 ? ` (${details.join(', ')})` : '';
-        return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${((item.priceEcommerce || item.price) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       }),
       '',
       `*TOTAL: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*`,
@@ -484,7 +492,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                     </div>
                   </div>
                   <p className="font-bold text-slate-900 whitespace-nowrap">
-                    R$ {(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {((item.priceEcommerce || item.price) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
               ))}
@@ -802,65 +810,57 @@ const Checkout: React.FC<CheckoutProps> = ({
             />
           </div>
 
-          {/* Validação de Segurança (Item 26 - REFCOM093) */}
+          {/* Validação de Segurança (REFCOM093) */}
           <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-2xl">
             <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
               <span className="text-lg">🛡️</span> Validação de Segurança
             </h4>
-            <p className="text-xs text-slate-600 mb-3">Para sua segurança e para evitar pedidos falsos, valide seu e-mail com o código abaixo.</p>
+            <p className="text-xs text-slate-600 mb-3">Para sua segurança, valide o código abaixo antes de finalizar o pedido.</p>
 
-            {!otpSent ? (
+            {!isOtpVerified ? (
               <div className="space-y-3">
-                <div className="bg-amber-100 p-3 rounded-lg text-[10px] text-amber-800 font-bold text-center">
-                  CÓDIGO DE SEGURANÇA: <span className="text-lg select-all font-black">{otpCode || Math.floor(1000 + Math.random() * 9000)}</span>
-                </div>
-                <p className="text-xs text-slate-600 text-center">
-                  Anote este código para validação. Não envie por e-mail - é gerado aleatoriamente.
-                </p>
-                <button
-                  onClick={() => {
-                    const newCode = Math.floor(1000 + Math.random() * 9000).toString();
-                    setOtpCode(newCode);
-                    setOtpSent(true);
-                  }}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl text-sm font-bold transition-all shadow-md"
-                >
-                  Gerar Código de Segurança
-                </button>
-              </div>
-            ) : !isOtpVerified ? (
-              <div className="space-y-3">
-                <div className="bg-amber-100 p-2 rounded-lg text-[10px] text-amber-800 font-bold text-center">
-                  CÓDIGO GERADO: <span className="text-sm select-all font-black">{otpCode}</span>
+                <div className="bg-amber-100 p-3 rounded-lg text-center">
+                  <p className="text-[10px] text-amber-800 font-bold mb-1">CÓDIGO DE SEGURANÇA GERADO:</p>
+                  <span className="text-3xl font-black text-amber-900 tracking-[0.4em] select-all">{otpCode}</span>
+                  <p className="text-[10px] text-amber-700 mt-1">Anote este código e digite-o abaixo para confirmar.</p>
                 </div>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value)}
+                    inputMode="numeric"
                     placeholder="Digite o código de 4 dígitos"
                     className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-center font-black tracking-[0.5em] focus:ring-2 focus:ring-blue-500 outline-none"
                     maxLength={4}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === otpCode && val.length === 4) {
+                        setIsOtpVerified(true);
+                        setOtpError('');
+                      } else if (val.length === 4) {
+                        setOtpError('Código incorreto. Tente novamente.');
+                      } else {
+                        setOtpError('');
+                      }
+                    }}
                   />
                   <button
                     onClick={() => {
-                      if (otpCode.length === 4) {
-                        setIsOtpVerified(true);
-                        setOtpError('');
-                      } else {
-                        setOtpError('Código inválido. Digite exatamente 4 dígitos.');
-                      }
+                      // Gerar novo código
+                      setOtpCode(Math.floor(1000 + Math.random() * 9000).toString());
+                      setIsOtpVerified(false);
+                      setOtpError('');
                     }}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl text-sm font-bold transition-all"
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+                    title="Gerar novo código"
                   >
-                    Validar
+                    🔄
                   </button>
                 </div>
                 {otpError && <p className="text-[10px] text-red-500 font-bold">{otpError}</p>}
               </div>
             ) : (
               <div className="flex items-center justify-center gap-2 py-2 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-sm">
-                <span className="text-lg">✅</span> E-mail validado com sucesso!
+                <span className="text-lg">✅</span> Código validado com sucesso!
               </div>
             )}
           </div>

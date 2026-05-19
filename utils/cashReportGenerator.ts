@@ -44,6 +44,16 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
   const headerColor = isPartial ? '#475569' : '#000000'; // Slate-600 vs Black
   const bgColor = isPartial ? '#f8fafc' : '#ffffff';
 
+  // REFCOM128: Calcular o saldo de forma robusta e idêntica ao CashRegisterReport
+  const totalVendas = (data.salesByPayment?.dinheiro || 0) +
+    (data.salesByPayment?.pix || 0) +
+    (data.salesByPayment?.debito || 0) +
+    (data.salesByPayment?.credito || 0);
+  const totalDeposits = (data.deposits || []).reduce((acc, d) => acc + d.amount, 0);
+  const totalWithdrawals = (data.withdrawals || []).reduce((acc, w) => acc + w.amount, 0);
+  const expectedBalance = (data.initialAmount || 0) + totalVendas + totalDeposits - totalWithdrawals;
+  const computedDifference = data.closedAt ? (data.actualAmount - expectedBalance) : 0;
+
   return `
     <!DOCTYPE html>
     <html>
@@ -136,14 +146,16 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
 
       <div class="section" style="border-top: 2px solid #000;">
         <div class="row bold" style="font-size: 1.25em; margin-top: 8px;">
-          <span>TOTAL EM CAIXA:</span>
-          <span>${formatCurrency(data.expectedAmount)}</span>
+          <span>SALDO REAL CAIXA:</span>
+          <span>${formatCurrency(expectedBalance)}</span>
         </div>
         ${!isPartial ? `
         <div class="row bold" style="margin-top: 10px;"><span>VALOR INFORMADO:</span> <span>${formatCurrency(data.actualAmount)}</span></div>
-        <div class="row bold" style="${data.difference < 0 ? 'color: red;' : ''}">
+        <div class="row bold" style="${computedDifference < 0 ? 'color: red;' : ''}">
           <span>DIFERENÇA:</span> 
-          <span>${formatCurrency(data.difference)}</span>
+          <span>${formatCurrency(computedDifference)}</span>
+          ${computedDifference > 0 ? ' (SOBRA)' : ''}
+          ${computedDifference < 0 ? ' (FALTA)' : ''}
         </div>
         ` : `
         <div style="text-align: center; margin-top: 15px; font-style: italic; color: #444; font-size: 10px; border: 1px solid #ccc; padding: 5px;">
