@@ -197,15 +197,16 @@ const ProductDetail: React.FC = () => {
                   <div className="flex items-end gap-2 mb-1">
                     <span className="text-sm font-bold text-slate-500 mb-2 tracking-wide">R$</span>
                     <span className="text-5xl font-black text-slate-900">
-                      {Math.floor(product.price)}
+                      {Math.floor(product.priceEcommerce || product.price)}
                     </span>
                     <span className="text-xl font-bold text-slate-900 mb-2">
-                      ,{Math.round((product.price % 1) * 100).toString().padStart(2, '0')}
+                      ,{Math.round(((product.priceEcommerce || product.price) % 1) * 100).toString().padStart(2, '0')}
                     </span>
                   </div>
                   {(product.installments && product.installments > 1) ? (
                     <p className="text-slate-600">
-                      Em até <strong className="text-slate-900">{product.installments}x de R$ {(product.price / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> sem juros
+                      {/* REFCOM138: Usar priceEcommerce para e-commerce */}
+                      Em até <strong className="text-slate-900">{product.installments}x de R$ {((product.priceEcommerce || product.price) / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> sem juros
                     </p>
                   ) : (
                     <p className="text-slate-600">

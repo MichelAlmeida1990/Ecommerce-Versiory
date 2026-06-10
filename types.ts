@@ -5,6 +5,7 @@ export interface Product {
   price: number;
   pricePOS?: number; // ERRCOM134: Preço para Loja Física
   priceEcommerce?: number; // ERRCOM134: Preço para E-commerce
+  priceMarketplace?: number; // Preço para Marketplaces (pode ser diferente devido a comissões)
   category: string;
   image: string;
   images?: string[]; // Múltiplas imagens
@@ -39,6 +40,10 @@ export interface Product {
   cClassTrib?: string; // Código de Classificação Tributária (Reforma 2026)
   installments?: number; // Parcelamento máximo sem juros
   active?: boolean; // ERRCOM105: Inativo/Ativo
+  // Marketplace Integration
+  mlId?: string; // ID do anúncio no Mercado Livre
+  shopeeId?: string; // ID do produto na Shopee
+  marketplaceAttributes?: { [key: string]: any }; // Atributos específicos exigidos por cada canal
 }
 
 
@@ -82,7 +87,7 @@ export interface InstallmentStatus { // ERRCOM135
   id: string;
   number: string; // Ex: "1/6"
   amount: number;
-  status: 'pending' | 'paid';
+  status: 'pending' | 'paid'; // REFCOM135
   paidAt?: string;
   notes?: string;
   paymentMethod?: string;
@@ -108,8 +113,8 @@ export interface Order {
   estimatedDelivery?: string;
   trackingCode?: string;
   carrier?: string;
-  notes?: string;
-  salesChannel?: 'online' | 'physical';
+  notes?: string; // Observações do pedido
+  salesChannel?: 'online' | 'physical' | 'mercadolivre' | 'shopee' | 'magalu' | 'amazon'; // Canal de venda, expandido para marketplaces
   paymentMethod?: string;
   emitNF?: boolean;
   nfeXml?: string;
@@ -119,6 +124,8 @@ export interface Order {
   stockDecremented?: boolean; // Se a baixa de estoque já foi realizada para este pedido
   installments?: number; // Número de parcelas (para crédito)
   installmentDetails?: InstallmentStatus[]; // ERRCOM135: Gestão de parcelas
+  marketplaceOrderId?: string; // ID original do pedido no marketplace
+  marketplaceStatus?: string; // Status original no marketplace para debug
 }
 
 export interface Address {
@@ -262,6 +269,9 @@ export interface CashRegister {
   };
   withdrawals: CashWithdrawal[];
   deposits: CashDeposit[];
+  totalDiscounts?: number; // REFCOM152: Total de descontos aplicados no período
+  cancelledOrders?: number; // REFCOM164: Quantidade de pedidos cancelados no período
+  cancelledAmount?: number; // REFCOM164: Valor total dos pedidos cancelados no período
   notes?: string;
 }
 
@@ -289,4 +299,22 @@ export interface SmtpSettings { // ERRCOM093
   authRequired: boolean;
   fromEmail: string;
   fromName: string;
+}
+
+export interface MarketplaceConfig {
+  mercadolivre?: {
+    appId: string;
+    clientSecret: string;
+    redirectUri: string;
+    accessToken?: string;
+    refreshToken?: string;
+    expiry?: number;
+    status: 'connected' | 'disconnected' | 'error';
+  };
+  shopee?: {
+    partnerId: string;
+    partnerKey: string;
+    shopId: string;
+    status: 'connected' | 'disconnected' | 'error';
+  };
 }

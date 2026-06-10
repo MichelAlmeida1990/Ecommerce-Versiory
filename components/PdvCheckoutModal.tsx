@@ -336,7 +336,13 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       items: soldItems.map(item => ({ ...item.product, quantity: item.quantity as any, category: item.product.category })),
       total: soldTotal,
       paymentMethod: lastFinishedOrder.paymentMethod || undefined,
-      isBudget: lastFinishedOrder.isBudget
+      isBudget: lastFinishedOrder.isBudget,
+      salesChannel: lastFinishedOrder.salesChannel || 'physical',
+      installments: lastFinishedOrder.installments, // REFCOM135
+      installmentDetails: lastFinishedOrder.installmentDetails, // REFCOM135
+      discountAmount: lastFinishedOrder.discountAmount, // REFCOM151
+      discountType: lastFinishedOrder.discountType, // REFCOM151
+      couponCode: lastFinishedOrder.couponCode // REFCOM151
     });
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');

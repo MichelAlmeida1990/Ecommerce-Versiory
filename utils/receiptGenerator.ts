@@ -16,10 +16,15 @@ interface ReceiptData {
   storePolicies?: string;
   isBudget?: boolean;
   salesChannel?: string; // ERRCOM081
+  installments?: number; // REFCOM135
+  installmentDetails?: any[]; // REFCOM135
+  discountAmount?: number; // REFCOM151
+  discountType?: string; // REFCOM151
+  couponCode?: string; // REFCOM151
 }
 
 export const generateReceiptHTML = (data: ReceiptData): string => {
-  const { orderId, date, orderTime, customerName, customerAddress, customerPhone, customerEmail, customerCpfCnpj, items, total, paymentMethod, notes, storePolicies, isBudget, salesChannel } = data;
+  const { orderId, date, orderTime, customerName, customerAddress, customerPhone, customerEmail, customerCpfCnpj, items, total, paymentMethod, notes, storePolicies, isBudget, salesChannel, discountAmount, discountType, couponCode } = data;
 
   // Verificar se há serviços no pedido
   const hasServices = items.some(item => item.category === 'Serviços');
@@ -97,16 +102,11 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
           ${items.map(item => {
     const variantInfo = [item.selectedSize, item.selectedColor].filter(Boolean).join(' / ');
     const itemPrice = (item as any).pricePOS || item.price; // REFCOM134: PDV usa pricePOS
-    const displayInstallments = (item as any).installments || item.installments;
+    // REFCOM153: Não mostrar parcelamento por item, usar apenas o parcelamento do pedido
     return `
               <tr>
                 <td>
                   ${item.name}${variantInfo ? ' (' + variantInfo + ')' : ''}
-                  ${displayInstallments && displayInstallments > 1 ? `
-                    <div class="installments">
-                      Parcelado em ${displayInstallments}x de R$ ${(itemPrice / displayInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </div>
-                  ` : ''}
                 </td>
                 <td style="text-align:right">${item.quantity}</td>
                 <td style="text-align:right">R$ ${(itemPrice * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
@@ -115,6 +115,13 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
   }).join('')}
         </tbody>
       </table>
+
+      ${discountAmount && discountAmount > 0 ? `
+      <div class="discount" style="display:flex; justify-content:space-between; margin-top:5px; font-size:11px; color:#d32f2f;">
+        <span>DESCONTO${couponCode ? ` (${couponCode})` : ''}:</span>
+        <span>-R$ ${discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+      </div>
+      ` : ''}
 
       <div class="total">
         <span>TOTAL</span>
@@ -133,6 +140,11 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         <span>PARCELAMENTO:</span>
         <span>Parcelado em ${(data as any).installments}x de R$ ${((data.total) / (data as any).installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
       </div>
+      ${(data as any).installmentDetails ? `
+      <div style="font-size:0.75em; color:#666; margin-top:2px; padding-left:4px;">
+        ${(data as any).installmentDetails.map((inst: any) => `<div>- Parcela ${inst.number}: R$ ${inst.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${inst.status === 'paid' ? 'Paga' : 'Pendente'})</div>`).join('')}
+      </div>
+      ` : ''}
       ` : ''}
 
       ${notes ? `

@@ -11,7 +11,7 @@ import Account from './components/Account';
 import LoginRegister from './components/LoginRegister';
 import Tracking from './components/Tracking';
 import ProductDetail from './components/ProductDetail';
-import { getProducts, getCategories } from './services/firebase';
+import { getProducts, getCategories, subscribeToProducts } from './services/firebase';
 
 
 const PrivateRoute: React.FC<{ children: React.ReactNode; isAuthenticated: boolean; isLoading: boolean }> = ({ children, isAuthenticated, isLoading }) => {
@@ -49,26 +49,25 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        const productsData = await getProducts();
-        if (productsData.length > 0) {
-          setProducts(productsData);
-        } else {
-          // Fallback para constants se Firebase estiver vazio
-          import('./constants').then(({ PRODUCTS }) => {
-            setProducts(PRODUCTS);
-          });
-        }
-      } catch (error) {
-        console.error('Erro ao carregar produtos:', error);
-        // Fallback para constants em caso de erro
+    // ERRCOM150: Usar subscribeToProducts para atualização em tempo real
+    const unsubscribe = subscribeToProducts((productsData) => {
+      if (productsData.length > 0) {
+        setProducts(productsData);
+      } else {
+        // Fallback para constants se Firebase estiver vazio
         import('./constants').then(({ PRODUCTS }) => {
           setProducts(PRODUCTS);
         });
       }
-    };
+    });
 
+    // Cleanup function para desinscrever quando o componente desmontar
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     const loadUserSession = async () => {
       try {
         const { getUserSession } = await import('./services/firebase');
@@ -87,6 +86,10 @@ const App: React.FC = () => {
       }
     };
 
+    loadUserSession();
+  }, []);
+
+  useEffect(() => {
     const loadCategories = async () => {
       try {
         const categoriesData = await getCategories();
@@ -101,11 +104,10 @@ const App: React.FC = () => {
       }
     };
 
-    loadProducts();
     loadCategories();
-    loadUserSession();
+  }, []);
 
-
+  useEffect(() => {
     // Listen for addToCart custom events from ProductDetail
     const onAddToCartEvent = (e: Event) => {
       const evt = e as CustomEvent<{ product: Product }>;

@@ -133,6 +133,20 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
               <span className="text-gray-600">QTD PEDIDOS:</span>
               <span className="font-bold text-gray-900">{cashRegister.totalOrders || 0}</span>
             </div>
+            {/* REFCOM152: Exibe o total de descontos aplicados */}
+            {cashRegister.totalDiscounts && cashRegister.totalDiscounts > 0 && (
+              <div className="flex justify-between text-green-600">
+                <span className="text-gray-600">DESCONTOS APLICADOS:</span>
+                <span className="font-bold text-right">-{formatCurrency(cashRegister.totalDiscounts)}</span>
+              </div>
+            )}
+            {/* REFCOM164: Exibe os cancelamentos do período */}
+            {cashRegister.cancelledOrders && cashRegister.cancelledOrders > 0 && (
+              <div className="flex justify-between text-red-600">
+                <span className="text-gray-600">CANCELAMENTOS ({cashRegister.cancelledOrders}):</span>
+                <span className="font-bold text-right">-{formatCurrency(cashRegister.cancelledAmount || 0)}</span>
+              </div>
+            )}
 
             <div className="border-t border-dashed border-gray-300 my-2" />
 

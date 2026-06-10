@@ -80,7 +80,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
       const products = await getProducts();
       for (const item of orderToCancel.items) {
         const product = products.find(p => p.id === item.productId);
-        if (product) {
+        if (product && product.category !== 'Serviços') { // ERRCOM104: Não estornar estoque de serviços
           const previousStock = product.stock || 0;
           const newStock = previousStock + item.quantity;
 
@@ -619,6 +619,26 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                         <span className="text-[10px] font-black uppercase tracking-widest">Valor do Pedido</span>
                         <span className="text-3xl font-black">R$ {selectedOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                       </div>
+                      {/* REFCOM135: Exibir informações de parcelamento */}
+                      {selectedOrder.paymentMethod === 'credito' && selectedOrder.installments && selectedOrder.installments > 1 && (
+                        <div className="pt-4 border-t border-white/10">
+                          <div className="flex justify-between items-center mb-3">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">💳 Parcelamento</span>
+                            <span className="text-xs font-bold text-blue-300">{selectedOrder.installments}x de R$ {(selectedOrder.total / selectedOrder.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          {selectedOrder.installmentDetails && (
+                            <div className="space-y-2">
+                              {selectedOrder.installmentDetails.map((inst, i) => (
+                                <div key={i} className="flex justify-between items-center text-xs bg-white/5 p-2 rounded-lg">
+                                  <span className="text-slate-300">Parcela {inst.number}</span>
+                                  <span className="font-bold text-white">R$ {inst.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                  {inst.status === 'paid' && <span className="text-[9px] text-emerald-400 font-black ml-2">PAGA</span>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -679,7 +699,12 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                         items: selectedOrder.items as any,
                         total: selectedOrder.total,
                         paymentMethod: selectedOrder.paymentMethod,
-                        salesChannel: selectedOrder.salesChannel || 'online'
+                        salesChannel: selectedOrder.salesChannel || 'online',
+                        installments: selectedOrder.installments, // REFCOM135.2
+                        installmentDetails: selectedOrder.installmentDetails, // REFCOM135.2
+                        discountAmount: selectedOrder.discountAmount, // REFCOM151
+                        discountType: selectedOrder.discountType, // REFCOM151
+                        couponCode: selectedOrder.couponCode // REFCOM151
                       });
                       const printWindow = window.open('', '_blank');
                       if (printWindow) {

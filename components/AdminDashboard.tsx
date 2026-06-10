@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+﻿import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Product,
@@ -25,6 +25,8 @@ import ProductMediaShowcase from './ProductMediaShowcase';
 import CashRegisterReport from './CashRegisterReport';
 import { saveProduct } from '../services/firebase';
 import CouponManagement from './CouponManagement';
+import MarketplaceFields from './MarketplaceFields'; // Importar o novo componente
+import MarketplaceSettings from './MarketplaceSettings'; // Importar o novo componente de configurações
 
 interface AdminDashboardProps {
   products: Product[];
@@ -56,7 +58,8 @@ type TabKey =
   | 'inventory'
   | 'financial'
   | 'fiscal'
-  | 'settings';
+  | 'settings'
+  | 'marketplaces';
 
 type StockFilter = 'all' | 'low' | 'out' | 'normal';
 
@@ -294,7 +297,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }));
 
-      console.log(`✅ Estoque sincronizado em tempo real - Produto #${productId} - Novo estoque: ${newStock}`);
+      console.log(`✅ Estoque sincronizado localmente - Produto #${productId} - Novo estoque: ${newStock}`);
+
+      // REFCOM151: Sincronização com Canais Externos (Mercado Livre)
+      if (updatedProduct.mlId) {
+        try {
+          const { updateMlStock } = await import('../services/mercadolivre');
+          await updateMlStock(updatedProduct.mlId, newStock);
+          console.log(`🌐 [ML SYNC] Estoque atualizado no anúncio ${updatedProduct.mlId}`);
+        } catch (mlError) {
+          console.error(`❌ Erro ao sincronizar com Mercado Livre (${updatedProduct.mlId}):`, mlError);
+        }
+      }
     } catch (error) {
       console.error('❌ Erro ao sincronizar estoque em tempo real:', error);
     }
@@ -534,6 +548,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // ERRCOM027: Filtro de data dos lançamentos financeiros
   const [financialDateFilter, setFinancialDateFilter] = useState({ from: '', to: '' });
+
+  // REFCOM160: Filtros por Tipo e Forma de Pagamento
+  const [financialTypeFilter, setFinancialTypeFilter] = useState<'all' | 'revenue' | 'expense'>('all');
+  const [financialPaymentFilter, setFinancialPaymentFilter] = useState<'all' | 'dinheiro' | 'pix' | 'debito' | 'credito'>('all');
 
   // ERRCOM047: Busca de pedido por número
   const [manualRevenues, setManualRevenues] = useState<ManualRevenue[]>([]); // ERRCOM136
@@ -1075,10 +1093,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const recentTransactions = useMemo(() => {
     // ERRCOM026: Filtrar cancelados e orçamentos da lista de receitas
+    // ERRCOM158: Excluir pedidos 'Aguardando Pagamento' (status 'pending')
     const revenue = orders
       .filter(order => {
         const isPaidBudget = order.isBudget && order.status === 'paid';
-        const isRegularRevenue = !order.isBudget && order.status !== 'cancelled';
+        const isRegularRevenue = !order.isBudget && order.status !== 'cancelled' && order.status !== 'pending';
         return isPaidBudget || isRegularRevenue;
       })
       .map(order => ({
@@ -1116,21 +1135,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const all = [...revenue, ...manualRevenueItems, ...expenseItems]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // ERRCOM026: Melhorar comparação de datas para evitar problemas de fuso horário
+    // REFCOM160: Aplicar filtros
+    let filtered = all;
+
+    // Filtro de data
     if (financialDateFilter.from || financialDateFilter.to) {
-      return all.filter(t => {
+      filtered = filtered.filter(t => {
         const transactionDate = new Date(t.date);
         const fromDate = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
         const toDate = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
 
-        // Comparar usando timestamps para evitar problemas de formatação
         if (fromDate && transactionDate < fromDate) return false;
         if (toDate && transactionDate > toDate) return false;
         return true;
       });
     }
-    return all.slice(0, 100); // Aumentado para 100 quando sem filtro
-  }, [orders, expenses, financialDateFilter]);
+
+    // Filtro por tipo (receita/despesa)
+    if (financialTypeFilter !== 'all') {
+      filtered = filtered.filter(t => t.type === financialTypeFilter);
+    }
+
+    // Filtro por forma de pagamento (apenas para receitas de pedidos)
+    if (financialPaymentFilter !== 'all') {
+      filtered = filtered.filter(t => {
+        if (t.type === 'revenue' && t.category.includes('PDV') || t.category.includes('Online')) {
+          // Buscar o pedido para verificar a forma de pagamento
+          const order = orders.find(o => o.id === t.id);
+          if (order && order.paymentMethod) {
+            return order.paymentMethod.toLowerCase() === financialPaymentFilter;
+          }
+        }
+        return false; // Para despesas e receitas manuais, não aplica filtro de pagamento
+      });
+    }
+
+    return filtered.slice(0, 100);
+  }, [orders, expenses, manualRevenues, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
 
   // ERRCOM033: Estatísticas de clientes
   const customerStats = useMemo(() => {
@@ -1562,7 +1603,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setCashRegister(prev => ({ ...prev, currentBalance: prev.currentBalance + updatedOrder.total }));
           updatedOrder.accountedInCash = true;
         } else if (!isAccountingStatus && orderToUpdate.accountedInCash) {
-          setCashRegister(prev => ({ ...prev, currentBalance: Math.max(0, prev.currentBalance - updatedOrder.total) }));
+          // REFCOM163: Garantir que o saldo mínimo seja o valor de abertura do caixa
+          setCashRegister(prev => ({
+            ...prev,
+            currentBalance: Math.max(prev.openingAmount, prev.currentBalance - updatedOrder.total)
+          }));
           updatedOrder.accountedInCash = false;
         }
       }
@@ -2100,7 +2145,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onUpdateOrders(updated);
 
       // ERRCOM102: Forçar atualização imediata da lista de pedidos
-      setTimeout(() => {
+      setTimeout(async () => { // Adicionado async aqui
         onUpdateOrders(updated);
         // ERRCOM111: Disparar evento para outros módulos que ouvem a lista de pedidos
         window.dispatchEvent(new CustomEvent('orderUpdated'));
@@ -2188,9 +2233,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (o.status === 'paid' || o.status === 'delivered' || o.status === 'processing' || o.status === 'shipped')
     );
 
+    // REFCOM164: Calcular cancelamentos do período
+    const cancelledOrdersInPeriod = orders.filter(o =>
+      o.salesChannel === 'physical' &&
+      new Date(o.date).getTime() >= registerOpenedAt &&
+      o.status === 'cancelled'
+    );
+    const cancelledOrdersCount = cancelledOrdersInPeriod.length;
+    const cancelledOrdersAmount = cancelledOrdersInPeriod.reduce((sum, o) => sum + o.total, 0);
+
     const salesByPayment = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
     const salesByPaymentCount = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
 
+    let totalDiscountsForPeriod = 0; // REFCOM152: Inicializa o total de descontos
     registerOrders.forEach(o => {
       const method = (o.paymentMethod || 'dinheiro').toLowerCase() as keyof typeof salesByPayment;
       if (salesByPayment[method] !== undefined) {
@@ -2198,7 +2253,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         salesByPaymentCount[method] += 1;
       }
     });
+    // REFCOM152: Soma os descontos dos pedidos do período
+    totalDiscountsForPeriod = registerOrders.reduce((sum, o) => sum + (o.discountAmount || 0), 0);
 
+    // REFCOM163: Calcular totalSales baseado nos pedidos do período, não no saldo do caixa
+    const totalSalesFromOrders = registerOrders.reduce((sum, o) => sum + o.total, 0);
+
+    // REFCOM152: Adiciona totalDiscounts ao partialReport
     const partialReport = {
       id: `PARTIAL-${Date.now()}`,
       openedAt: cashRegister.openedAt!,
@@ -2207,7 +2268,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       status: 'open' as const,
       initialAmount: cashRegister.openingAmount,
       currentBalance: cashRegister.currentBalance,
-      totalSales: Math.max(0, cashRegister.currentBalance - cashRegister.openingAmount - cashDeposits.reduce((acc, d) => acc + d.amount, 0) + cashWithdrawals.reduce((acc, w) => acc + w.amount, 0)),
+      totalSales: totalSalesFromOrders, // REFCOM163: Usar soma dos pedidos em vez de saldo do caixa
       totalOrders: registerOrders.length,
       expectedAmount: cashRegister.currentBalance,
       actualAmount: cashRegister.currentBalance,
@@ -2215,7 +2276,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       withdrawals: cashWithdrawals,
       deposits: cashDeposits,
       salesByPayment,
-      salesByPaymentCount
+      salesByPaymentCount,
+      totalDiscounts: totalDiscountsForPeriod, // REFCOM152: Adiciona o total de descontos
+      cancelledOrders: cancelledOrdersCount, // REFCOM164: Adiciona quantidade de cancelamentos
+      cancelledAmount: cancelledOrdersAmount // REFCOM164: Adiciona valor dos cancelamentos
     };
 
     // ERRCOM119: Guardar relatório no estado dedicado evita race condition
@@ -2243,6 +2307,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         (o.isBudget && o.status === 'paid'))
     );
 
+    // REFCOM164: Calcular cancelamentos do período
+    const cancelledOrdersInPeriod = orders.filter(o =>
+      o.salesChannel === 'physical' &&
+      new Date(o.date).getTime() >= registerOpenedAt &&
+      o.status === 'cancelled'
+    );
+    const cancelledOrdersCount = cancelledOrdersInPeriod.length;
+    const cancelledOrdersAmount = cancelledOrdersInPeriod.reduce((sum, o) => sum + o.total, 0);
+
     const salesByPayment = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
     const salesByPaymentCount = { dinheiro: 0, pix: 0, debito: 0, credito: 0 };
 
@@ -2254,9 +2327,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     });
 
+    // REFCOM152: Soma os descontos dos pedidos do período
+    const totalDiscountsForPeriod = registerOrders.reduce((sum, o) => sum + (o.discountAmount || 0), 0);
+
+    // REFCOM163: Calcular totalSales baseado nos pedidos do período, não no saldo do caixa
+    const totalSalesFromOrders = registerOrders.reduce((sum, o) => sum + o.total, 0);
+
     const closedRegister = {
       id: Date.now().toString(),
-      openedAt: cashRegister.openedAt!,
+      openedAt: cashRegister.openingAt!,
       closedAt: new Date().toISOString(),
       openedBy: 'Operador',
       closedBy: 'Operador',
@@ -2265,12 +2344,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       expectedAmount: expected,
       actualAmount: actual,
       difference: difference,
-      // BUGFIX #7 (ERRCOM069/092): Cálculo correto de Vendas Totais (Isolando faturamento puro)
-      // Vendas = (Saldo Final - Abertura - Suprimentos + Sangrias)
-      totalSales: Math.max(0, expected - cashRegister.openingAmount - cashDeposits.reduce((acc, d) => acc + d.amount, 0) + cashWithdrawals.reduce((acc, w) => acc + w.amount, 0)),
+      // REFCOM163: Usar soma dos pedidos do período em vez de cálculo baseado em saldo
+      totalSales: totalSalesFromOrders,
       totalOrders: registerOrders.length,
       salesByPayment,
       salesByPaymentCount,
+      totalDiscounts: totalDiscountsForPeriod, // REFCOM152: Adiciona o total de descontos
+      cancelledOrders: cancelledOrdersCount, // REFCOM164: Adiciona quantidade de cancelamentos
+      cancelledAmount: cancelledOrdersAmount, // REFCOM164: Adiciona valor dos cancelamentos
       withdrawals: cashWithdrawals,
       deposits: cashDeposits,
       notes: difference !== 0 ? `${difference > 0 ? 'Sobra' : 'Falta'} de R$ ${Math.abs(difference).toFixed(2)}` : undefined
@@ -2516,6 +2597,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ['inventory', 'Estoque'],
                   ['financial', 'Financeiro'],
                   ['fiscal', 'Fiscal/NF-e'],
+                  ['marketplaces', 'Marketplaces'],
                   ['settings', 'Configuração']
                 ]
                 : [
@@ -2893,7 +2975,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   {pdvDiscount > 0 && (
                     <p className="text-xs text-emerald-400 mt-1">
-                      Desconto: -{formatCurrency(pdvDiscountType === 'percentual' ? pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0) * (pdvDiscount / 100) : pdvDiscount)}
+                      {/* REFCOM138: Usar pricePOS para cálculo de desconto no PDV */}
+                      Desconto: -{formatCurrency(pdvDiscountType === 'percentual' ? pdvCart.reduce((sum, item) => sum + ((item.product.pricePOS || item.product.price) * item.quantity), 0) * (pdvDiscount / 100) : pdvDiscount)}
                     </p>
                   )}
                 </div>
@@ -2902,7 +2985,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span className="text-slate-300">Total a pagar:</span>
                   <span className="text-2xl font-black text-white">
                     {(() => {
-                      const subtotal = pdvCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+                      // REFCOM138: Usar pricePOS para PDV Loja
+                      const subtotal = pdvCart.reduce((sum, item) => sum + ((item.product.pricePOS || item.product.price) * item.quantity), 0);
                       const discountVal = pdvDiscountType === 'percentual' ? subtotal * (pdvDiscount / 100) : pdvDiscount;
                       return formatCurrency(Math.max(0, subtotal - discountVal));
                     })()}
@@ -3420,9 +3504,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <tr key={order.id} className="hover:bg-white/5 transition-colors">
                         {/* ERRCOM046: Clicar no número do pedido abre detalhe */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-versiory-coral">
-                          <button onClick={() => setSelectedOrderDetail(order)} className="hover:underline font-bold">
-                            {formatOrderId(order.id)}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => setSelectedOrderDetail(order)} className="hover:underline font-bold">
+                              {formatOrderId(order.id)}
+                            </button>
+                            {/* REFCOM167: Indicador visual ORÇAMENTO */}
+                            {order.isBudget && (
+                              <span className="px-2 py-1 bg-purple-600 text-white text-xs font-bold rounded-full">
+                                ORÇAMENTO
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{order.customerName}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{formatDate(order.date)}</td>
@@ -3886,7 +3978,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={() => {
-                  alert(`Lucro Líquido: ${formatCurrency(financialStats.netProfit)}\n\nCálculo:\nReceita Total: ${formatCurrency(financialStats.totalRevenue)}\n(-) Despesas: ${formatCurrency(financialStats.totalExpenses)}\n(=) Lucro Líquido: ${formatCurrency(financialStats.netProfit)}`);
+                  const manualRevenueTotal = manualRevenues.filter(r => {
+                    if (!financialDateFilter.from && !financialDateFilter.to) return true;
+                    const date = new Date(r.date);
+                    const from = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
+                    const to = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
+                    if (from && date < from) return false;
+                    if (to && date > to) return false;
+                    return true;
+                  }).reduce((sum, r) => sum + r.amount, 0);
+                  
+                  alert(`Lucro Líquido: ${formatCurrency(financialStats.netProfit)}\n\nCálculo:\nReceita de Vendas: ${formatCurrency(financialStats.totalRevenue)}\n(+) Receitas Avulsas: ${formatCurrency(manualRevenueTotal)}\n(=) Receita Total: ${formatCurrency(financialStats.totalRevenue + manualRevenueTotal)}\n(-) Despesas: ${formatCurrency(financialStats.totalExpenses)}\n(=) Lucro Líquido: ${formatCurrency(financialStats.netProfit)}`);
                 }}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
@@ -3958,6 +4060,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none" />
               {(financialDateFilter.from || financialDateFilter.to) && (
                 <button onClick={() => setFinancialDateFilter({ from: '', to: '' })} className="text-slate-400 hover:text-white text-sm underline">Limpar</button>
+              )}
+            </div>
+
+            {/* REFCOM160: Filtros por Tipo e Forma de Pagamento */}
+            <div className="flex flex-wrap gap-3 items-center mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
+              <span className="text-slate-300 text-sm font-bold">Filtrar por tipo:</span>
+              <select
+                value={financialTypeFilter}
+                onChange={e => setFinancialTypeFilter(e.target.value as 'all' | 'revenue' | 'expense')}
+                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+              >
+                <option value="all">Todos</option>
+                <option value="revenue">Receitas</option>
+                <option value="expense">Despesas</option>
+              </select>
+
+              <span className="text-slate-300 text-sm font-bold ml-4">Forma de pagamento:</span>
+              <select
+                value={financialPaymentFilter}
+                onChange={e => setFinancialPaymentFilter(e.target.value as 'all' | 'dinheiro' | 'pix' | 'debito' | 'credito')}
+                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+              >
+                <option value="all">Todas</option>
+                <option value="dinheiro">Dinheiro</option>
+                <option value="pix">PIX</option>
+                <option value="debito">Débito</option>
+                <option value="credito">Crédito</option>
+              </select>
+
+              {(financialTypeFilter !== 'all' || financialPaymentFilter !== 'all') && (
+                <button onClick={() => { setFinancialTypeFilter('all'); setFinancialPaymentFilter('all'); }} className="text-slate-400 hover:text-white text-sm underline">Limpar</button>
               )}
             </div>
 
@@ -4092,6 +4225,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </p>
             </div>
             <CouponManagement />
+          </div>
+        )}
+
+        {activeTab === 'marketplaces' && (
+          <div className="space-y-6">
+            <MarketplaceSettings />
           </div>
         )}
 
@@ -4472,6 +4611,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       onChange={(field, value) => setProductForm(prev => ({ ...prev, [field]: value }))}
                     />
 
+                    {/* Novo: Campos de Integração Marketplace */}
+                    <MarketplaceFields
+                      formData={productForm}
+                      setFormData={setProductForm}
+                    />
                   </div>
                 </div>
 
@@ -4609,7 +4753,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={event => setOrderStatusForm(prev => ({ ...prev, status: event.target.value as OrderStatus }))}
                     className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
                   >
-                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                    {/* ERRCOM155: Remover opção Orçamento (redundante - usar botão Converter em Venda) */}
+                    {Object.entries(STATUS_LABELS)
+                      .filter(([value]) => value !== 'budget')
+                      .map(([value, label]) => (
                       <option key={value} value={value}>
                         {label || value}
                       </option>
@@ -5300,9 +5447,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }
                     const cleanPhone = phone.replace(/\D/g, '');
                     if (!cleanPhone) { window.alert('Telefone do cliente não disponível. Cadastre o telefone no perfil do cliente.'); return; }
-                    const message = `Olá ${selectedOrderDetail.customerName}, o status do seu pedido ${formatOrderId(selectedOrderDetail.id)} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`; 
+                    const message = `Olá ${selectedOrderDetail.customerName}, o status do seu pedido ${formatOrderId(selectedOrderDetail.id)} foi atualizado para: ${STATUS_LABELS[selectedOrderDetail.status]}. Notas: ${selectedOrderDetail.notes || 'N/A'}`;
                     window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
                   }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
                 >
                   Notificar Cliente
                 </button>
@@ -5321,13 +5469,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const paymentMethodLabel: Record<string, string> = {
                       dinheiro: 'Dinheiro', pix: 'PIX', debito: 'Débito', credito: 'Crédito',
                       whatsapp: 'A combinar', credit: 'Crédito', online: 'Online'
-                    };
+                    }; // REFCOM135.4: Adicionado 'credit' e 'online' para mapeamento
                     const channelLabel = order.salesChannel === 'physical' ? 'PDV Loja' : 'E-commerce (Site)';
                     const itemsHtml = (order.items || []).map(item =>
                       `<tr><td style="padding:4px 8px;">${item.name || `Produto #${item.productId}`}${item.selectedSize ? ` (${item.selectedSize})` : ''}${item.selectedColor ? ` / ${item.selectedColor}` : ''}</td><td style="padding:4px 8px;text-align:center;">${item.quantity}</td><td style="padding:4px 8px;text-align:right;">R$ ${(item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="padding:4px 8px;text-align:right;">R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>`
                     ).join('');
+
+                    // REFCOM135.4 / REFCOM159: Detalhes de parcelamento para impressão
+                    let installmentDetailsHtml = '';
+                    if (order.paymentMethod === 'credito' && order.installments && order.installments > 1) {
+                      installmentDetailsHtml = `
+                        <div class="info" style="margin-top:8px;"><b>Parcelamento:</b> ${order.installments}x de R$ ${(order.total / order.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        <div style="font-size:11px;margin-top:4px; padding-left:10px;">
+                          ${(order.installmentDetails || []).map(inst => `<div>- Parcela ${inst.number}: R$ ${inst.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${inst.status === 'paid' ? 'Paga' : 'Pendente'})</div>`).join('')}
+                        </div>
+                      `;
+                    }
+
                     const subtotalVal = (order.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
-                    const html = `<!DOCTYPE html><html><head><title>Pedido ${formatOrderId(order.id)}</title><style>body{font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:0 auto;}h1{font-size:18px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;}table{width:100%;border-collapse:collapse;}th{background:#f0f0f0;padding:6px 8px;text-align:left;font-size:12px;}td{font-size:12px;border-bottom:1px solid #eee;}.total{font-size:16px;font-weight:bold;text-align:right;padding-top:8px;}.info{margin:8px 0;font-size:13px;}.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5e7eb;font-size:11px;}</style></head><body><h1>VERSIORY STORE — PEDIDO ${formatOrderId(order.id)}</h1><div class="info"><b>Cliente:</b> ${order.customerName}</div>${order.customerEmail ? `<div class="info"><b>E-mail:</b> ${order.customerEmail}</div>` : ''} ${order.customerPhone ? `<div class="info"><b>Telefone:</b> ${order.customerPhone}</div>` : ''} ${order.customerCpfCnpj ? `<div class="info"><b>CPF/CNPJ:</b> ${order.customerCpfCnpj}</div>` : ''} <div class="info"><b>Data:</b> ${new Date(order.date).toLocaleString('pt-BR')}</div><div class="info"><b>Canal:</b> ${channelLabel}</div><div class="info"><b>Forma de Pagamento:</b> ${paymentMethodLabel[order.paymentMethod || ''] || order.paymentMethod || 'A combinar'}</div><div class="info"><b>Status:</b> <span class="badge">${(order.status || '').toUpperCase()}</span></div>${order.address ? `<div class="info"><b>Endereço:</b> ${order.address}</div>` : ''}<br><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço</th><th>Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><div class="total">Subtotal: R$ ${subtotalVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.discountAmount && order.discountAmount > 0 ? `<div style="text-align:right;font-size:13px;color:green;">Desconto${order.couponCode ? ` (${order.couponCode})` : ''}:-R$ ${order.discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>` : ''}<div class="total">TOTAL: R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.notes ? `<div class="info" style="margin-top:12px;"><b>Observações:</b> ${order.notes}</div>` : ''}<div style="text-align:center;margin-top:24px;font-size:11px;color:#666;">www.versiory.store</div></body></html>`;
+                    const html = `<!DOCTYPE html><html><head><title>Pedido ${formatOrderId(order.id)}</title><style>body{font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:0 auto;}h1{font-size:18px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;}table{width:100%;border-collapse:collapse;}th{background:#f0f0f0;padding:6px 8px;text-align:left;font-size:12px;}td{font-size:12px;border-bottom:1px solid #eee;}.total{font-size:16px;font-weight:bold;text-align:right;padding-top:8px;}.info{margin:8px 0;font-size:13px;}.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5e7eb;font-size:11px;}</style></head><body><h1>VERSIORY STORE — PEDIDO ${formatOrderId(order.id)}</h1><div class="info"><b>Cliente:</b> ${order.customerName}</div>${order.customerEmail ? `<div class="info"><b>E-mail:</b> ${order.customerEmail}</div>` : ''} ${order.customerPhone ? `<div class="info"><b>Telefone:</b> ${order.customerPhone}</div>` : ''} ${order.customerCpfCnpj ? `<div class="info"><b>CPF/CNPJ:</b> ${order.customerCpfCnpj}</div>` : ''} <div class="info"><b>Data:</b> ${new Date(order.date).toLocaleString('pt-BR')}</div><div class="info"><b>Canal:</b> ${channelLabel}</div><div class="info"><b>Forma de Pagamento:</b> ${paymentMethodLabel[order.paymentMethod || ''] || order.paymentMethod || 'A combinar'}</div>${installmentDetailsHtml}<div class="info"><b>Status:</b> <span class="badge">${(order.status || '').toUpperCase()}</span></div>${order.address ? `<div class="info"><b>Endereço:</b> ${order.address}</div>` : ''}<br><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço</th><th>Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><div class="total">Subtotal: R$ ${subtotalVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.discountAmount && order.discountAmount > 0 ? `<div style="text-align:right;font-size:13px;color:green;">Desconto${order.couponCode ? ` (${order.couponCode})` : ''}:-R$ ${order.discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>` : ''}<div class="total">TOTAL: R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.notes ? `<div class="info" style="margin-top:12px;"><b>Observações:</b> ${order.notes}</div>` : ''}<div style="text-align:center;margin-top:24px;font-size:11px;color:#666;">www.versiory.store</div></body></html>`;
                     const w = window.open('', '_blank', 'width=640,height=800');
                     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
                   }}
@@ -5336,25 +5496,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   🖨️ Imprimir Pedido
                 </button>
 
-                <button
-                  disabled={selectedOrderDetail.status === 'cancelled'} // ERRCOM133: Bloqueio de cancelamento duplo
-                  onClick={() => {
-                    if (selectedOrderDetail.status === 'cancelled') return;
-                    if (window.confirm('Deseja cancelar este pedido?')) {
-                      setOrderStatusForm({
-                        orderId: selectedOrderDetail.id,
-                        status: 'cancelled',
-                        notes: selectedOrderDetail.notes || ''
-                      });
-                      handleOrderStatusSubmit(new Event('submit') as any);
-                      setSelectedOrderDetail(null);
-                      alert('Pedido cancelado e estoque estornado!');
-                    }
-                  }}
-                  className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
-                >
-                  🗑️ Cancelar
-                </button>
+                {/* ERRCOM154: Botão Cancelar removido (redundante - usar Atualizar Status) */}
               </div>
 
               {/* ERRCOM135: Botão Baixa Parcial */}

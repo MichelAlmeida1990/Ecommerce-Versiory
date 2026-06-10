@@ -15,7 +15,8 @@ interface CartProps {
 }
 
 const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove, customerEmail, customerAddress, onOrderComplete }) => {
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  // REFCOM138: Usar priceEcommerce para e-commerce checkout
+  const total = items.reduce((sum, item) => sum + (item.priceEcommerce || item.price) * item.quantity, 0);
   const whatsappNumber = '5511958540171';
   const [isCheckoutInfoOpen, setIsCheckoutInfoOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);

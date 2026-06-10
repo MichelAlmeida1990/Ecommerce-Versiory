@@ -194,11 +194,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
           <div className="flex flex-col">
             <span className="text-[10px] text-slate-400 uppercase font-black tracking-[0.2em] mb-1">Preço Premium</span>
             <span className="text-2xl font-black text-slate-900">
-              R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {/* REFCOM138: Usar priceEcommerce para e-commerce */}
+              R$ {(product.priceEcommerce || product.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </span>
             {product.installments && product.installments > 1 && (
               <span className="text-[10px] text-slate-500 font-bold mt-1">
-                ou {product.installments}x de R$ {(product.price / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {/* REFCOM138: Usar priceEcommerce para parcelamento */}
+                ou {product.installments}x de R$ {((product.priceEcommerce || product.price) / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </span>
             )}
           </div>

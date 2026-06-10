@@ -21,7 +21,7 @@ const Checkout: React.FC<CheckoutProps> = ({
   customerAddress,
   onOrderComplete
 }) => {
-  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credit' | 'whatsapp'>('whatsapp');
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credito' | 'whatsapp'>('whatsapp'); // REFCOM135.5: Alterado 'credit' para 'credito'
   const [installments, setInstallments] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
@@ -167,7 +167,7 @@ const Checkout: React.FC<CheckoutProps> = ({
 
   const handleCheckout = async () => {
     if (!isOtpVerified) {
-      alert('⚠️ Por favor, valide seu e-mail com o código de segurança antes de finalizar.');
+      alert('⚠️ Por favor, digite o código de segurança exibido acima para validar sua identidade antes de finalizar o pedido.');
       return;
     }
 
@@ -259,7 +259,7 @@ const Checkout: React.FC<CheckoutProps> = ({
             description: item.description,
             selectedSize: item.selectedSize,
             selectedColor: item.selectedColor,
-            installments: paymentMethod === 'credit' ? installments : 1
+            installments: paymentMethod === 'credito' ? installments : 1
           };
           if (item.stockBySize) orderItem.stockBySize = item.stockBySize; // Include stockBySize
           if (item.stockBySizeColor) orderItem.stockBySizeColor = item.stockBySizeColor; // Include stockBySizeColor
@@ -268,8 +268,8 @@ const Checkout: React.FC<CheckoutProps> = ({
         notes: orderNotes || '',
         salesChannel: 'online',
         orderTime: new Date().toLocaleTimeString('pt-BR'), // ERRCOM083
-        installments: paymentMethod === 'credit' ? installments : 1 // ERRCOM088
-      };
+        installments: paymentMethod === 'credito' ? installments : 1 // ERRCOM088
+      }; // REFCOM135.5: paymentMethod === 'credito' needs to be 'credito'
 
       // Atualizar no Firebase
       let targetCustomer: Customer;
@@ -331,7 +331,11 @@ const Checkout: React.FC<CheckoutProps> = ({
         window.open(url, '_blank');
       } else if (paymentMethod === 'pix') {
         alert('Pagamento via PIX em desenvolvimento. Seu pedido foi registrado com sucesso!');
-      } else if (paymentMethod === 'credit') {
+      } else if (paymentMethod === 'credito') {
+        // REFCOM161: Integração WhatsApp automática para vendas em crédito
+        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, customAddress, paymentMethod);
+        const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
         alert('Pagamento via cartão em desenvolvimento. Seu pedido foi registrado com sucesso!');
       }
 
@@ -414,10 +418,13 @@ const Checkout: React.FC<CheckoutProps> = ({
       customerCpfCnpj: customerData?.cpfCnpj || undefined, // ERRCOM081
       notes: orderNotes,
       storePolicies: fiscalConfig?.storePolicies,
-      items: items.map(item => ({ ...item, productId: item.id, installments: paymentMethod === 'credit' ? installments : 1 })), // Map to expected structure
+      items: items.map(item => ({ ...item, productId: item.id, installments: paymentMethod === 'credito' ? installments : 1 })), // Map to expected structure
       total: total,
       paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod,
-      salesChannel: 'online'
+      salesChannel: 'online',
+      discountAmount: discount > 0 ? discount : undefined, // REFCOM151
+      discountType: 'fixed', // REFCOM151
+      couponCode: couponApplied ? couponCode : undefined // REFCOM151
     });
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');
@@ -733,7 +740,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                   name="payment"
                   value="whatsapp"
                   checked={paymentMethod === 'whatsapp'}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'whatsapp' | 'pix' | 'credit')}
+                  onChange={(e) => setPaymentMethod(e.target.value as 'whatsapp' | 'pix' | 'credito')}
                   className="mr-3"
                 />
                 <div className="flex-1">
@@ -749,7 +756,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                   name="payment"
                   value="pix"
                   checked={paymentMethod === 'pix'}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'whatsapp' | 'pix' | 'credit')}
+                  onChange={(e) => setPaymentMethod(e.target.value as 'whatsapp' | 'pix' | 'credito')}
                   className="mr-3"
                   disabled
                 />
@@ -764,9 +771,9 @@ const Checkout: React.FC<CheckoutProps> = ({
                 <input
                   type="radio"
                   name="payment"
-                  value="credit"
-                  checked={paymentMethod === 'credit'}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'whatsapp' | 'pix' | 'credit')}
+                  value="credito"
+                  checked={paymentMethod === 'credito'}
+                  onChange={(e) => setPaymentMethod(e.target.value as 'whatsapp' | 'pix' | 'credito')}
                   className="mr-3"
                 />
                 <div className="flex-1">
@@ -775,7 +782,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                 </div>
               </label>
 
-              {paymentMethod === 'credit' && (
+              {paymentMethod === 'credito' && (
                 <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
                   <label className="block text-sm font-black text-blue-900 mb-2">Parcelamento</label>
                   <select

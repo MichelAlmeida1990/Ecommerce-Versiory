@@ -20,7 +20,8 @@ import {
     TrackingItem,
     InventoryMovement,
     Expense,
-    ManualRevenue
+    ManualRevenue,
+    OrderInstallment
 } from "../types";
 
 const firebaseConfig = {
@@ -372,5 +373,3 @@ export const validateAndUseCoupon = async (
         return { coupon: null, error: 'Erro ao validar cupom. Tente novamente.' };
     }
 };
-
-
