@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useEffect, useRef } from 'react';
+﻿import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Product,
@@ -1141,11 +1141,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return { totalRevenue: 0, pdvRevenue: 0, onlineRevenue: 0, totalExpenses, netProfit: -totalExpenses, profitMargin: 0 };
     }
 
-    const netProfit = (showRevenue ? totalRevenue + manualRevenueTotal : 0) - totalExpenses;
+    const netProfit = (totalRevenue + manualRevenueTotal) - totalExpenses;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
-  }, [orders, expenses, products, financialDateFilter, manualRevenues, financialPaymentFilter, financialTypeFilter, showRevenue]);
+  }, [orders, expenses, products, financialDateFilter, manualRevenues, financialPaymentFilter, financialTypeFilter]);
 
   // ERRCOM114: Validação de sincronização de estoque (diagnóstico)
   const validateStockConsistency = (product: Product): boolean => {
