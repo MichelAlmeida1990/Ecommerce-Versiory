@@ -87,7 +87,7 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         ${customerEmail ? `<strong>E-MAIL:</strong> ${customerEmail}<br>` : ''}
         ${customerCpfCnpj ? `<strong>CPF/CNPJ:</strong> ${customerCpfCnpj}<br>` : ''}
         ${customerAddress ? `<strong>ENDEREÇO:</strong> ${customerAddress}<br>` : ''}
-        ${salesChannel ? `<strong>ORIGEM:</strong> ${salesChannel.toUpperCase()}` : ''}
+        ${salesChannel ? `<strong>ORIGEM:</strong> ${salesChannel === 'physical' ? 'PDV Loja' : 'E-commerce (Site)'}` : ''}
       </div>
 
       <table>

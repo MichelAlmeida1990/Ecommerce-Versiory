@@ -24,6 +24,7 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credito' | 'whatsapp'>('whatsapp'); // REFCOM135.5: Alterado 'credit' para 'credito'
   const [installments, setInstallments] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isStorePickup, setIsStorePickup] = useState(false); // REFCOM169
   const [orderNotes, setOrderNotes] = useState('');
   const [emitNF, setEmitNF] = useState(false);
   const [invoiceStatus, setInvoiceStatus] = useState<'none' | 'generating' | 'ready'>('none');
@@ -122,8 +123,11 @@ const Checkout: React.FC<CheckoutProps> = ({
   }, [isOpen, effectiveEmail, customerAddress]);
 
   // ERRCOM134: No checkout online, priorizar priceEcommerce
+  // REFCOM169: Se for Retire na Loja, usar pricePOS
   const subtotal = items.reduce((sum, item) => {
-    const activePrice = item.priceEcommerce || item.price;
+    const activePrice = isStorePickup 
+      ? (item.pricePOS || item.price) 
+      : (item.priceEcommerce || item.price);
     return sum + activePrice * item.quantity;
   }, 0);
   const total = Math.max(0, subtotal - discount);
@@ -247,14 +251,14 @@ const Checkout: React.FC<CheckoutProps> = ({
         discountAmount: discount > 0 ? discount : undefined, // ERRCOM108
         couponCode: couponApplied ? couponCode.toUpperCase().trim() : undefined, // ERRCOM108
         status: 'pending',
-        address: finalAddress,
-        estimatedDelivery: '5 a 10 dias úteis',
+        address: isStorePickup ? 'Retirada na Loja - Rua do Comércio, 123 - Centro, São Paulo - SP' : finalAddress,
+        estimatedDelivery: isStorePickup ? 'Retirada imediata (Seg-Sex: 09h às 18h)' : '5 a 10 dias úteis', // REFCOM169
         items: items.map(item => {
           const orderItem: any = {
             productId: item.id,
             name: item.name,
             quantity: item.quantity,
-            price: item.priceEcommerce || item.price, // ERRCOM134
+            price: isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169
             image: item.image,
             description: item.description,
             selectedSize: item.selectedSize,
@@ -333,7 +337,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         alert('Pagamento via PIX em desenvolvimento. Seu pedido foi registrado com sucesso!');
       } else if (paymentMethod === 'credito') {
         // REFCOM161: Integração WhatsApp automática para vendas em crédito
-        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, customAddress, paymentMethod);
+        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, finalAddress, paymentMethod);
         const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
         alert('Pagamento via cartão em desenvolvimento. Seu pedido foi registrado com sucesso!');
@@ -363,10 +367,11 @@ const Checkout: React.FC<CheckoutProps> = ({
       `📞 Telefone: ${customerData?.phone || 'Não informado'}`,
       `🆔 CPF/CNPJ: ${customerData?.cpfCnpj || 'Não informado'}`,
       `📍 *Endereço de Entrega:* ${address}`,
+      isStorePickup ? `🏬 *MODALIDADE:* Retire na Loja` : `🚚 *MODALIDADE:* Entrega via Transportadora`,
       '',
       '*DETALHES DA VENDA:*',
       `🕒 Hora: ${new Date().toLocaleTimeString('pt-BR')}`,
-      `💳 Forma de Pagto: ${paymentMethod === 'whatsapp' ? 'A combinar via WhatsApp' : paymentMethod}`,
+      `💳 Forma de Pagto: ${paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod === 'credito' ? `Crédito (${installments}x)` : paymentMethod.toUpperCase()}`,
       `🏷️ Origem: E-commerce (Site)`,
       '',
       '*ITENS DO PEDIDO:*',
@@ -375,7 +380,8 @@ const Checkout: React.FC<CheckoutProps> = ({
         if (item.selectedSize) details.push(`Tamanho: ${item.selectedSize}`);
         if (item.selectedColor) details.push(`Cor: ${item.selectedColor}`);
         const detailsStr = details.length > 0 ? ` (${details.join(', ')})` : '';
-        return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${((item.priceEcommerce || item.price) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        const unitPrice = isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price);
+        return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${(unitPrice * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       }),
       '',
       `*TOTAL: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*`,
@@ -418,10 +424,11 @@ const Checkout: React.FC<CheckoutProps> = ({
       customerCpfCnpj: customerData?.cpfCnpj || undefined, // ERRCOM081
       notes: orderNotes,
       storePolicies: fiscalConfig?.storePolicies,
-      items: items.map(item => ({ ...item, productId: item.id, installments: paymentMethod === 'credito' ? installments : 1 })), // Map to expected structure
+      items: items.map(item => ({ ...item, productId: item.id, price: isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), installments: paymentMethod === 'credito' ? installments : 1 })), 
       total: total,
-      paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod,
+      paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod === 'credito' ? `Crédito (${installments}x)` : paymentMethod.toUpperCase(),
       salesChannel: 'online',
+      installments: paymentMethod === 'credito' ? installments : 1,
       discountAmount: discount > 0 ? discount : undefined, // REFCOM151
       discountType: 'fixed', // REFCOM151
       couponCode: couponApplied ? couponCode : undefined // REFCOM151
@@ -499,7 +506,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                     </div>
                   </div>
                   <p className="font-bold text-slate-900 whitespace-nowrap">
-                    R$ {((item.priceEcommerce || item.price) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {((isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price)) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
               ))}
@@ -550,8 +557,38 @@ const Checkout: React.FC<CheckoutProps> = ({
           <div className="mb-6">
             <h4 className="font-bold text-slate-900 mb-4">Dados de Entrega</h4>
 
+            {/* REFCOM169: Opção Retire na Loja */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <button
+                onClick={() => { setIsStorePickup(false); setSelectedAddressId(customerData?.addresses?.[0]?.id || 'manual'); }}
+                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${!isStorePickup ? 'border-versiory-coral bg-versiory-coral/5' : 'border-slate-100 bg-white'}`}
+              >
+                <span className="text-xl">🚚</span>
+                <span className="text-xs font-black uppercase">Entrega Normal</span>
+              </button>
+              <button
+                onClick={() => { setIsStorePickup(true); setSelectedAddressId('store'); setCustomAddress('Rua do Comércio, 123 - Centro, São Paulo - SP'); }}
+                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${isStorePickup ? 'border-versiory-coral bg-versiory-coral/5' : 'border-slate-100 bg-white'}`}
+              >
+                <span className="text-xl">🏪</span>
+                <span className="text-xs font-black uppercase">Retire na Loja</span>
+              </button>
+            </div>
+
+            {isStorePickup && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl animate-in fade-in duration-300">
+                <p className="text-sm font-bold text-blue-900 mb-2">📍 Endereço para Retirada:</p>
+                <p className="text-xs text-blue-800 leading-relaxed">Rua do Comércio, 123 - Centro, São Paulo - SP<br/>Segunda a Sexta: 09h às 18h</p>
+                <div className="mt-3 h-32 w-full rounded-xl overflow-hidden border border-blue-200 grayscale contrast-125">
+                   {/* Mock do Google Maps solicitado */}
+                  <img src="https://maps.googleapis.com/maps/api/staticmap?center=-23.5505,-46.6333&zoom=15&size=400x200&key=YOUR_KEY" className="w-full h-full object-cover" alt="Mapa" />
+                </div>
+                <p className="text-[10px] text-blue-600 mt-2 font-bold italic">💡 Nesta modalidade você economiza no frete e paga preço de loja física!</p>
+              </div>
+            )}
+
             {/* ERRCOM100: Seleção de Endereços Cadastrados */}
-            {customerData && customerData.addresses && customerData.addresses.length > 0 ? (
+            {!isStorePickup && customerData && customerData.addresses && customerData.addresses.length > 0 ? (
               <div className="space-y-3 mb-4">
                 <p className="text-sm text-slate-600 mb-2">Selecione um endereço:</p>
                 {customerData.addresses.map((addr, idx) => (

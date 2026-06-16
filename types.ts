@@ -318,3 +318,19 @@ export interface MarketplaceConfig {
     status: 'connected' | 'disconnected' | 'error';
   };
 }
+
+// REFCOM175: Interface para Configuração de Condições de Pagamento
+export interface PaymentConfig {
+  debitRate: number; // Taxa Débito (%)
+  creditRate: number; // Taxa Crédito à vista (%)
+  installmentRates: { [installments: number]: number }; // Taxa Crédito parcelado por número de parcelas (%)
+  pixRate: number; // Taxa PIX (%)
+  anticipationRate: number; // Taxa antecipação (%)
+  receiptDays: number; // Prazo de recebimento (dias)
+  processors: {
+    cielo?: { enabled: boolean; rates?: { [key: string]: number } };
+    rede?: { enabled: boolean; rates?: { [key: string]: number } };
+    getnet?: { enabled: boolean; rates?: { [key: string]: number } };
+    stone?: { enabled: boolean; rates?: { [key: string]: number } };
+  };
+}

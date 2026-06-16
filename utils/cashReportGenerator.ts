@@ -36,6 +36,9 @@ interface CashRegisterData {
     debito: number;
     credito: number;
   };
+  totalDiscounts?: number; // REFCOM171: Total de descontos aplicados
+  cancelledOrders?: number; // REFCOM171: Quantidade de pedidos cancelados
+  cancelledAmount?: number; // REFCOM171: Valor total dos pedidos cancelados
 }
 
 export const generateCashReportHTML = (data: CashRegisterData): string => {
@@ -116,6 +119,8 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
         <div class="row"><span>VALOR ABERTURA:</span> <span class="bold">${formatCurrency(data.initialAmount)}</span></div>
         <div class="row"><span>VENDAS NO PERÍODO:</span> <span class="bold">${formatCurrency(data.totalSales)}</span></div>
         <div class="row"><span>QTD PEDIDOS:</span> <span>${data.totalOrders}</span></div>
+        ${data.totalDiscounts && data.totalDiscounts > 0 ? `<div class="row"><span>DESCONTOS APLICADOS:</span> <span class="bold" style="color: #f59e0b;">-${formatCurrency(data.totalDiscounts)}</span></div>` : ''}
+        ${data.cancelledOrders && data.cancelledOrders > 0 ? `<div class="row"><span>PEDIDOS CANCELADOS:</span> <span class="bold" style="color: #ef4444;">${data.cancelledOrders} (${formatCurrency(data.cancelledAmount || 0)})</span></div>` : ''}
       </div>
 
       ${data.withdrawals.length > 0 ? `
@@ -142,6 +147,18 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
         <div class="row"><span>PIX:</span> <span>${formatCurrency(data.salesByPayment.pix)} (${data.salesByPaymentCount?.pix || 0})</span></div>
         <div class="row"><span>DÉBITO:</span> <span>${formatCurrency(data.salesByPayment.debito)} (${data.salesByPaymentCount?.debito || 0})</span></div>
         <div class="row"><span>CRÉDITO:</span> <span>${formatCurrency(data.salesByPayment.credito)} (${data.salesByPaymentCount?.credito || 0})</span></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">DETALHES DO SALDO EM CAIXA</div>
+        <div class="row"><span>ABERTURA:</span> <span>${formatCurrency(data.initialAmount)}</span></div>
+        <div class="row"><span>+ VENDAS:</span> <span>${formatCurrency(totalVendas)}</span></div>
+        <div class="row"><span>+ SUPRIMENTOS:</span> <span>${formatCurrency(totalDeposits)}</span></div>
+        <div class="row"><span>- SANGRIAS:</span> <span>-${formatCurrency(totalWithdrawals)}</span></div>
+        <div class="row" style="border-top: 1px dashed #666; padding-top: 3px; margin-top: 3px;">
+          <span class="bold">= SALDO ESPERADO:</span>
+          <span class="bold">${formatCurrency(expectedBalance)}</span>
+        </div>
       </div>
 
       <div class="section" style="border-top: 2px solid #000;">

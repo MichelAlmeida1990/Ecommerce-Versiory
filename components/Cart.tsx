@@ -58,6 +58,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
   const buildWhatsAppMessage = () => {
     const lines = items.map(item => (
       `- ${item.name} x${item.quantity} (R$ ${item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+      `- ${item.name} x${item.quantity} (R$ ${(item.priceEcommerce || item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
     ));
     return [
       'Ola! Gostaria de finalizar meu pedido:',

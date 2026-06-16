@@ -776,29 +776,6 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                     }}
                     className="flex-1 md:flex-none bg-emerald-50 text-emerald-700 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center justify-center gap-2"
                   >
-                    ℹ️ Falar do Pedido
-                  </button>
-                  <button
-                    onClick={() => {
-                      const itemsList = selectedOrder.items.map(item =>
-                        `• ${item.name} x${item.quantity}`
-                      ).join('\n');
-                      const message = [
-                        `📦 *DÚVIDA SOBRE PEDIDO - ${selectedOrder.id}*`,
-                        '',
-                        `*DETALHES:*`,
-                        `Status: ${getStatusConfig(selectedOrder.status).label}`,
-                        `Total: R$ ${selectedOrder.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-                        '',
-                        `*ITENS:*`,
-                        itemsList,
-                        '',
-                        'Olá! Gostaria de falar sobre este pedido específico. Pode me ajudar?'
-                      ].join('\n');
-                      window.open(`https://wa.me/5511958540171?text=${encodeURIComponent(message)}`, '_blank');
-                    }}
-                    className="flex-1 md:flex-none bg-emerald-50 text-emerald-700 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center justify-center gap-2"
-                  >
                     💬 Falar do Pedido
                   </button>
                 </div>

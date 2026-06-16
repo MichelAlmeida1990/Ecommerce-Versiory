@@ -59,7 +59,8 @@ type TabKey =
   | 'financial'
   | 'fiscal'
   | 'settings'
-  | 'marketplaces';
+  | 'marketplaces'
+  | 'payment'; // REFCOM175: Configurações de Pagamento
 
 type StockFilter = 'all' | 'low' | 'out' | 'normal';
 
@@ -469,6 +470,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isCashReportOpen, setIsCashReportOpen] = useState(false);
   // ERRCOM119: Estado dedicado para evitar race condition com cashRegisterHistory
   const [currentCashReport, setCurrentCashReport] = useState<any>(null);
+
+  // REFCOM172: Função para recalcular o saldo atual do caixa com base nos pedidos reais
+  const recalculateCurrentBalance = useCallback(() => {
+    if (!cashRegister.isOpen || !cashRegister.openedAt) return;
+
+    const registerOpenedAt = new Date(cashRegister.openedAt).getTime();
+    
+    // Filtrar pedidos do caixa atual (PDV físico)
+    const registerOrders = orders.filter(o =>
+      o.salesChannel === 'physical' &&
+      new Date(o.date).getTime() >= registerOpenedAt &&
+      // REFCOM172: Incluir apenas pedidos contabilizados (status de pagamento/entrega)
+      ['paid', 'processing', 'shipped', 'delivered'].includes(o.status) &&
+      o.accountedInCash
+    );
+
+    // Calcular total das vendas
+    const salesTotal = registerOrders.reduce((sum, order) => sum + order.total, 0);
+
+    // Calcular total de sangrias e suprimentos
+    const withdrawalsTotal = cashWithdrawals.reduce((sum, w) => sum + w.amount, 0);
+    const depositsTotal = cashDeposits.reduce((sum, d) => sum + d.amount, 0);
+
+    // Recalcular saldo: abertura + vendas - sangrias + suprimentos
+    const recalculatedBalance = cashRegister.openingAmount + salesTotal - withdrawalsTotal + depositsTotal;
+
+    // Atualizar saldo se houver divergência
+    if (Math.abs(recalculatedBalance - cashRegister.currentBalance) > 0.01) {
+      setCashRegister(prev => ({ ...prev, currentBalance: recalculatedBalance }));
+    }
+  }, [cashRegister, orders, cashWithdrawals, cashDeposits]);
+
+  // REFCOM172: Recalcular saldo automaticamente quando houver mudanças
+  useEffect(() => {
+    recalculateCurrentBalance();
+  }, [recalculateCurrentBalance]);
+
   const [isCashRegisterModalOpen, setIsCashRegisterModalOpen] = useState(false);
   const [cashRegisterForm, setCashRegisterForm] = useState({ amount: 0 });
 
@@ -571,6 +609,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ERRCOM022: Histórico de pedidos do cliente
   const [customerOrderHistory, setCustomerOrderHistory] = useState<{ customer: Customer; orders: Order[] } | null>(null);
 
+  // REFCOM166: Modal de edição/criação de cliente
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [customerForm, setCustomerForm] = useState<Partial<Customer>>({
+    name: '',
+    email: '',
+    phone: '',
+    cpfCnpj: '',
+    addresses: []
+  });
+
   // ERRCOM125: Campo de desconto no PDV
   const [pdvDiscount, setPdvDiscount] = useState(0);
   const [pdvDiscountType, setPdvDiscountType] = useState<'fixo' | 'percentual'>('fixo');
@@ -589,6 +638,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (saved) return JSON.parse(saved);
     } catch {}
     return { host: 'smtp.gmail.com', port: 587, user: '', pass: '', encryption: 'tls', authRequired: true, fromEmail: '', fromName: 'Equipe Versiory' };
+  });
+
+  // REFCOM175: Configuração de Condições de Pagamento
+  const [paymentConfig, setPaymentConfig] = useState(() => {
+    try {
+      const { getPaymentConfig, getDefaultPaymentConfig } = require('../services/paymentConfig');
+      const saved = getPaymentConfig();
+      return saved || getDefaultPaymentConfig();
+    } catch {
+      return {
+        debitRate: 1.99,
+        creditRate: 2.99,
+        installmentRates: { 2: 3.49, 3: 4.49, 4: 5.49, 5: 6.49, 6: 7.49, 10: 9.99 },
+        pixRate: 0.99,
+        anticipationRate: 1.99,
+        receiptDays: 30,
+        processors: { cielo: { enabled: true } }
+      };
+    }
   });
   const [isTestingSmtp, setIsTestingSmtp] = useState(false);
 
@@ -1032,6 +1100,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       if (order.status === 'cancelled') return false;
 
+      // REFCOM174: Aplicar filtro de forma de pagamento nos cards
+      if (financialPaymentFilter !== 'all' && order.paymentMethod !== financialPaymentFilter) return false;
+
       const hasService = order.items?.some(item => {
         const product = products.find(p => p.id === item.productId);
         return product?.category === 'Serviços';
@@ -1043,7 +1114,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         (order.salesChannel === 'physical' && order.status !== 'pending');
     });
 
-    const filteredExpenses = expenses.filter(e => filterByDate(e.date));
+    // REFCOM174: Aplicar filtro de tipo nas despesas
+    const filteredExpenses = expenses.filter(e => {
+      if (!filterByDate(e.date)) return false;
+      // REFCOM174: Se filtro de tipo for 'expense', mostrar apenas despesas
+      if (financialTypeFilter === 'expense' && e.category !== 'expense') return false;
+      return true;
+    });
 
     const totalRevenue = revenueOrders.reduce((sum, order) => sum + order.total, 0);
     const pdvRevenue = revenueOrders.filter(o => o.salesChannel === 'physical').reduce((sum, order) => sum + order.total, 0);
@@ -1051,14 +1128,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
 
     // ERRCOM136: Cálculo real integrando Receitas Manuais
-    const filteredManualRevenues = manualRevenues.filter(r => filterByDate(r.date));
+    const filteredManualRevenues = manualRevenues.filter(r => {
+      if (!filterByDate(r.date)) return false;
+      // REFCOM174: Aplicar filtro de forma de pagamento nas receitas manuais
+      if (financialPaymentFilter !== 'all' && r.category.toLowerCase() !== financialPaymentFilter) return false;
+      return true;
+    });
     const manualRevenueTotal = filteredManualRevenues.reduce((sum, r) => sum + r.amount, 0);
 
-    const netProfit = totalRevenue + manualRevenueTotal - totalExpenses;
+    // REFCOM174: Se filtro de tipo for 'expense', mostrar apenas despesas nos cards
+    if (financialTypeFilter === 'expense') {
+      return { totalRevenue: 0, pdvRevenue: 0, onlineRevenue: 0, totalExpenses, netProfit: -totalExpenses, profitMargin: 0 };
+    }
+
+    const netProfit = (showRevenue ? totalRevenue + manualRevenueTotal : 0) - totalExpenses;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
-  }, [orders, expenses, products, financialDateFilter, manualRevenues]); // Dependência atualizada para ERRCOM136
+  }, [orders, expenses, products, financialDateFilter, manualRevenues, financialPaymentFilter, financialTypeFilter, showRevenue]);
 
   // ERRCOM114: Validação de sincronização de estoque (diagnóstico)
   const validateStockConsistency = (product: Product): boolean => {
@@ -1555,9 +1642,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const openOrderStatusModal = (order: Order) => {
-    // ERRCOM113: Bloquear alteração de status se for orçamento e estiver pendente (não convertido)
-    if (order.isBudget && order.status === 'pending') {
-      window.alert('⚠️ AÇÃO BLOQUEADA\n\nEste pedido é um Orçamento. Você deve utilizar o botão "Converter em Venda" no final da lista para que o fluxo de caixa, estoque e apuração sejam processados corretamente.');
+    // REFCOM173: Bloquear alteração de status em pedidos de origem ORÇAMENTO
+    if (order.isBudget) {
+      window.alert('⚠️ AÇÃO BLOQUEADA\n\nEste pedido é um Orçamento. Você deve utilizar o botão "Converter em Venda" no PDV para que o fluxo de caixa, estoque e apuração sejam processados corretamente.\n\nApós a conversão em venda, o sistema permitirá a alteração de status.');
       return;
     }
     setOrderStatusForm({
@@ -1642,6 +1729,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       onUpdateProducts(finalProducts);
       onUpdateOrders(updatedOrders);
+      
+      // REFCOM172: Recalcular saldo após atualização de status para garantir sincronização
+      recalculateCurrentBalance();
+      
       setIsOrderStatusModalOpen(false);
     } catch (err) {
       console.error(err);
@@ -2598,6 +2689,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ['financial', 'Financeiro'],
                   ['fiscal', 'Fiscal/NF-e'],
                   ['marketplaces', 'Marketplaces'],
+                  ['payment', 'Pagamento'],
                   ['settings', 'Configuração']
                 ]
                 : [
@@ -3559,7 +3651,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'customers' && (
           <div>
-            <h2 className="text-xl font-black text-white mb-4">Gerenciar Clientes</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-black text-white">Gerenciar Clientes</h2>
+              <button
+                onClick={() => {
+                  setEditingCustomer(null);
+                  setCustomerForm({ name: '', email: '', phone: '', cpfCnpj: '', addresses: [] });
+                  setIsCustomerModalOpen(true);
+                }}
+                className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+              >
+                + Novo Cliente
+              </button>
+            </div>
 
             {/* ERRCOM033: Cards de métricas de clientes */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -3603,6 +3707,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Pedidos</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Cadastro</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Total Gasto</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10">
@@ -3633,6 +3738,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
                           <div className="text-versiory-coral font-black">{formatCurrency(customer.totalSpent)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
+                          <button
+                            onClick={() => {
+                              setEditingCustomer(customer);
+                              setCustomerForm({
+                                name: customer.name,
+                                email: customer.email,
+                                phone: customer.phone,
+                                cpfCnpj: customer.cpfCnpj,
+                                addresses: customer.addresses
+                              });
+                              setIsCustomerModalOpen(true);
+                            }}
+                            className="text-blue-400 hover:text-blue-300 font-bold text-xs"
+                          >
+                            Editar
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -5469,8 +5592,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const paymentMethodLabel: Record<string, string> = {
                       dinheiro: 'Dinheiro', pix: 'PIX', debito: 'Débito', credito: 'Crédito',
                       whatsapp: 'A combinar', credit: 'Crédito', online: 'Online'
-                    }; // REFCOM135.4: Adicionado 'credit' e 'online' para mapeamento
-                    const channelLabel = order.salesChannel === 'physical' ? 'PDV Loja' : 'E-commerce (Site)';
+                    }; 
+                    const statusLabel = STATUS_LABELS[order.status] || order.status; // REFCOM175
+                    const channelLabel = order.salesChannel === 'physical' ? '🏪 PDV Loja' : '🌐 E-commerce (Site)';
                     const itemsHtml = (order.items || []).map(item =>
                       `<tr><td style="padding:4px 8px;">${item.name || `Produto #${item.productId}`}${item.selectedSize ? ` (${item.selectedSize})` : ''}${item.selectedColor ? ` / ${item.selectedColor}` : ''}</td><td style="padding:4px 8px;text-align:center;">${item.quantity}</td><td style="padding:4px 8px;text-align:right;">R$ ${(item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="padding:4px 8px;text-align:right;">R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>`
                     ).join('');
@@ -5479,7 +5603,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     let installmentDetailsHtml = '';
                     if (order.paymentMethod === 'credito' && order.installments && order.installments > 1) {
                       installmentDetailsHtml = `
-                        <div class="info" style="margin-top:8px;"><b>Parcelamento:</b> ${order.installments}x de R$ ${(order.total / order.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                        <div class="info" style="margin-top:8px;"><b>Forma de Pagamento:</b> CRÉDITO (${order.installments}x)</div>
                         <div style="font-size:11px;margin-top:4px; padding-left:10px;">
                           ${(order.installmentDetails || []).map(inst => `<div>- Parcela ${inst.number}: R$ ${inst.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${inst.status === 'paid' ? 'Paga' : 'Pendente'})</div>`).join('')}
                         </div>
@@ -5487,7 +5611,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }
 
                     const subtotalVal = (order.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
-                    const html = `<!DOCTYPE html><html><head><title>Pedido ${formatOrderId(order.id)}</title><style>body{font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:0 auto;}h1{font-size:18px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;}table{width:100%;border-collapse:collapse;}th{background:#f0f0f0;padding:6px 8px;text-align:left;font-size:12px;}td{font-size:12px;border-bottom:1px solid #eee;}.total{font-size:16px;font-weight:bold;text-align:right;padding-top:8px;}.info{margin:8px 0;font-size:13px;}.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5e7eb;font-size:11px;}</style></head><body><h1>VERSIORY STORE — PEDIDO ${formatOrderId(order.id)}</h1><div class="info"><b>Cliente:</b> ${order.customerName}</div>${order.customerEmail ? `<div class="info"><b>E-mail:</b> ${order.customerEmail}</div>` : ''} ${order.customerPhone ? `<div class="info"><b>Telefone:</b> ${order.customerPhone}</div>` : ''} ${order.customerCpfCnpj ? `<div class="info"><b>CPF/CNPJ:</b> ${order.customerCpfCnpj}</div>` : ''} <div class="info"><b>Data:</b> ${new Date(order.date).toLocaleString('pt-BR')}</div><div class="info"><b>Canal:</b> ${channelLabel}</div><div class="info"><b>Forma de Pagamento:</b> ${paymentMethodLabel[order.paymentMethod || ''] || order.paymentMethod || 'A combinar'}</div>${installmentDetailsHtml}<div class="info"><b>Status:</b> <span class="badge">${(order.status || '').toUpperCase()}</span></div>${order.address ? `<div class="info"><b>Endereço:</b> ${order.address}</div>` : ''}<br><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço</th><th>Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><div class="total">Subtotal: R$ ${subtotalVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.discountAmount && order.discountAmount > 0 ? `<div style="text-align:right;font-size:13px;color:green;">Desconto${order.couponCode ? ` (${order.couponCode})` : ''}:-R$ ${order.discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>` : ''}<div class="total">TOTAL: R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.notes ? `<div class="info" style="margin-top:12px;"><b>Observações:</b> ${order.notes}</div>` : ''}<div style="text-align:center;margin-top:24px;font-size:11px;color:#666;">www.versiory.store</div></body></html>`;
+                    const html = `<!DOCTYPE html><html><head><title>Pedido ${formatOrderId(order.id)}</title><style>body{font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:0 auto;}h1{font-size:18px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;}table{width:100%;border-collapse:collapse;}th{background:#f0f0f0;padding:6px 8px;text-align:left;font-size:12px;}td{font-size:12px;border-bottom:1px solid #eee;}.total{font-size:16px;font-weight:bold;text-align:right;padding-top:8px;}.info{margin:8px 0;font-size:13px;}.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5e7eb;font-size:11px;}</style></head><body><h1>VERSIORY STORE — PEDIDO ${formatOrderId(order.id)}</h1><div class="info"><b>Cliente:</b> ${order.customerName}</div>${order.customerEmail ? `<div class="info"><b>E-mail:</b> ${order.customerEmail}</div>` : ''} ${order.customerPhone ? `<div class="info"><b>Telefone:</b> ${order.customerPhone}</div>` : ''} ${order.customerCpfCnpj ? `<div class="info"><b>CPF/CNPJ:</b> ${order.customerCpfCnpj}</div>` : ''} <div class="info"><b>Data:</b> ${new Date(order.date).toLocaleString('pt-BR')}</div><div class="info"><b>Canal:</b> ${channelLabel}</div><div class="info"><b>Status:</b> <span class="badge">${statusLabel.toUpperCase()}</span></div>${installmentDetailsHtml}${order.address ? `<div class="info"><b>Endereço:</b> ${order.address}</div>` : ''}<br><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço</th><th>Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><div class="total">Subtotal: R$ ${subtotalVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.discountAmount && order.discountAmount > 0 ? `<div style="text-align:right;font-size:13px;color:green;">Desconto${order.couponCode ? ` (${order.couponCode})` : ''}:-R$ ${order.discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>` : ''}<div class="total">TOTAL: R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.notes ? `<div class="info" style="margin-top:12px;"><b>Observações:</b> ${order.notes}</div>` : ''}<div style="text-align:center;margin-top:24px;font-size:11px;color:#666;">www.versiory.store</div></body></html>`;
                     const w = window.open('', '_blank', 'width=640,height=800');
                     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
                   }}
@@ -5563,8 +5687,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             ) : (
               <div className="space-y-3">
                 {customerOrderHistory.orders.map(o => (
-                  <div key={o.id} className="p-3 bg-white/5 border border-white/10 rounded-xl flex justify-between items-center">
-                    <div>
+                  <button
+                    key={o.id}
+                    onClick={() => {
+                      setCustomerOrderHistory(null);
+                      setSelectedOrderDetail(o);
+                    }}
+                    className="w-full p-3 bg-white/5 border border-white/10 rounded-xl flex justify-between items-center hover:bg-white/10 transition-colors cursor-pointer"
+                  >
+                    <div className="text-left">
                       <p className="text-white font-bold">{formatOrderId(o.id)}</p>
                       <p className="text-slate-400 text-xs">{formatDate(o.date)}</p>
                     </div>
@@ -5572,7 +5703,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <p className="text-versiory-coral font-black">{formatCurrency(o.total)}</p>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[o.status]}`}>{STATUS_LABELS[o.status]}</span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -5871,6 +6002,260 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* REFCOM166: Modal de Edição/Criação de Cliente */}
+      {isCustomerModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsCustomerModalOpen(false)} />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+              <h3 className="text-2xl font-black text-slate-900">
+                {editingCustomer ? 'Editar Cliente' : 'Novo Cliente'}
+              </h3>
+              <button
+                onClick={() => setIsCustomerModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-2">Nome Completo *</label>
+                <input
+                  type="text"
+                  value={customerForm.name}
+                  onChange={e => setCustomerForm({ ...customerForm, name: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                  placeholder="Nome do cliente"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-2">E-mail *</label>
+                <input
+                  type="email"
+                  value={customerForm.email}
+                  onChange={e => setCustomerForm({ ...customerForm, email: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                  placeholder="email@exemplo.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-2">Telefone</label>
+                <input
+                  type="text"
+                  value={customerForm.phone}
+                  onChange={e => setCustomerForm({ ...customerForm, phone: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                  placeholder="(11) 99999-9999"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-2">CPF/CNPJ</label>
+                <input
+                  type="text"
+                  value={customerForm.cpfCnpj}
+                  onChange={e => setCustomerForm({ ...customerForm, cpfCnpj: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                  placeholder="000.000.000-00"
+                />
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 flex gap-3">
+              <button
+                onClick={() => setIsCustomerModalOpen(false)}
+                className="flex-1 px-6 py-3 rounded-xl font-bold text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  if (!customerForm.name || !customerForm.email) {
+                    alert('Nome e e-mail são obrigatórios');
+                    return;
+                  }
+
+                  try {
+                    const { getCustomers, saveCustomer } = await import('../services/firebase');
+                    const customers = await getCustomers();
+
+                    if (editingCustomer) {
+                      // Atualizar cliente existente
+                      const updatedCustomer = { ...editingCustomer, ...customerForm };
+                      await saveCustomer(updatedCustomer);
+                      setCustomers(customers.map(c => c.id === editingCustomer.id ? updatedCustomer : c));
+                    } else {
+                      // Criar novo cliente
+                      const newCustomer = {
+                        id: Date.now(),
+                        ...customerForm,
+                        totalOrders: 0,
+                        totalSpent: 0,
+                        createdAt: new Date().toISOString(),
+                        addresses: customerForm.addresses || []
+                      } as Customer;
+                      await saveCustomer(newCustomer);
+                      setCustomers([...customers, newCustomer]);
+                    }
+
+                    setIsCustomerModalOpen(false);
+                    setEditingCustomer(null);
+                    setCustomerForm({ name: '', email: '', phone: '', cpfCnpj: '', addresses: [] });
+                    alert(editingCustomer ? 'Cliente atualizado com sucesso!' : 'Cliente criado com sucesso!');
+                  } catch (error) {
+                    console.error('Erro ao salvar cliente:', error);
+                    alert('Erro ao salvar cliente. Tente novamente.');
+                  }
+                }}
+                className="flex-1 px-6 py-3 rounded-xl font-bold text-white bg-versiory-coral hover:bg-[#ff8368] transition-all"
+              >
+                {editingCustomer ? 'Salvar Alterações' : 'Criar Cliente'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REFCOM175: Configurações de Pagamento */}
+      {activeTab === 'payment' && (
+        <div className="space-y-6">
+          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
+            <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+              💳 Configurações de Condições de Pagamento
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Taxa Débito (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={paymentConfig.debitRate}
+                  onChange={e => setPaymentConfig({ ...paymentConfig, debitRate: parseFloat(e.target.value) })}
+                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Taxa Crédito à Vista (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={paymentConfig.creditRate}
+                  onChange={e => setPaymentConfig({ ...paymentConfig, creditRate: parseFloat(e.target.value) })}
+                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Taxa PIX (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={paymentConfig.pixRate}
+                  onChange={e => setPaymentConfig({ ...paymentConfig, pixRate: parseFloat(e.target.value) })}
+                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Taxa Antecipação (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={paymentConfig.anticipationRate}
+                  onChange={e => setPaymentConfig({ ...paymentConfig, anticipationRate: parseFloat(e.target.value) })}
+                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Prazo de Recebimento (dias)</label>
+                <input
+                  type="number"
+                  value={paymentConfig.receiptDays}
+                  onChange={e => setPaymentConfig({ ...paymentConfig, receiptDays: parseInt(e.target.value) })}
+                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <h4 className="text-sm font-bold text-white mb-4">Taxas de Parcelamento</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {Object.entries(paymentConfig.installmentRates).map(([installments, rate]) => (
+                  <div key={installments}>
+                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">{installments}x Parcelas (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={rate}
+                      onChange={e => setPaymentConfig({
+                        ...paymentConfig,
+                        installmentRates: { ...paymentConfig.installmentRates, [installments]: parseFloat(e.target.value) }
+                      })}
+                      className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <h4 className="text-sm font-bold text-white mb-4">Processadoras de Pagamento</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {Object.keys(paymentConfig.processors || {}).map(processor => (
+                  <label key={processor} className="flex items-center gap-2 bg-white/5 p-3 rounded-xl border border-white/20 cursor-pointer hover:bg-white/10">
+                    <input
+                      type="checkbox"
+                      checked={paymentConfig.processors?.[processor as keyof typeof paymentConfig.processors]?.enabled || false}
+                      onChange={e => setPaymentConfig({
+                        ...paymentConfig,
+                        processors: {
+                          ...paymentConfig.processors,
+                          [processor]: { ...paymentConfig.processors?.[processor as keyof typeof paymentConfig.processors], enabled: e.target.checked }
+                        }
+                      })}
+                      className="w-5 h-5 rounded"
+                    />
+                    <span className="text-white font-bold capitalize">{processor}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => {
+                  const { savePaymentConfig } = require('../services/paymentConfig');
+                  savePaymentConfig(paymentConfig);
+                  alert('✅ Configurações de pagamento salvas com sucesso!');
+                }}
+                className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-bold transition-all"
+              >
+                Salvar Configurações
+              </button>
+              <button
+                onClick={() => {
+                  const { getDefaultPaymentConfig } = require('../services/paymentConfig');
+                  const defaultConfig = getDefaultPaymentConfig();
+                  setPaymentConfig(defaultConfig);
+                }}
+                className="bg-slate-600 hover:bg-slate-500 text-white px-6 py-3 rounded-xl font-bold transition-all"
+              >
+                Restaurar Padrão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
       <footer className="bg-gradient-to-r from-versiory-ink to-slate-900 text-white py-8 mt-12 border-t border-white/10 text-center">
         <div className="max-w-7xl mx-auto px-4 flex flex-col items-center gap-4">
@@ -5881,7 +6266,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             Sair
           </button>
-          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.4.7 (Estável)</span></p>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.5.0 (Estável)</span></p>
         </div>
       </footer>
     </div>
