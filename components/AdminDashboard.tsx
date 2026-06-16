@@ -3581,7 +3581,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <table className="w-full">
                   <thead className="bg-white/15 backdrop-blur-md border-b border-white/25">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Pedido</th>
+                      {/* REFCOM167: Indicador ORÇAMENTO no cabeçalho */}
+                      <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">
+                        Pedido
+                        {orderFilter === 'budget' && (
+                          <span className="ml-2 px-2 py-1 bg-purple-600 text-white text-xs font-bold rounded-full">
+                            ORÇAMENTO
+                          </span>
+                        )}
+                      </th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Cliente</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Data</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-slate-100 uppercase tracking-wider">Total</th>
@@ -3596,17 +3604,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <tr key={order.id} className="hover:bg-white/5 transition-colors">
                         {/* ERRCOM046: Clicar no número do pedido abre detalhe */}
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-versiory-coral">
-                          <div className="flex items-center gap-2">
-                            <button onClick={() => setSelectedOrderDetail(order)} className="hover:underline font-bold">
-                              {formatOrderId(order.id)}
-                            </button>
-                            {/* REFCOM167: Indicador visual ORÇAMENTO */}
-                            {order.isBudget && (
-                              <span className="px-2 py-1 bg-purple-600 text-white text-xs font-bold rounded-full">
-                                ORÇAMENTO
-                              </span>
-                            )}
-                          </div>
+                          <button onClick={() => setSelectedOrderDetail(order)} className="hover:underline font-bold">
+                            {formatOrderId(order.id)}
+                          </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{order.customerName}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">{formatDate(order.date)}</td>
@@ -5725,11 +5725,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 const method = (o as any).paymentMethod || 'Não informado';
                 byMethod[method] = (byMethod[method] || 0) + o.total;
               });
+              // REFCOM135: Formatar nome da forma de pagamento
+              const formatMethodName = (method: string) => {
+                if (method === 'credito') return 'Crédito';
+                if (method === 'debito') return 'Débito';
+                if (method === 'pix') return 'PIX';
+                if (method === 'whatsapp' || method === 'A combinar') return 'A combinar';
+                return method.toUpperCase();
+              };
               return (
                 <div className="space-y-3">
                   {Object.entries(byMethod).map(([method, total]) => (
                     <div key={method} className="flex justify-between items-center p-3 bg-white/5 rounded-xl">
-                      <span className="text-white font-medium">{method}</span>
+                      <span className="text-white font-medium">{formatMethodName(method)}</span>
                       <span className="text-versiory-coral font-black">{formatCurrency(total)}</span>
                     </div>
                   ))}
@@ -6266,7 +6274,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             Sair
           </button>
-          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.5.0 (Estável)</span></p>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.6.0 (Estável)</span></p>
         </div>
       </footer>
     </div>

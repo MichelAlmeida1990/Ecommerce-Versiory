@@ -259,6 +259,7 @@ const Checkout: React.FC<CheckoutProps> = ({
             name: item.name,
             quantity: item.quantity,
             price: isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169
+            priceEcommerce: item.priceEcommerce || item.price, // ERRCOM138: Salvar priceEcommerce para exibição correta
             image: item.image,
             description: item.description,
             selectedSize: item.selectedSize,
@@ -426,7 +427,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       storePolicies: fiscalConfig?.storePolicies,
       items: items.map(item => ({ ...item, productId: item.id, price: isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), installments: paymentMethod === 'credito' ? installments : 1 })), 
       total: total,
-      paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod === 'credito' ? `Crédito (${installments}x)` : paymentMethod.toUpperCase(),
+      paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod, // REFCOM135: Salvar paymentMethod como 'credito' para verificação correta
       salesChannel: 'online',
       installments: paymentMethod === 'credito' ? installments : 1,
       discountAmount: discount > 0 ? discount : undefined, // REFCOM151

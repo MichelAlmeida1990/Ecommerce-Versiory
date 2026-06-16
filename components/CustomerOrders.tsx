@@ -343,7 +343,8 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                                 <p className="text-sm font-black text-slate-900 truncate group-hover:text-versiory-coral transition-colors">{item.name || 'Produto Versiory'}</p>
                                 <p className="text-[10px] text-slate-400 font-medium line-clamp-1 mb-1">{item.description || 'Nenhuma descrição disponível'}</p>
                                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                                  {item.quantity} unidade(s) • R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  {/* ERRCOM138: Usar priceEcommerce para e-commerce */}
+                                  {item.quantity} unidade(s) • R$ {(item.priceEcommerce || item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                   {item.selectedSize && ` • Tam: ${item.selectedSize}`}
                                   {item.selectedColor && ` • Cor: ${item.selectedColor}`}
                                 </p>
@@ -614,6 +615,19 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                       <div className="flex justify-between items-center text-slate-400 uppercase text-[9px] font-black tracking-widest">
                         <span>Taxa de Entrega</span>
                         <span className="text-emerald-400">Cortesia Grátis</span>
+                      </div>
+                      {/* REFCOM135: Exibir forma de pagamento e parcelas */}
+                      <div className="pt-4 border-t border-white/10">
+                        <div className="flex justify-between items-center text-slate-400 uppercase text-[9px] font-black tracking-widest">
+                          <span>Forma de Pagamento</span>
+                          <span className="text-white">
+                            {selectedOrder.paymentMethod === 'credito' && selectedOrder.installments && selectedOrder.installments > 1
+                              ? `Crédito (${selectedOrder.installments}x de R$ ${(selectedOrder.total / selectedOrder.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+                              : selectedOrder.paymentMethod === 'whatsapp' || selectedOrder.paymentMethod === 'A combinar'
+                              ? 'A combinar'
+                              : selectedOrder.paymentMethod?.toUpperCase() || 'Não informado'}
+                          </span>
+                        </div>
                       </div>
                       <div className="pt-4 border-t border-white/10 flex justify-between items-baseline">
                         <span className="text-[10px] font-black uppercase tracking-widest">Valor do Pedido</span>

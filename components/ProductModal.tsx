@@ -82,11 +82,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
           <h2 className="text-4xl font-black text-slate-800 mb-4">{product.name}</h2>
 
           <div className="text-5xl font-black text-versiory-coral mb-6">
-            R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            {/* ERRCOM138: Usar priceEcommerce para e-commerce */}
+            R$ {(product.priceEcommerce || product.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
           {product.installments && product.installments > 1 && (
             <div className="text-xl font-bold text-slate-500 -mt-4 mb-6">
-              ou {product.installments}x de R$ {(product.price / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {/* ERRCOM138: Usar priceEcommerce para parcelamento */}
+              ou {product.installments}x de R$ {((product.priceEcommerce || product.price) / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </div>
           )}
 

@@ -740,7 +740,7 @@ const Account: React.FC = () => {
                                           <div className="max-w-[160px] pr-2">
                                             <p className="text-sm font-black text-slate-900 line-clamp-2 mb-1 group-hover:text-versiory-coral transition-colors leading-tight">{name}</p>
                                             <p className="text-xs text-slate-500 font-bold">Qtd: {item.quantity}</p>
-                                            <p className="text-xs text-versiory-ink font-black mt-1">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                            <p className="text-xs text-versiory-ink font-black mt-1">R$ {(item.priceEcommerce || item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                           </div>
                                         </button>
                                       );

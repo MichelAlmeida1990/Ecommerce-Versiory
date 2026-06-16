@@ -101,7 +101,8 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         <tbody>
           ${items.map(item => {
     const variantInfo = [item.selectedSize, item.selectedColor].filter(Boolean).join(' / ');
-    const itemPrice = (item as any).pricePOS || item.price; // REFCOM134: PDV usa pricePOS
+    // ERRCOM138: Usar priceEcommerce para e-commerce, pricePOS para PDV
+    const itemPrice = (item as any).priceEcommerce || (item as any).pricePOS || item.price;
     // REFCOM153: Não mostrar parcelamento por item, usar apenas o parcelamento do pedido
     return `
               <tr>
@@ -131,7 +132,7 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
       ${paymentMethod && !isBudget ? `
       <div class="payment-method">
         <span>FORMA PAGTO:</span>
-        <span>${paymentMethod.toUpperCase()}</span>
+        <span>${paymentMethod === 'credito' && (data as any).installments && (data as any).installments > 1 ? `CRÉDITO (${(data as any).installments}x)` : paymentMethod === 'whatsapp' || paymentMethod === 'A combinar' ? 'A combinar' : paymentMethod.toUpperCase()}</span>
       </div>
       ` : ''}
 

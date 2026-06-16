@@ -76,6 +76,7 @@ export interface OrderItem {
   name: string;
   quantity: number;
   price: number;
+  priceEcommerce?: number; // ERRCOM138: Preço específico para e-commerce
   image?: string;
   description?: string;
   selectedSize?: string;

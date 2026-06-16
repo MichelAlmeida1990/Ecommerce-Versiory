@@ -57,7 +57,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
   const buildWhatsAppMessage = () => {
     const lines = items.map(item => (
-      `- ${item.name} x${item.quantity} (R$ ${item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+      // ERRCOM138: Usar priceEcommerce para e-commerce
       `- ${item.name} x${item.quantity} (R$ ${(item.priceEcommerce || item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
     ));
     return [
@@ -194,7 +194,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                         </svg>
                       </button>
                     </div>
-                    <p className="text-versiory-coral font-bold mt-1">R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-versiory-coral font-bold mt-1">R$ {(item.priceEcommerce || item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                     <div className="flex items-center gap-3 mt-2">
                       <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
                         <button 
