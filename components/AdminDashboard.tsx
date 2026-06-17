@@ -5294,6 +5294,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         editingOrder={editingOrder}
         discountAmount={pdvDiscount}
         discountType={pdvDiscountType}
+        customers={customers} // REFCOM166_pesquisa_pdv: Passar lista de clientes para pesquisa
       />
 
       {/* Modal Gerenciador de Tamanhos */}

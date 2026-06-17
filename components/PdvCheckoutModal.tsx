@@ -18,6 +18,7 @@ interface PdvCheckoutModalProps {
   editingOrder?: Order | null;
   discountAmount?: number;
   discountType?: 'fixo' | 'percentual';
+  customers?: Customer[]; // REFCOM166_pesquisa_pdv: Lista de clientes para pesquisa
 }
 
 const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
@@ -28,10 +29,36 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   onSubmit,
   isSubmitting,
   editingOrder,
+  customers = [], // REFCOM166_pesquisa_pdv: Lista de clientes para pesquisa
   discountAmount = 0,
   discountType = 'fixo'
 }) => {
   const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+  const [customerSearch, setCustomerSearch] = useState(''); // REFCOM166_pesquisa_pdv: Estado para pesquisa de clientes
+  const [showCustomerResults, setShowCustomerResults] = useState(false); // REFCOM166_pesquisa_pdv: Mostrar resultados da pesquisa
+
+  // REFCOM166_pesquisa_pdv: Filtrar clientes por nome, telefone ou CPF/CNPJ
+  const filteredCustomers = customers.filter(customer =>
+    customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+    customer.phone?.toLowerCase().includes(customerSearch.toLowerCase()) ||
+    customer.cpfCnpj?.toLowerCase().includes(customerSearch.toLowerCase())
+  );
+
+  // REFCOM166_pesquisa_pdv: Selecionar cliente da pesquisa
+  const handleSelectCustomer = (customer: Customer) => {
+    setCustomerForm({
+      name: customer.name,
+      phone: customer.phone || '',
+      email: customer.email || '',
+      cpf: customer.cpfCnpj || '',
+      notes: '',
+      address: customer.addresses?.[0]?.street ? `${customer.addresses[0].street}, ${customer.addresses[0].number} - ${customer.addresses[0].city}` : '',
+      customPolicies: ''
+    });
+    setCustomerSearch('');
+    setShowCustomerResults(false);
+  };
+
   const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'debito' | 'credito'>('dinheiro');
   const [installments, setInstallments] = useState(1);
   const [emitNF, setEmitNF] = useState(false);
@@ -466,6 +493,37 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
               </ul>
             </div>
           )}
+
+          {/* REFCOM166_pesquisa_pdv: Campo de pesquisa de clientes */}
+          <div className="relative">
+            <label className="block text-sm font-black text-gray-700 mb-2">Pesquisar Cliente (Nome, Telefone ou CPF/CNPJ)</label>
+            <input
+              type="text"
+              value={customerSearch}
+              onChange={e => {
+                setCustomerSearch(e.target.value);
+                setShowCustomerResults(e.target.value.length > 0);
+              }}
+              onFocus={() => setShowCustomerResults(customerSearch.length > 0)}
+              onBlur={() => setTimeout(() => setShowCustomerResults(false), 200)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+              placeholder="🔍 Digite para buscar cliente cadastrado..."
+            />
+            {showCustomerResults && filteredCustomers.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                {filteredCustomers.slice(0, 10).map(customer => (
+                  <div
+                    key={customer.id}
+                    onClick={() => handleSelectCustomer(customer)}
+                    className="px-4 py-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                  >
+                    <div className="font-bold text-gray-900">{customer.name}</div>
+                    <div className="text-sm text-gray-600">{customer.phone || ''} {customer.cpfCnpj ? `| ${customer.cpfCnpj}` : ''}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div>
             <label className="block text-sm font-black text-gray-700 mb-2">Nome do Cliente *</label>
