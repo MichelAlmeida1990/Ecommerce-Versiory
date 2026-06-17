@@ -2620,20 +2620,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const generateFinancialReport = () => {
+    // REFCOM180: Ajustar campos para exportação CSV com informações completas para contabilidade
     const report = [
       ...orders.map(order => ({
-        Data: formatDate(order.date),
         Tipo: 'Receita',
         Descricao: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}`,
         Categoria: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
-        Valor: order.total
+        Valor: order.total,
+        Data: formatDate(order.date),
+        FormaPagamento: order.paymentMethod || 'dinheiro',
+        DocumentoRef: order.id,
+        FornecedorCliente: order.customerName,
+        CpfCnpj: order.customerCpfCnpj || '',
+        Observacoes: order.notes || ''
       })),
       ...expenses.map(expense => ({
-        Data: formatDate(expense.date),
         Tipo: 'Despesa',
         Descricao: expense.description,
         Categoria: expense.category,
-        Valor: -expense.amount
+        Valor: -expense.amount,
+        Data: formatDate(expense.date),
+        FormaPagamento: expense.paymentMethod || '',
+        DocumentoRef: expense.documentRef || '',
+        FornecedorCliente: expense.supplier || '',
+        CpfCnpj: expense.supplierCpfCnpj || '',
+        Observacoes: expense.notes || ''
       }))
     ];
     downloadCsv(`relatorio_financeiro_${new Date().toISOString().split('T')[0]}.csv`, report);

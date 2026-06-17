@@ -188,6 +188,11 @@ export interface Expense {
   date: string;
   notes?: string;
   user: string;
+  // REFCOM180: Campos adicionais para exportação CSV para contabilidade
+  paymentMethod?: string;
+  documentRef?: string;
+  supplier?: string;
+  supplierCpfCnpj?: string;
 }
 
 export interface ManualRevenue { // ERRCOM136: Registro de receitas avulsas
