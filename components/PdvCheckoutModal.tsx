@@ -315,40 +315,51 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
 
 
   const handlePrintReceipt = async () => {
-    if (!lastFinishedOrder) return;
-    const { generateReceiptHTML } = await import('../utils/receiptGenerator');
-    const fiscalConfig = getFiscalConfig();
+    if (!lastFinishedOrder) {
+      window.alert('Erro: Pedido não encontrado. Por favor, tente novamente.');
+      return;
+    }
+    try {
+      const { generateReceiptHTML } = await import('../utils/receiptGenerator');
+      const fiscalConfig = getFiscalConfig();
 
-    const isPdvPhone = lastFinishedOrder.customerEmail && lastFinishedOrder.customerEmail.includes('@pdv.local');
-    const displayPhone = isPdvPhone ? lastFinishedOrder.customerEmail!.replace('@pdv.local', '') : undefined;
-    const displayEmail = isPdvPhone ? undefined : lastFinishedOrder.customerEmail;
+      const isPdvPhone = lastFinishedOrder.customerEmail && lastFinishedOrder.customerEmail.includes('@pdv.local');
+      const displayPhone = isPdvPhone ? lastFinishedOrder.customerEmail!.replace('@pdv.local', '') : undefined;
+      const displayEmail = isPdvPhone ? undefined : lastFinishedOrder.customerEmail;
 
-    const receiptHTML = generateReceiptHTML({
-      orderId: lastFinishedOrder.id,
-      date: new Date(lastFinishedOrder.date).toLocaleString('pt-BR'),
-      customerName: lastFinishedOrder.customerName,
-      customerPhone: displayPhone || lastFinishedOrder.customerPhone || undefined,
-      customerEmail: displayEmail,
-      customerCpfCnpj: lastFinishedOrder.customerCpfCnpj, // ERRCOM110
-      customerAddress: lastFinishedOrder.address || undefined,
-      notes: lastFinishedOrder.notes,
-      storePolicies: lastFinishedOrder.customPolicies || fiscalConfig?.storePolicies,
-      items: soldItems.map(item => ({ ...item.product, quantity: item.quantity as any, category: item.product.category })),
-      total: soldTotal,
-      paymentMethod: lastFinishedOrder.paymentMethod || undefined,
-      isBudget: lastFinishedOrder.isBudget,
-      salesChannel: lastFinishedOrder.salesChannel || 'physical',
-      installments: lastFinishedOrder.installments, // REFCOM135
-      installmentDetails: lastFinishedOrder.installmentDetails, // REFCOM135
-      discountAmount: lastFinishedOrder.discountAmount, // REFCOM151
-      discountType: lastFinishedOrder.discountType, // REFCOM151
-      couponCode: lastFinishedOrder.couponCode // REFCOM151
-    });
+      const receiptHTML = generateReceiptHTML({
+        orderId: lastFinishedOrder.id,
+        date: new Date(lastFinishedOrder.date).toLocaleString('pt-BR'),
+        customerName: lastFinishedOrder.customerName,
+        customerPhone: displayPhone || lastFinishedOrder.customerPhone || undefined,
+        customerEmail: displayEmail,
+        customerCpfCnpj: lastFinishedOrder.customerCpfCnpj, // ERRCOM110
+        customerAddress: lastFinishedOrder.address || undefined,
+        notes: lastFinishedOrder.notes,
+        storePolicies: lastFinishedOrder.customPolicies || fiscalConfig?.storePolicies,
+        items: soldItems.map(item => ({ ...item.product, quantity: item.quantity as any, category: item.product.category })),
+        total: soldTotal,
+        paymentMethod: lastFinishedOrder.paymentMethod || undefined,
+        isBudget: lastFinishedOrder.isBudget,
+        salesChannel: lastFinishedOrder.salesChannel || 'physical',
+        installments: lastFinishedOrder.installments, // REFCOM135
+        installmentDetails: lastFinishedOrder.installmentDetails, // REFCOM135
+        discountAmount: lastFinishedOrder.discountAmount, // REFCOM151
+        discountType: lastFinishedOrder.discountType, // REFCOM151
+        couponCode: lastFinishedOrder.couponCode // REFCOM151
+      });
 
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
-    if (printWindow) {
-      printWindow.document.write(receiptHTML);
-      printWindow.document.close();
+      const printWindow = window.open('', '_blank', 'width=400,height=600');
+      if (printWindow) {
+        printWindow.document.write(receiptHTML);
+        printWindow.document.close();
+        printWindow.focus();
+      } else {
+        window.alert('Erro: Não foi possível abrir a janela de impressão. Verifique se o bloqueador de pop-ups está ativado.');
+      }
+    } catch (error) {
+      console.error('Erro ao imprimir recibo:', error);
+      window.alert('Erro ao imprimir recibo. Por favor, tente novamente.');
     }
   };
 

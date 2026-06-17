@@ -259,7 +259,7 @@ const Checkout: React.FC<CheckoutProps> = ({
             name: item.name,
             quantity: item.quantity,
             price: isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169
-            priceEcommerce: item.priceEcommerce || item.price, // ERRCOM138: Salvar priceEcommerce para exibição correta
+            priceEcommerce: isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169: Salvar preço correto baseado em isStorePickup
             image: item.image,
             description: item.description,
             selectedSize: item.selectedSize,

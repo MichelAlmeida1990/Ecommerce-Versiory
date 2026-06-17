@@ -101,7 +101,7 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         <tbody>
           ${items.map(item => {
     const variantInfo = [item.selectedSize, item.selectedColor].filter(Boolean).join(' / ');
-    // ERRCOM138: Usar priceEcommerce para e-commerce, pricePOS para PDV
+    // REFCOM169: Usar priceEcommerce para e-commerce (quando NÃO é Retire na Loja), pricePOS para PDV/Retire na Loja
     const itemPrice = (item as any).priceEcommerce || (item as any).pricePOS || item.price;
     // REFCOM153: Não mostrar parcelamento por item, usar apenas o parcelamento do pedido
     return `
