@@ -1046,6 +1046,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [products]);
 
   // ERRCOM035: Clientes filtrados por busca
+  // REFCOM17: Adicionar pesquisa por CPF/CNPJ
   const filteredCustomers = useMemo(() => {
     if (!customerSearch.trim()) return customers;
 
@@ -1053,7 +1054,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return customers.filter(customer =>
       customer.name.toLowerCase().includes(search) ||
       customer.email?.toLowerCase().includes(search) ||
-      customer.phone?.toLowerCase().includes(search)
+      customer.phone?.toLowerCase().includes(search) ||
+      customer.cpfCnpj?.toLowerCase().includes(search)
     );
   }, [customers, customerSearch]);
 
@@ -3690,7 +3692,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 type="text"
                 value={customerSearch}
                 onChange={e => setCustomerSearch(e.target.value)}
-                placeholder="🔍 Buscar cliente por nome, email ou telefone..."
+                placeholder="🔍 Buscar cliente por nome, email, telefone ou CPF/CNPJ..."
                 className="px-4 py-3 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none w-full"
               />
             </div>
