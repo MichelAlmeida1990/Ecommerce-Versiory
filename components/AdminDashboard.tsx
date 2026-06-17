@@ -6097,7 +6097,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       // Atualizar cliente existente
                       const updatedCustomer = { ...editingCustomer, ...customerForm };
                       await saveCustomer(updatedCustomer);
-                      setCustomers(customers.map(c => c.id === editingCustomer.id ? updatedCustomer : c));
+                      onUpdateCustomers(customers.map(c => c.id === editingCustomer.id ? updatedCustomer : c));
                     } else {
                       // Criar novo cliente
                       const newCustomer = {
@@ -6109,7 +6109,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         addresses: customerForm.addresses || []
                       } as Customer;
                       await saveCustomer(newCustomer);
-                      setCustomers([...customers, newCustomer]);
+                      onUpdateCustomers([...customers, newCustomer]);
                     }
 
                     setIsCustomerModalOpen(false);
