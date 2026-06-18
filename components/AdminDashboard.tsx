@@ -158,6 +158,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [orderFilter, setOrderFilter] = useState<string>('all');
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
   const [productSearch, setProductSearch] = useState('');
+  // REFCOM179_periodo: Filtro de período para análise de vendas
+  const [dashboardPeriod, setDashboardPeriod] = useState<number>(30);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   // ERRCOM106: Ferramenta de Resgate Total (Movida para Produtos)
@@ -909,13 +911,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
   }, [products, orders, customers]);
 
+  // REFCOM179_periodo: Permitir análise de vendas em períodos superiores a 30 dias
   const last30DaysData = useMemo(() => {
     const data = [];
     const today = new Date();
     // Ajustar para o final do dia local para garantir que pegamos as últimas 24h corretamente no loop
     today.setHours(23, 59, 59, 999);
 
-    for (let i = 29; i >= 0; i--) {
+    for (let i = dashboardPeriod - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
 
@@ -957,7 +960,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
     }
     return data;
-  }, [orders]);
+  }, [orders, dashboardPeriod]);
 
   const finalDashboardTop5 = useMemo(() => {
     const productSales: Record<number, { count: number, revenue: number }> = {};
@@ -2776,7 +2779,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-[#17223b] rounded-xl p-6 border border-white/5 shadow-lg">
-                <h3 className="text-white font-bold mb-6">Vendas por Dia (últimos 30 dias)</h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-white font-bold">Vendas por Dia</h3>
+                  {/* REFCOM179_periodo: Filtro de período */}
+                  <select
+                    value={dashboardPeriod}
+                    onChange={e => setDashboardPeriod(Number(e.target.value))}
+                    className="bg-[#1b2a47] text-white text-sm px-3 py-1 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+                  >
+                    <option value={7}>Últimos 7 dias</option>
+                    <option value={15}>Últimos 15 dias</option>
+                    <option value={30}>Últimos 30 dias</option>
+                    <option value={60}>Últimos 60 dias</option>
+                    <option value={90}>Últimos 90 dias</option>
+                  </select>
+                </div>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={last30DaysData} onClick={handleChartClick}>
@@ -2793,7 +2810,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
               <div className="bg-[#17223b] rounded-xl p-6 border border-white/5 shadow-lg">
-                <h3 className="text-white font-bold mb-6">Faturamento por Dia (últimos 30 dias)</h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-white font-bold">Faturamento por Dia</h3>
+                  {/* REFCOM179_periodo: Filtro de período */}
+                  <select
+                    value={dashboardPeriod}
+                    onChange={e => setDashboardPeriod(Number(e.target.value))}
+                    className="bg-[#1b2a47] text-white text-sm px-3 py-1 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+                  >
+                    <option value={7}>Últimos 7 dias</option>
+                    <option value={15}>Últimos 15 dias</option>
+                    <option value={30}>Últimos 30 dias</option>
+                    <option value={60}>Últimos 60 dias</option>
+                    <option value={90}>Últimos 90 dias</option>
+                  </select>
+                </div>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
