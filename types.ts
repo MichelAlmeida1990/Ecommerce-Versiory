@@ -230,6 +230,8 @@ export interface FiscalConfig {
   serie: string;
   numeroAtual: number;
   storePolicies?: string;
+  // REFCOM169_endereco: Endereço para Retire na Loja
+  enderecoRetireLoja?: string;
 }
 
 export interface CashWithdrawal {

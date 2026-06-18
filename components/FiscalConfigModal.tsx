@@ -186,6 +186,18 @@ const FiscalConfigModal: React.FC<FiscalConfigModalProps> = ({ isOpen, onClose }
                 placeholder="Ex: Garantia de 3 meses para mão de obra..."
               />
             </div>
+            {/* REFCOM169_endereco: Endereço para Retire na Loja */}
+            <div className="col-span-2">
+              <label className="block text-sm font-black text-gray-700 mb-2">Endereço Retire na Loja</label>
+              <p className="text-xs text-gray-500 mb-2">Endereço exibido em cupons fiscais e recibos quando o cliente escolher a opção "Retire na Loja". Se deixado em branco, será usado o endereço principal.</p>
+              <textarea
+                value={config.enderecoRetireLoja || ''}
+                onChange={e => setConfig({ ...config, enderecoRetireLoja: e.target.value })}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                rows={3}
+                placeholder="Ex: Rua das Flores, 123 - Centro - São Paulo/SP"
+              />
+            </div>
           </div>
 
           <div className="flex gap-4 pt-4">
