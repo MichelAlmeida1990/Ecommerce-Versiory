@@ -581,8 +581,15 @@ const Checkout: React.FC<CheckoutProps> = ({
                 <p className="text-sm font-bold text-blue-900 mb-2">📍 Endereço para Retirada:</p>
                 <p className="text-xs text-blue-800 leading-relaxed">Rua do Comércio, 123 - Centro, São Paulo - SP<br/>Segunda a Sexta: 09h às 18h</p>
                 <div className="mt-3 h-32 w-full rounded-xl overflow-hidden border border-blue-200 grayscale contrast-125">
-                   {/* Mock do Google Maps solicitado */}
-                  <img src="https://maps.googleapis.com/maps/api/staticmap?center=-23.5505,-46.6333&zoom=15&size=400x200&key=YOUR_KEY" className="w-full h-full object-cover" alt="Mapa" />
+                   {/* REFCOM169_mapa: Corrigir erro no mapa do Google Maps usando iframe embed sem API key */}
+                  <iframe
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3657.098169028822!2d-46.6333!3d-23.5505!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMjPCsDMzJzAxLjgiUyA0NsKwMzcnNTkuOSJX!5e0!3m2!1spt-BR!2sbr!4v1234567890"
+                    className="w-full h-full object-cover"
+                    style={{ border: 0 }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
                 </div>
                 <p className="text-[10px] text-blue-600 mt-2 font-bold italic">💡 Nesta modalidade você economiza no frete e paga preço de loja física!</p>
               </div>
