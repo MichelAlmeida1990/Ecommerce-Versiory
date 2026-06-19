@@ -1300,9 +1300,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
 
     const totalRevenue = revenueOrders.reduce((s, o) => s + o.total, 0);
-    const avgTicket = customers.length > 0 ? totalRevenue / customers.length : 0;
+    // REFCOM183: Ajustar rotina de cálculo do total de clientes para considerar CPF/CNPJ únicos
+    const uniqueCpfCnpjs = new Set(
+      customers
+        .map(c => c.cpfCnpj?.replace(/\D/g, ''))
+        .filter(cpf => cpf && cpf.length > 0)
+    );
+    const totalUniqueCustomers = uniqueCpfCnpjs.size > 0 ? uniqueCpfCnpjs.size : customers.length;
+    const avgTicket = totalUniqueCustomers > 0 ? totalRevenue / totalUniqueCustomers : 0;
     return {
-      total: customers.length,
+      total: totalUniqueCustomers,
       pdv: pdvCustomerIds.size,
       online: onlineCustomerIds.size,
       avgTicket
