@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { generateInvoice } from '../services/invoice';
 import { CartItem, Order, OrderItem, Customer } from '../types';
-
-
+import { getFiscalConfig } from '../services/fiscalConfig';
 import { sanitizeData } from '../services/utils';
 interface CheckoutProps {
   isOpen: boolean;
@@ -28,6 +27,20 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [orderNotes, setOrderNotes] = useState('');
   const [emitNF, setEmitNF] = useState(false);
   const [invoiceStatus, setInvoiceStatus] = useState<'none' | 'generating' | 'ready'>('none');
+  // REFCOM169: Endereço de Retire na Loja das Configurações Fiscais
+  const [storePickupAddress, setStorePickupAddress] = useState('');
+
+  // REFCOM169: Carregar endereço de Retire na Loja das Configurações Fiscais
+  useEffect(() => {
+    const fiscalConfig = getFiscalConfig();
+    if (fiscalConfig?.enderecoRetireLoja) {
+      setStorePickupAddress(fiscalConfig.enderecoRetireLoja);
+    } else if (fiscalConfig?.endereco) {
+      // Se não houver endereço específico para Retire na Loja, usar o endereço principal
+      const fullAddress = `${fiscalConfig.endereco}${fiscalConfig.cidade ? `, ${fiscalConfig.cidade}` : ''}${fiscalConfig.estado ? ` - ${fiscalConfig.estado}` : ''}${fiscalConfig.cep ? `, CEP: ${fiscalConfig.cep}` : ''}`;
+      setStorePickupAddress(fullAddress);
+    }
+  }, []);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [isLoadingCustomer, setIsLoadingCustomer] = useState(false);
 
@@ -579,7 +592,8 @@ const Checkout: React.FC<CheckoutProps> = ({
             {isStorePickup && (
               <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl animate-in fade-in duration-300">
                 <p className="text-sm font-bold text-blue-900 mb-2">📍 Endereço para Retirada:</p>
-                <p className="text-xs text-blue-800 leading-relaxed">Rua do Comércio, 123 - Centro, São Paulo - SP<br/>Segunda a Sexta: 09h às 18h</p>
+                {/* REFCOM169: Usar endereço cadastrado nas Configurações Fiscais */}
+                <p className="text-xs text-blue-800 leading-relaxed">{storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}<br/>Segunda a Sexta: 09h às 18h</p>
                 <div className="mt-3 h-32 w-full rounded-xl overflow-hidden border border-blue-200 grayscale contrast-125">
                    {/* REFCOM169_mapa: Corrigir erro no mapa do Google Maps usando iframe embed sem API key */}
                   <iframe

@@ -1267,7 +1267,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // ERRCOM033: Estatísticas de clientes
   const customerStats = useMemo(() => {
-    const activeOrders = orders.filter(o => !o.isBudget);
+    // REFCOM182: Incluir pedidos convertidos de orçamento no cálculo
+    const activeOrders = orders.filter(o => {
+      // Incluir pedidos normais e orçamentos convertidos
+      if (o.isBudget) {
+        const convertedStatuses = ['paid', 'processing', 'shipped', 'delivered'];
+        return convertedStatuses.includes(o.status);
+      }
+      return true;
+    });
     const pdvCustomerIds = new Set(
       activeOrders.filter(o => o.salesChannel === 'physical').map(o => o.customerId)
     );
@@ -1277,7 +1285,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     // Revenue logic should match stats calc
     const revenueOrders = orders.filter(order => {
-      if (order.isBudget) return false;
+      // REFCOM182: Incluir orçamentos convertidos no cálculo de receita
+      if (order.isBudget) {
+        const convertedStatuses = ['paid', 'processing', 'shipped', 'delivered'];
+        if (!convertedStatuses.includes(order.status)) return false;
+      }
       if (order.status === 'cancelled') return false;
       const hasService = order.items?.some(item => {
         const product = products.find(p => p.id === item.productId);
@@ -2623,9 +2635,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const generateFinancialReport = () => {
+    // REFCOM160: Ajustar exportação CSV para respeitar os filtros aplicados
+    const filterByDate = (dateStr: string) => {
+      if (!financialDateFilter.from && !financialDateFilter.to) return true;
+      const date = new Date(dateStr);
+      const from = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
+      const to = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
+      if (from && date < from) return false;
+      if (to && date > to) return false;
+      return true;
+    };
+
     // REFCOM180: Ajustar campos para exportação CSV com informações completas para contabilidade
-    const report = [
-      ...orders.map(order => ({
+    const report = [];
+
+    // REFCOM160: Aplicar filtro de tipo (revenue/expense)
+    if (financialTypeFilter === 'all' || financialTypeFilter === 'revenue') {
+      const filteredOrders = orders.filter(order => {
+        if (!filterByDate(order.date)) return false;
+        // REFCOM160: Aplicar filtro de forma de pagamento
+        if (financialPaymentFilter !== 'all' && order.paymentMethod !== financialPaymentFilter) return false;
+        // ERRCOM104: Orçamentos convertidos (paid, processing, shipped, delivered) refletem no financeiro
+        if (order.isBudget) {
+          const convertedStatuses = ['paid', 'processing', 'shipped', 'delivered'];
+          if (!convertedStatuses.includes(order.status)) return false;
+        }
+        if (order.status === 'cancelled') return false;
+        return true;
+      });
+
+      report.push(...filteredOrders.map(order => ({
         Tipo: 'Receita',
         Descricao: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}`,
         Categoria: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
@@ -2636,8 +2675,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         FornecedorCliente: order.customerName,
         CpfCnpj: order.customerCpfCnpj || '',
         Observacoes: order.notes || ''
-      })),
-      ...expenses.map(expense => ({
+      })));
+    }
+
+    // REFCOM160: Aplicar filtro de tipo (revenue/expense)
+    if (financialTypeFilter === 'all' || financialTypeFilter === 'expense') {
+      const filteredExpenses = expenses.filter(expense => {
+        if (!filterByDate(expense.date)) return false;
+        // REFCOM160: Aplicar filtro de forma de pagamento
+        if (financialPaymentFilter !== 'all' && expense.paymentMethod !== financialPaymentFilter) return false;
+        return true;
+      });
+
+      report.push(...filteredExpenses.map(expense => ({
         Tipo: 'Despesa',
         Descricao: expense.description,
         Categoria: expense.category,
@@ -2648,8 +2698,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         FornecedorCliente: expense.supplier || '',
         CpfCnpj: expense.supplierCpfCnpj || '',
         Observacoes: expense.notes || ''
-      }))
-    ];
+      })));
+    }
+
     downloadCsv(`relatorio_financeiro_${new Date().toISOString().split('T')[0]}.csv`, report);
   };
 
@@ -2792,6 +2843,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value={30}>Últimos 30 dias</option>
                     <option value={60}>Últimos 60 dias</option>
                     <option value={90}>Últimos 90 dias</option>
+                    {/* REFCOM179: Ampliar filtros para 180 e 365 dias */}
+                    <option value={180}>Últimos 180 dias</option>
+                    <option value={365}>Últimos 365 dias</option>
                   </select>
                 </div>
                 <div className="h-64">
@@ -2823,6 +2877,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value={30}>Últimos 30 dias</option>
                     <option value={60}>Últimos 60 dias</option>
                     <option value={90}>Últimos 90 dias</option>
+                    {/* REFCOM179: Ampliar filtros para 180 e 365 dias */}
+                    <option value={180}>Últimos 180 dias</option>
+                    <option value={365}>Últimos 365 dias</option>
                   </select>
                 </div>
                 <div className="h-64">
@@ -4110,7 +4167,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalRevenue)}</div>
-                <div className="text-slate-100 font-medium text-sm">Receita Total — clique para detalhes</div>
+                {/* REFCOM160: Corrigir título do card de Receita Total para "Receita bruta Total" */}
+                <div className="text-slate-100 font-medium text-sm">Receita bruta Total — clique para detalhes</div>
               </button>
               <button
                 onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
