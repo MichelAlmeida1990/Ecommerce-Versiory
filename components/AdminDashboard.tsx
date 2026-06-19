@@ -6203,6 +6203,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const { getCustomers, saveCustomer } = await import('../services/firebase');
                     const customers = await getCustomers();
 
+                    // REFCOM166: Validar se CPF/CNPJ já está cadastrado
+                    if (customerForm.cpfCnpj) {
+                      const cleanedCpfCnpj = customerForm.cpfCnpj.replace(/\D/g, '');
+                      const existingCustomer = customers.find(c => {
+                        const existingCpfCnpj = c.cpfCnpj?.replace(/\D/g, '');
+                        return existingCpfCnpj === cleanedCpfCnpj && c.id !== editingCustomer?.id;
+                      });
+                      if (existingCustomer) {
+                        alert('CPF/CNPJ já cadastrado para outro cliente!');
+                        return;
+                      }
+                    }
+
                     if (editingCustomer) {
                       // Atualizar cliente existente
                       const updatedCustomer = { ...editingCustomer, ...customerForm };
