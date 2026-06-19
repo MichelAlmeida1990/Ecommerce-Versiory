@@ -951,11 +951,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       const faturamento = dayOrders.reduce((sum, o) => sum + o.total, 0);
 
+      // REFCOM179: Exibir indicadores de vendas por dia (total, PDV, Online)
+      const pdvOrders = dayOrders.filter(o => o.salesChannel === 'physical');
+      const onlineOrders = dayOrders.filter(o => !o.salesChannel || o.salesChannel === 'online');
+
+      // REFCOM179: Exibir indicadores de faturamento por dia (total, PDV, Online)
+      const pdvRevenue = pdvOrders.reduce((sum, o) => sum + o.total, 0);
+      const onlineRevenue = onlineOrders.reduce((sum, o) => sum + o.total, 0);
+
       data.push({
         name: shortDate,
         fullDate: dateStr,
         Pedidos: dayOrders.length,
         Faturamento: faturamento,
+        // REFCOM179: Indicadores de vendas por dia
+        PedidosPDV: pdvOrders.length,
+        PedidosOnline: onlineOrders.length,
+        // REFCOM179: Indicadores de faturamento por dia
+        FaturamentoPDV: pdvRevenue,
+        FaturamentoOnline: onlineRevenue,
         orderIds: dayOrders.map(o => o.id)
       });
     }
