@@ -2846,6 +2846,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            <div className="flex flex-wrap gap-3 items-center">
+              <span className="text-slate-300 text-sm font-bold">Período:</span>
+              <select
+                value={dashboardPeriod}
+                onChange={e => setDashboardPeriod(Number(e.target.value))}
+                className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+              >
+                <option value={7}>Últimos 7 dias</option>
+                <option value={15}>Últimos 15 dias</option>
+                <option value={30}>Últimos 30 dias</option>
+                <option value={60}>Últimos 60 dias</option>
+                <option value={90}>Últimos 90 dias</option>
+                <option value={180}>Últimos 180 dias</option>
+                <option value={365}>Últimos 365 dias</option>
+              </select>
+              <span className="text-slate-300 text-sm font-bold ml-4">Canal:</span>
+              <select
+                value={dashboardChannelFilter}
+                onChange={e => setDashboardChannelFilter(e.target.value as any)}
+                className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+              >
+                <option value="all">Todos</option>
+                <option value="online">Online</option>
+                <option value="physical">PDV Loja</option>
+              </select>
+            </div>
+
             {/* Top Cards — ERRCOM122: Cards Vendas Online e PDV Loja adicionados */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
@@ -2919,9 +2946,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value) => value} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}
-                        itemStyle={{ color: '#fbbf24' }}
                       />
+                      <Legend />
                       <Line type="monotone" dataKey="Pedidos" stroke="#fbbf24" strokeWidth={2} dot={{ fill: '#fbbf24', r: 4 }} activeDot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="PedidosPDV" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e', r: 4 }} activeDot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="PedidosOnline" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 4 }} activeDot={{ r: 6 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -2947,21 +2976,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={last30DaysData}
-                      onClick={handleChartClick}
-                      onDoubleClick={(data: any) => {
-                        // ERRCOM076: Drill-down suporte clique duplo
-                        if (data && data.activePayload && data.activePayload[0]) {
-                          const payload = data.activePayload[0].payload;
-                          setDrillDownData({
-                            date: payload.name,
-                            orderIds: payload.orderIds || []
-                          });
-                          setIsDrillDownModalOpen(true);
-                        }
-                      }}
-                    >
+                    <BarChart data={last30DaysData} onClick={handleChartClick} onDoubleClick={(data: any) => {
+                      if (data && data.activePayload && data.activePayload[0]) {
+                        const payload = data.activePayload[0].payload;
+                        setDrillDownData({
+                          date: payload.name,
+                          orderIds: payload.orderIds || []
+                        });
+                        setIsDrillDownModalOpen(true);
+                      }
+                    }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                       <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickMargin={10} />
                       <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value}`} />
@@ -2970,7 +2994,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         formatter={(value: number) => [formatCurrency(value), 'Faturamento']}
                         cursor={{ fill: '#ffffff10' }}
                       />
-                      <Bar dataKey="Faturamento" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                      <Legend />
+                      <Bar dataKey="Faturamento" fill="#fbbf24" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                      <Bar dataKey="FaturamentoPDV" fill="#22c55e" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                      <Bar dataKey="FaturamentoOnline" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
