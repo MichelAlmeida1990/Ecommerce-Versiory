@@ -153,7 +153,7 @@ export interface Customer {
   phone?: string;
   cpfCnpj?: string;
   avatar?: string;
-  birthDate?: string; // REFCOM181 / REFCOM166
+  birthDate?: string;
   addresses: Address[];
   totalOrders: number;
   totalSpent: number;
