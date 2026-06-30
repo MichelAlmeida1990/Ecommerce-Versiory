@@ -3815,15 +3815,143 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <h2 className="text-xl font-black text-white">Gerenciar Clientes</h2>
               <button
                 onClick={() => {
-                  setEditingCustomer(null);
-                  setCustomerForm({ name: '', email: '', phone: '', cpfCnpj: '', addresses: [] });
-                  setIsCustomerModalOpen(true);
+                  setCustomerSearchQuery('');
+                  setCustomerSearchDateFrom('');
+                  setCustomerSearchDateTo('');
+                  setSelectedCustomerFromSearch(null);
+                  setIsCustomerSearchOpen(true);
                 }}
                 className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
               >
                 + Novo Cliente
               </button>
             </div>
+
+            {isCustomerSearchOpen && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsCustomerSearchOpen(false)} />
+                <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+                    <h3 className="text-2xl font-black text-slate-900">Pesquisar Cliente</h3>
+                    <button
+                      onClick={() => setIsCustomerSearchOpen(false)}
+                      className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <p className="text-sm text-slate-600">Busque por nome, telefone, CPF/CNPJ ou data de nascimento antes de cadastrar um novo cliente.</p>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-900 mb-2">Nome, Telefone ou CPF/CNPJ</label>
+                      <input
+                        type="text"
+                        value={customerSearchQuery}
+                        onChange={e => setCustomerSearchQuery(e.target.value)}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                        placeholder="Digite para pesquisar..."
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-bold text-slate-900 mb-2">Data Nascimento de</label>
+                        <input
+                          type="date"
+                          value={customerSearchDateFrom}
+                          onChange={e => setCustomerSearchDateFrom(e.target.value)}
+                          className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-slate-900 mb-2">até</label>
+                        <input
+                          type="date"
+                          value={customerSearchDateTo}
+                          onChange={e => setCustomerSearchDateTo(e.target.value)}
+                          className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="border-t border-slate-100 pt-4 max-h-60 overflow-y-auto space-y-2">
+                      {(() => {
+                        const q = customerSearchQuery.toLowerCase();
+                        const results = customers.filter(c => {
+                          const matchesText = !q ||
+                            c.name.toLowerCase().includes(q) ||
+                            (c.phone && c.phone.includes(q)) ||
+                            (c.cpfCnpj && c.cpfCnpj.toLowerCase().includes(q));
+                          if (!matchesText) return false;
+                          if (customerSearchDateFrom || customerSearchDateTo) {
+                            if (!c.birthDate) return false;
+                            const d = new Date(c.birthDate);
+                            if (customerSearchDateFrom && d < new Date(customerSearchDateFrom + 'T00:00:00')) return false;
+                            if (customerSearchDateTo && d > new Date(customerSearchDateTo + 'T23:59:59')) return false;
+                          }
+                          return true;
+                        });
+                        if (results.length === 0) {
+                          return <p className="text-sm text-slate-500">Nenhum cliente encontrado. Clique em "Novo Cliente" para cadastrar.</p>;
+                        }
+                        return results.map(c => (
+                          <div
+                            key={c.id}
+                            onClick={() => {
+                              setSelectedCustomerFromSearch(c);
+                              setCustomerSearchQuery('');
+                              setCustomerSearchDateFrom('');
+                              setCustomerSearchDateTo('');
+                              setIsCustomerSearchOpen(false);
+                              setEditingCustomer(c);
+                              setCustomerForm({
+                                name: c.name,
+                                email: c.email,
+                                phone: c.phone,
+                                cpfCnpj: c.cpfCnpj,
+                                birthDate: c.birthDate,
+                                addresses: c.addresses
+                              });
+                              setIsCustomerModalOpen(true);
+                            }}
+                            className="p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer flex justify-between items-center"
+                          >
+                            <div>
+                              <p className="font-bold text-slate-900">{c.name}</p>
+                              <p className="text-xs text-slate-500">{c.email} {c.phone && `• ${c.phone}`} {c.cpfCnpj && `• ${c.cpfCnpj}`}</p>
+                            </div>
+                            <span className="text-xs font-bold text-versiory-coral">Selecionar</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                    <div className="border-t border-slate-100 pt-4 flex gap-3">
+                      <button
+                        onClick={() => {
+                          setSelectedCustomerFromSearch(null);
+                          setCustomerSearchQuery('');
+                          setCustomerSearchDateFrom('');
+                          setCustomerSearchDateTo('');
+                          setIsCustomerSearchOpen(false);
+                          setEditingCustomer(null);
+                          setCustomerForm({ name: '', email: '', phone: '', cpfCnpj: '', birthDate: '', addresses: [] });
+                          setIsCustomerModalOpen(true);
+                        }}
+                        className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all"
+                      >
+                        + Novo Cliente
+                      </button>
+                      <button
+                        onClick={() => setIsCustomerSearchOpen(false)}
+                        className="flex-1 px-6 py-3 rounded-xl font-bold text-slate-900 bg-slate-100 hover:bg-slate-200 transition-all"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ERRCOM033: Cards de métricas de clientes */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -6268,6 +6396,139 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
                   placeholder="000.000.000-00"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-2">Data de Nascimento</label>
+                <input
+                  type="date"
+                  value={customerForm.birthDate || ''}
+                  onChange={e => setCustomerForm({ ...customerForm, birthDate: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                />
+              </div>
+
+              <div className="border-t border-slate-100 pt-4">
+                <h4 className="text-sm font-bold text-slate-900 mb-3">Endereço</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">CEP</label>
+                    <input
+                      type="text"
+                      value={(customerForm.addresses?.[0] as any)?.zipCode || ''}
+                      onChange={e => {
+                        const addr = (customerForm.addresses?.[0] as any) || {};
+                        setCustomerForm({
+                          ...customerForm,
+                          addresses: [{ ...addr, zipCode: e.target.value.replace(/\D/g, '') }]
+                        });
+                      }}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                      placeholder="00000-000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Rua / Logradouro</label>
+                    <input
+                      type="text"
+                      value={(customerForm.addresses?.[0] as any)?.street || ''}
+                      onChange={e => {
+                        const addr = (customerForm.addresses?.[0] as any) || {};
+                        setCustomerForm({
+                          ...customerForm,
+                          addresses: [{ ...addr, street: e.target.value }]
+                        });
+                      }}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                      placeholder="Nome da rua"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Número</label>
+                      <input
+                        type="text"
+                        value={(customerForm.addresses?.[0] as any)?.number || ''}
+                        onChange={e => {
+                          const addr = (customerForm.addresses?.[0] as any) || {};
+                          setCustomerForm({
+                            ...customerForm,
+                            addresses: [{ ...addr, number: e.target.value }]
+                          });
+                        }}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                        placeholder="123"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Complemento</label>
+                      <input
+                        type="text"
+                        value={(customerForm.addresses?.[0] as any)?.complement || ''}
+                        onChange={e => {
+                          const addr = (customerForm.addresses?.[0] as any) || {};
+                          setCustomerForm({
+                            ...customerForm,
+                            addresses: [{ ...addr, complement: e.target.value }]
+                          });
+                        }}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                        placeholder="Apto..."
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Bairro</label>
+                    <input
+                      type="text"
+                      value={(customerForm.addresses?.[0] as any)?.neighborhood || ''}
+                      onChange={e => {
+                        const addr = (customerForm.addresses?.[0] as any) || {};
+                        setCustomerForm({
+                          ...customerForm,
+                          addresses: [{ ...addr, neighborhood: e.target.value }]
+                        });
+                      }}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                      placeholder="Centro"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cidade</label>
+                      <input
+                        type="text"
+                        value={(customerForm.addresses?.[0] as any)?.city || ''}
+                        onChange={e => {
+                          const addr = (customerForm.addresses?.[0] as any) || {};
+                          setCustomerForm({
+                            ...customerForm,
+                            addresses: [{ ...addr, city: e.target.value }]
+                          });
+                        }}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                        placeholder="São Paulo"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">UF</label>
+                      <input
+                        type="text"
+                        value={(customerForm.addresses?.[0] as any)?.state || ''}
+                        onChange={e => {
+                          const addr = (customerForm.addresses?.[0] as any) || {};
+                          setCustomerForm({
+                            ...customerForm,
+                            addresses: [{ ...addr, state: e.target.value.toUpperCase() }]
+                          });
+                        }}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                        placeholder="SP"
+                        maxLength={2}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
