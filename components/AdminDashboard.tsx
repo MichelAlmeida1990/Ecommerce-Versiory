@@ -2126,7 +2126,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsPdvCheckoutModalOpen(true);
   };
 
-  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; email: string; cpf: string; notes: string; address?: string; isBudget?: boolean }, order: Order) => {
+  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; email: string; cpf: string; notes: string; address?: string; birthDate?: string; isBudget?: boolean }, order: Order) => {
     const isBudget = order.isBudget || false;
 
     // ERRCOM99: Orçamentos não exigem caixa aberto, pois não geram movimentação financeira imediata
@@ -2181,12 +2181,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       // REFCOM126: Identificação rigorosa por CPF como chave única
       let customer = freshCustomers.find(c => {
-        // Priorizar CPF como chave única de identificação
-        if (customerData.cpf && c.cpfCnpj === customerData.cpf) return true;
-        
-        // Se não houver CPF, considerar somente o nome idêntico (case-insensitive) para consolidar
+        if (customerData.cpf && c.cpfCnpj) {
+          return c.cpfCnpj.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === customerData.cpf.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        }
         if (!customerData.cpf && !c.cpfCnpj) {
-            return c.name.trim().toLowerCase() === customerData.name.trim().toLowerCase();
+          return c.name.trim().toLowerCase() === customerData.name.trim().toLowerCase();
         }
         return false;
       });
@@ -2196,12 +2195,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       // 1. Atualizar ou Criar Cliente (Sanitizado para evitar erro de 'undefined' no Firestore)
       if (customer) {
-        // REFCOM143: Se for edição, não incrementar estatísticas
         if (!editingOrder && !isBudget) {
           customer.totalOrders = (customer.totalOrders || 0) + 1;
           customer.totalSpent = (customer.totalSpent || 0) + order.total;
         }
         customer.cpfCnpj = customerData.cpf || customer.cpfCnpj;
+        if (customerData.address && !customer.addresses?.length) {
+          customer.addresses = [{ street: customerData.address, city: '', state: '', zipCode: '', number: '', complement: '', neighborhood: '' }];
+        }
+        if (customerData.birthDate && !customer.birthDate) {
+          customer.birthDate = customerData.birthDate;
+        }
         order.customerId = customer.id;
 
         // Sanitização profunda para evitar crashing no Firestore por campos undefined
