@@ -33,7 +33,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   discountAmount = 0,
   discountType = 'fixo'
 }) => {
-  const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+  const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', cpf: '', birthDate: '', notes: '', address: '', customPolicies: '' });
   const [customerSearch, setCustomerSearch] = useState(''); // REFCOM166_pesquisa_pdv: Estado para pesquisa de clientes
   const [showCustomerResults, setShowCustomerResults] = useState(false); // REFCOM166_pesquisa_pdv: Mostrar resultados da pesquisa
 
@@ -51,6 +51,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       phone: customer.phone || '',
       email: customer.email || '',
       cpf: customer.cpfCnpj || '',
+      birthDate: customer.birthDate || '',
       notes: '',
       address: customer.addresses?.[0]?.street ? `${customer.addresses[0].street}, ${customer.addresses[0].number} - ${customer.addresses[0].city}` : '',
       customPolicies: ''
@@ -80,7 +81,8 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         name: editingOrder.customerName || '',
         phone: editingOrder.customerPhone || '',
         email: editingOrder.customerEmail || '',
-        cpf: editingOrder.customerCpfCnpj || '', // ERRCOM116: Persistir CPF na conversão de orçamento
+        cpf: editingOrder.customerCpfCnpj || '',
+        birthDate: '',
         notes: editingOrder.notes || '',
         address: editingOrder.address || '',
         customPolicies: editingOrder.customPolicies || ''
@@ -226,7 +228,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       setIsBudget(false);
       setSaleFinished(true);
       setBudgetPendingOrder(null);
-      setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+      setCustomerForm({ name: '', phone: '', email: '', cpf: '', birthDate: '', notes: '', address: '', customPolicies: '' });
     } catch (err: any) { }
   };
 
@@ -315,7 +317,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         setSoldTotal(total);
         setLastFinishedOrder(order);
         setSaleFinished(true);
-        setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+      setCustomerForm({ name: '', phone: '', email: '', cpf: '', birthDate: '', notes: '', address: '', customPolicies: '' });
         setEmitNF(false);
         setErrors([]);
         setIsBudget(false);
@@ -327,7 +329,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     setShowDanfe(false);
     setGeneratedOrder(null);
     setGeneratedCustomer(null);
-    setCustomerForm({ name: '', phone: '', email: '', cpf: '', notes: '', address: '', customPolicies: '' });
+    setCustomerForm({ name: '', phone: '', email: '', cpf: '', birthDate: '', notes: '', address: '', customPolicies: '' });
     setEmitNF(false);
     setErrors([]);
     onClose();
@@ -572,6 +574,16 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
           </div>
 
           <div>
+            <label className="block text-sm font-black text-gray-700 mb-2">Data de Nascimento (opcional)</label>
+            <input
+              type="date"
+              value={customerForm.birthDate}
+              onChange={e => setCustomerForm(prev => ({ ...prev, birthDate: e.target.value }))}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-black text-gray-700 mb-2">Observações / Notas do Serviço (opcional)</label>
             <textarea
               value={customerForm.notes}
@@ -629,11 +641,22 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
                 {(() => {
                   // ERRCOM088: Calcular limite máximo de parcelas baseado nos produtos do carrinho
                   const maxInstallments = Math.max(1, ...cart.map(item => item.product.installments || 1));
-                  return [...Array(Math.min(maxInstallments, 12))].map((_, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      {i + 1}x de {formatCurrency(total / (i + 1))} {i === 0 ? '(Sem juros)' : ''}
-                    </option>
-                  ));
+                  const { calculateInstallments } = require('../utils/installments');
+                  const cardRate = cart[0]?.product.cardRate || 0;
+                  return [...Array(Math.min(maxInstallments, 12))].map((_, i) => {
+                    const n = i + 1;
+                    const installments = calculateInstallments({
+                      total,
+                      installments: n,
+                      cardRate
+                    });
+                    const amount = installments[0]?.amount || total / n;
+                    return (
+                      <option key={n} value={n}>
+                        {n}x de {formatCurrency(amount)} {n === 1 ? '(Sem juros)' : ''}
+                      </option>
+                    );
+                  });
                 })()}
               </select>
             </div>

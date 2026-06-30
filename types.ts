@@ -39,6 +39,7 @@ export interface Product {
   aliquotaIs?: number; // Imposto Seletivo (Específico)
   cClassTrib?: string; // Código de Classificação Tributária (Reforma 2026)
   installments?: number; // Parcelamento máximo sem juros
+  cardRate?: number; // REFCOM184: Taxa de cartão (%) para parcelamento
   active?: boolean; // ERRCOM105: Inativo/Ativo
   // Marketplace Integration
   mlId?: string; // ID do anúncio no Mercado Livre
@@ -152,6 +153,7 @@ export interface Customer {
   phone?: string;
   cpfCnpj?: string;
   avatar?: string;
+  birthDate?: string; // REFCOM181 / REFCOM166
   addresses: Address[];
   totalOrders: number;
   totalSpent: number;

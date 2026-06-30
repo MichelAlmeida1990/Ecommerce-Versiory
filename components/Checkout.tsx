@@ -286,11 +286,29 @@ const Checkout: React.FC<CheckoutProps> = ({
         notes: orderNotes || '',
         salesChannel: 'online',
         orderTime: new Date().toLocaleTimeString('pt-BR'), // ERRCOM083
-        installments: paymentMethod === 'credito' ? installments : 1 // ERRCOM088
+        installments: paymentMethod === 'credito' ? installments : 1, // ERRCOM088
+        paymentMethod: paymentMethod, // REFCOM135: Garantir que paymentMethod seja salvo
+        installmentDetails: paymentMethod === 'credito' && installments > 1 ? (() => {
+          const { calculateInstallments } = require('../utils/installments');
+          const cardRate = items[0]?.cardRate || 0;
+          return calculateInstallments({
+            total,
+            installments,
+            cardRate
+          }).map((inst, i) => ({
+            id: `${orderId}-inst-${i + 1}`,
+            number: inst.number,
+            amount: inst.amount,
+            status: 'pending' as const,
+            paymentMethod: 'Credito'
+          }));
+        })() : undefined // REFCOM135: Gerar installmentDetails no checkout também
       }; // REFCOM135.5: paymentMethod === 'credito' needs to be 'credito'
 
       // Atualizar no Firebase
       let targetCustomer: Customer;
+
+      const finalCpfCnpjForSearch = customerCpfCnpj || customerData?.cpfCnpj || '';
 
       if (customerData) {
         targetCustomer = { ...customerData };
@@ -300,13 +318,28 @@ const Checkout: React.FC<CheckoutProps> = ({
         targetCustomer.orderHistory.push({ ...orderData, emitNF } as any);
         orderData.customerId = targetCustomer.id;
       } else {
-        // Fallback se não carregou customerData (raro)
         const customers = await getCustomers();
-        const existing = customers.find(c => c.email === effectiveEmail);
+        let existing = customers.find(c => {
+          if (finalCpfCnpjForSearch && c.cpfCnpj) {
+            return c.cpfCnpj.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === finalCpfCnpjForSearch.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+          }
+          if (!finalCpfCnpjForSearch && !c.cpfCnpj) {
+            return c.email === effectiveEmail;
+          }
+          return false;
+        });
+
+        if (!existing && !finalCpfCnpjForSearch) {
+          existing = customers.find(c => c.email === effectiveEmail);
+        }
+
         if (existing) {
           targetCustomer = { ...existing };
           targetCustomer.totalOrders = (targetCustomer.totalOrders || 0) + 1;
           targetCustomer.totalSpent = (targetCustomer.totalSpent || 0) + total;
+          if (finalCpfCnpjForSearch && !targetCustomer.cpfCnpj) {
+            targetCustomer.cpfCnpj = finalCpfCnpjForSearch;
+          }
           if (!targetCustomer.orderHistory) targetCustomer.orderHistory = [];
           targetCustomer.orderHistory.push({ ...orderData, emitNF } as any);
           orderData.customerId = targetCustomer.id;
@@ -316,6 +349,7 @@ const Checkout: React.FC<CheckoutProps> = ({
             name: fullName,
             email: effectiveEmail,
             phone: customerPhone,
+            cpfCnpj: finalCpfCnpjForSearch || undefined,
             totalOrders: 1,
             totalSpent: total,
             addresses: [],
@@ -592,12 +626,10 @@ const Checkout: React.FC<CheckoutProps> = ({
             {isStorePickup && (
               <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl animate-in fade-in duration-300">
                 <p className="text-sm font-bold text-blue-900 mb-2">📍 Endereço para Retirada:</p>
-                {/* REFCOM169: Usar endereço cadastrado nas Configurações Fiscais */}
                 <p className="text-xs text-blue-800 leading-relaxed">{storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}<br/>Segunda a Sexta: 09h às 18h</p>
                 <div className="mt-3 h-32 w-full rounded-xl overflow-hidden border border-blue-200 grayscale contrast-125">
-                   {/* REFCOM169_mapa: Corrigir erro no mapa do Google Maps usando iframe embed sem API key */}
                   <iframe
-                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3657.098169028822!2d-46.6333!3d-23.5505!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMjPCsDMzJzAxLjgiUyA0NsKwMzcnNTkuOSJX!5e0!3m2!1spt-BR!2sbr!4v1234567890"
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent(storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP')}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
                     className="w-full h-full object-cover"
                     style={{ border: 0 }}
                     allowFullScreen
@@ -852,11 +884,22 @@ const Checkout: React.FC<CheckoutProps> = ({
                     {(() => {
                       // ERRCOM088: Calcular limite máximo de parcelas baseado nos produtos do carrinho
                       const maxInstallments = Math.max(1, ...items.map(item => item.installments || 1));
-                      return [...Array(Math.min(maxInstallments, 12))].map((_, i) => (
-                        <option key={i + 1} value={i + 1}>
-                          {i + 1}x de R$ {(total / (i + 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} {i === 0 ? '(Sem juros)' : ''}
-                        </option>
-                      ));
+                      const { calculateInstallments } = require('../utils/installments');
+                      const cardRate = items[0]?.cardRate || 0;
+                      return [...Array(Math.min(maxInstallments, 12))].map((_, i) => {
+                        const n = i + 1;
+                        const installments = calculateInstallments({
+                          total,
+                          installments: n,
+                          cardRate
+                        });
+                        const amount = installments[0]?.amount || total / n;
+                        return (
+                          <option key={n} value={n}>
+                            {n}x de R$ {amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} {n === 1 ? '(Sem juros)' : ''}
+                          </option>
+                        );
+                      });
                     })()}
                   </select>
                 </div>

@@ -96,7 +96,7 @@ export async function generateInvoice(invoiceData: InvoiceRequest): Promise<Invo
       <dest>
         <xNome>${invoiceData.customer.name}</xNome>
         <email>${invoiceData.customer.email}</email>
-        <CPF>${invoiceData.customer.cpfCnpj?.replace(/\D/g, '')}</CPF>
+        <CPF>${invoiceData.customer.cpfCnpj?.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || ''}</CPF>
       </dest>
       ${invoiceData.items.map((item, idx) => `
       <det nItem="${idx + 1}">

@@ -618,16 +618,16 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                       </div>
                       {/* REFCOM135: Exibir forma de pagamento e parcelas */}
                       <div className="pt-4 border-t border-white/10">
-                        <div className="flex justify-between items-center text-slate-400 uppercase text-[9px] font-black tracking-widest">
-                          <span>Forma de Pagamento</span>
-                          <span className="text-white">
-                            {selectedOrder.paymentMethod === 'credito' && selectedOrder.installments && selectedOrder.installments > 1
-                              ? `Crédito (${selectedOrder.installments}x de R$ ${(selectedOrder.total / selectedOrder.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
-                              : selectedOrder.paymentMethod === 'whatsapp' || selectedOrder.paymentMethod === 'A combinar'
-                              ? 'A combinar'
-                              : selectedOrder.paymentMethod?.toUpperCase() || 'Não informado'}
-                          </span>
-                        </div>
+                      <div className="flex justify-between items-center text-slate-400 uppercase text-[9px] font-black tracking-widest">
+                        <span>Forma de Pagamento</span>
+                        <span className="text-white">
+                          {selectedOrder.paymentMethod === 'credito' && selectedOrder.installments && selectedOrder.installments > 1
+                            ? `Crédito (${selectedOrder.installments}x de R$ ${(selectedOrder.installmentDetails?.[0]?.amount || selectedOrder.total / selectedOrder.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+                            : selectedOrder.paymentMethod === 'whatsapp' || selectedOrder.paymentMethod === 'A combinar'
+                            ? 'A combinar'
+                            : selectedOrder.paymentMethod?.toUpperCase() || 'Não informado'}
+                        </span>
+                      </div>
                       </div>
                       <div className="pt-4 border-t border-white/10 flex justify-between items-baseline">
                         <span className="text-[10px] font-black uppercase tracking-widest">Valor do Pedido</span>
@@ -638,7 +638,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                         <div className="pt-4 border-t border-white/10">
                           <div className="flex justify-between items-center mb-3">
                             <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">💳 Parcelamento</span>
-                            <span className="text-xs font-bold text-blue-300">{selectedOrder.installments}x de R$ {(selectedOrder.total / selectedOrder.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            <span className="text-xs font-bold text-blue-300">{selectedOrder.installments}x de R$ {(selectedOrder.installmentDetails?.[0]?.amount || selectedOrder.total / selectedOrder.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                           </div>
                           {selectedOrder.installmentDetails && (
                             <div className="space-y-2">

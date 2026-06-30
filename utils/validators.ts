@@ -59,7 +59,7 @@ export const validateCNPJ = (cnpj: string): boolean => {
 };
 
 export const validateCPFOrCNPJ = (doc: string): { valid: boolean; type: 'CPF' | 'CNPJ' | null } => {
-  const cleaned = doc.replace(/\D/g, '');
+  const cleaned = doc.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   if (cleaned.length === 11) return { valid: validateCPF(cleaned), type: 'CPF' };
   if (cleaned.length === 14) return { valid: validateCNPJ(cleaned), type: 'CNPJ' };
   return { valid: false, type: null };

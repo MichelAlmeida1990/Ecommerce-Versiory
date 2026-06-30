@@ -139,7 +139,7 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
       ${(data as any).installments && (data as any).installments > 1 && paymentMethod && !isBudget ? `
       <div class="payment-method" style="font-size:0.85em; color:#444;">
         <span>PARCELAMENTO:</span>
-        <span>Parcelado em ${(data as any).installments}x de R$ ${((data.total) / (data as any).installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+        <span>Parcelado em ${(data as any).installments}x de R$ ${((data as any).installmentDetails?.[0]?.amount || (data.total) / (data as any).installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
       </div>
       ${(data as any).installmentDetails ? `
       <div style="font-size:0.75em; color:#666; margin-top:2px; padding-left:4px;">
