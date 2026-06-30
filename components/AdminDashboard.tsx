@@ -2895,23 +2895,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-3xl font-bold text-emerald-400 mb-2">{formatCurrency(stats.totalDiscounts)}</div>
                 <div className="text-slate-400 font-medium text-sm">Descontos (Cupons)</div>
               </div>
-              {/* ERRCOM122: Card Vendas Online */}
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => o.salesChannel === 'online' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
-                className="bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border border-blue-500/30 shadow-lg text-left transition-all"
+                onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                className={`bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border shadow-lg text-left transition-all ${dashboardChannelFilter === 'all' || dashboardChannelFilter === 'online' ? 'border-blue-500/30' : 'border-white/5 opacity-50'}`}
               >
                 <div className="text-3xl font-bold text-blue-400 mb-2">
-                  {formatCurrency(orders.filter(o => o.salesChannel === 'online' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}
+                  {dashboardChannelFilter !== 'physical' ? formatCurrency(orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0)) : formatCurrency(0)}
                 </div>
                 <div className="text-slate-400 font-medium text-sm">🌐 Vendas Online — detalhes</div>
               </button>
-              {/* ERRCOM122: Card Vendas PDV */}
               <button
                 onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
-                className="bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border border-green-500/30 shadow-lg text-left transition-all"
+                className={`bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border shadow-lg text-left transition-all ${dashboardChannelFilter === 'all' || dashboardChannelFilter === 'physical' ? 'border-green-500/30' : 'border-white/5 opacity-50'}`}
               >
                 <div className="text-3xl font-bold text-green-400 mb-2">
-                  {formatCurrency(orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}
+                  {dashboardChannelFilter !== 'online' ? formatCurrency(orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0)) : formatCurrency(0)}
                 </div>
                 <div className="text-slate-400 font-medium text-sm">🏪 Vendas PDV — detalhes</div>
               </button>
