@@ -1123,9 +1123,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       if (customerBirthDateFilterFrom || customerBirthDateFilterTo) {
         if (!customer.birthDate) return false;
-        const d = new Date(customer.birthDate);
-        if (customerBirthDateFilterFrom && d < new Date(customerBirthDateFilterFrom + 'T00:00:00')) return false;
-        if (customerBirthDateFilterTo && d > new Date(customerBirthDateFilterTo + 'T23:59:59')) return false;
+        // REFCOM166: considerar apenas DIA/MÊS (aniversariantes), ignorando o ano
+        const md = customer.birthDate.slice(5, 10); // 'MM-DD'
+        const from = customerBirthDateFilterFrom ? customerBirthDateFilterFrom.slice(5, 10) : '01-01';
+        const to = customerBirthDateFilterTo ? customerBirthDateFilterTo.slice(5, 10) : '12-31';
+        const inRange = from <= to ? (md >= from && md <= to) : (md >= from || md <= to);
+        if (!inRange) return false;
       }
 
       return true;
@@ -2119,6 +2122,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; email: string; cpf: string; notes: string; address?: string; birthDate?: string; isBudget?: boolean }, order: Order) => {
+    const wasBudget = order.isBudget || false;
+    // REFCOM182: Ao converter orçamento em venda, o pedido deixa de ser orçamento
+    if (editingOrder && wasBudget) {
+      order.isBudget = false;
+    }
     const isBudget = order.isBudget || false;
 
     // ERRCOM99: Orçamentos não exigem caixa aberto, pois não geram movimentação financeira imediata
@@ -2187,7 +2195,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       // 1. Atualizar ou Criar Cliente (Sanitizado para evitar erro de 'undefined' no Firestore)
       if (customer) {
-        if (!editingOrder && !isBudget) {
+        if (!editingOrder || wasBudget) {
           customer.totalOrders = (customer.totalOrders || 0) + 1;
           customer.totalSpent = (customer.totalSpent || 0) + order.total;
         }
@@ -2796,7 +2804,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <div className="max-w-7xl mx-auto px-4 py-8 tablet-desktop-container relative">
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 mb-6 sticky top-0 z-50">
-          <div className="flex flex-wrap gap-1 p-2">
+          {/* REFCOM_mobile: no mobile a barra vira uma única linha com rolagem horizontal (em vez de empilhar e cobrir a tela) */}
+          <div className="flex flex-nowrap lg:flex-wrap gap-1 p-2 overflow-x-auto lg:overflow-visible [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {(
               userRole === 'admin'
                 ? [
@@ -2825,7 +2834,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 key={key}
                 onClick={() => setActiveTab(key as TabKey)}
-                className={`px-6 py-3 rounded-xl font-medium transition-all ${activeTab === key
+                className={`px-6 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === key
                   ? 'bg-versiory-coral text-white'
                   : 'hover:bg-white/10 text-slate-100'
                   }`}
@@ -4005,7 +4014,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div className="mb-6 p-4 bg-white/5 rounded-xl border border-white/10">
-              <span className="text-slate-300 text-sm font-bold">Filtrar por Data de Nascimento:</span>
+              <span className="text-slate-300 text-sm font-bold">Aniversariantes do mês:</span>
+              <p className="text-slate-400 text-xs mt-1">Filtra apenas por <b>dia/mês</b> (ignora o ano). Ex.: 01/09 até 30/09 retorna todos os aniversariantes de setembro.</p>
               <div className="flex flex-wrap gap-3 items-center mt-2">
                 <input
                   type="date"

@@ -3,6 +3,7 @@ import { Product, Customer, Order } from '../types';
 import { validateCPFOrCNPJ } from '../utils/validators';
 import { generateInvoice } from '../services/invoice';
 import { getFiscalConfig } from '../services/fiscalConfig';
+import { calculateInstallments } from '../utils/installments';
 import DanfePreview from './DanfePreview';
 
 const formatCurrency = (value: number) =>
@@ -760,7 +761,6 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
                 {(() => {
                   // ERRCOM088: Calcular limite máximo de parcelas baseado nos produtos do carrinho
                   const maxInstallments = Math.max(1, ...cart.map(item => item.product.installments || 1));
-                  const { calculateInstallments } = require('../utils/installments');
                   const cardRate = cart[0]?.product.cardRate || 0;
                   return [...Array(Math.min(maxInstallments, 12))].map((_, i) => {
                     const n = i + 1;

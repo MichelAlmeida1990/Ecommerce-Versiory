@@ -3,6 +3,7 @@ import { generateInvoice } from '../services/invoice';
 import { CartItem, Order, OrderItem, Customer } from '../types';
 import { getFiscalConfig } from '../services/fiscalConfig';
 import { sanitizeData } from '../services/utils';
+import { calculateInstallments } from '../utils/installments';
 interface CheckoutProps {
   isOpen: boolean;
   onClose: () => void;
@@ -290,7 +291,6 @@ const Checkout: React.FC<CheckoutProps> = ({
         installments: paymentMethod === 'credito' ? installments : 1, // ERRCOM088
         paymentMethod: paymentMethod, // REFCOM135: Garantir que paymentMethod seja salvo
         installmentDetails: paymentMethod === 'credito' && installments > 1 ? (() => {
-          const { calculateInstallments } = require('../utils/installments');
           const cardRate = items[0]?.cardRate || 0;
           return calculateInstallments({
             total,
@@ -897,7 +897,6 @@ const Checkout: React.FC<CheckoutProps> = ({
                     {(() => {
                       // ERRCOM088: Calcular limite máximo de parcelas baseado nos produtos do carrinho
                       const maxInstallments = Math.max(1, ...items.map(item => item.installments || 1));
-                      const { calculateInstallments } = require('../utils/installments');
                       const cardRate = items[0]?.cardRate || 0;
                       return [...Array(Math.min(maxInstallments, 12))].map((_, i) => {
                         const n = i + 1;
