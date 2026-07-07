@@ -5,6 +5,7 @@ import {
   CategoryItem,
   Order,
   Customer,
+  Address,
   TrackingItem,
   InventoryMovement,
   Expense,
@@ -626,6 +627,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     addresses: []
   });
 
+  // REFCOM166/181: Garante que o endereço salvo siga a interface Address (id, country, type)
+  const buildCustomerAddress = (a: Partial<Address>): Address => ({
+    id: a.id || `addr_${Date.now()}`,
+    street: a.street || '',
+    number: a.number || '',
+    complement: a.complement,
+    neighborhood: a.neighborhood || '',
+    city: a.city || '',
+    state: a.state || '',
+    zipCode: a.zipCode || '',
+    country: a.country || 'BR',
+    type: a.type || 'shipping'
+  });
+
   const [isCustomerSearchOpen, setIsCustomerSearchOpen] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [customerSearchDateFrom, setCustomerSearchDateFrom] = useState('');
@@ -889,8 +904,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const stats = useMemo(() => {
     // BUGFIX #4 & #10: Unificar lógica de faturamento para Dashboard, Pedidos e Financeiro
     const revenueOrders = orders.filter(order => {
-      // ERRCOM104: Orçamentos pagos contam como receita
-      const isPaidBudget = order.isBudget && order.status === 'paid';
+      // REFCOM182: Orçamento convertido (paid/processing/shipped/delivered) conta como venda
+      const isPaidBudget = order.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
       const isRegularRevenue = !order.isBudget && order.status !== 'cancelled';
 
       if (!isPaidBudget && !isRegularRevenue) return false;
@@ -911,6 +926,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const totalRevenue = revenueOrders.reduce((sum, order) => sum + order.total, 0);
     const totalDiscounts = revenueOrders.reduce((sum, order) => sum + (order.discountAmount || 0), 0);
+
+    // REFCOM183: Consolidar clientes únicos por CPF/CNPJ (ou nome, se não houver),
+    // igual ao utilizado em customerStats, para evitar inconsistência no card "Total Clientes".
+    const getCustomerUniqueKey = (c: Customer) => {
+      if (c.cpfCnpj && c.cpfCnpj.replace(/\D/g, '').length > 0) {
+        return 'cpf:' + c.cpfCnpj.replace(/\D/g, '');
+      }
+      if (c.name && c.name.trim().length > 0) {
+        return 'name:' + c.name.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      }
+      return 'id:' + c.id;
+    };
+    const totalCustomers = new Set(customers.map(getCustomerUniqueKey)).size;
+
     return {
       totalProducts: products.length,
       // BUGFIX #6: Excluir cancelados da contagem total de pedidos do Dashboard
@@ -919,7 +948,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (!o.isBudget) return true;
         return ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
       }).length,
-      totalCustomers: customers.length,
+      totalCustomers,
       totalRevenue,
       totalDiscounts // ERRCOM108
     };
@@ -942,7 +971,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       const dayOrders = orders.filter(o => {
         const orderLocalDate = new Date(o.date).toLocaleDateString('en-CA');
-        const isPaidBudget = o.isBudget && o.status === 'paid';
+        // REFCOM182: Orçamento convertido (paid/processing/shipped/delivered) conta como venda
+        const isPaidBudget = o.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
         const isRegularRevenue = !o.isBudget && o.status !== 'cancelled';
 
         if (orderLocalDate !== dateStr || (!isPaidBudget && !isRegularRevenue)) return false;
@@ -1124,68 +1154,108 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   }, [products, inventorySearch, stockFilter]);
 
-  const financialStats = useMemo(() => {
-    const filterByDate = (dateStr: string) => {
-      if (!financialDateFilter.from && !financialDateFilter.to) return true;
-      const date = new Date(dateStr);
-      const from = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
-      const to = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
-      if (from && date < from) return false;
-      if (to && date > to) return false;
-      return true;
-    };
+  // Conjunto completo de transações (sem filtro de exibição), usado tanto pela lista
+  // "Transações Recentes" quanto pelos cards de resumo do Financeiro (REFCOM160).
+  const allTransactions = useMemo(() => {
+    // REFCOM182: Orçamento convertido (paid/processing/shipped/delivered) entra como receita
+    const revenue = orders
+      .filter(order => {
+        const isPaidBudget = order.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
+        const isRegularRevenue = !order.isBudget && order.status !== 'cancelled' && order.status !== 'pending';
+        return isPaidBudget || isRegularRevenue;
+      })
+      .map(order => ({
+        id: order.id,
+        description: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}${order.isBudget ? ' (Orçamento Finalizado)' : ''}`,
+        amount: order.total,
+        type: 'revenue' as const,
+        date: order.date,
+        category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
+        notes: order.notes || ''
+      }));
 
+    const manualRevenueItems = manualRevenues.map(rev => ({
+      id: String(rev.id),
+      description: rev.description,
+      amount: rev.amount,
+      type: 'revenue' as const,
+      date: rev.date,
+      category: `Receita: ${rev.category}`,
+      notes: rev.notes || ''
+    }));
+
+    const expenseItems = expenses.map(expense => ({
+      id: String(expense.id),
+      description: expense.description,
+      amount: -expense.amount,
+      type: 'expense' as const,
+      date: expense.date,
+      category: expense.category,
+      expenseId: expense.id,
+      notes: expense.notes || ''
+    }));
+
+    return [...revenue, ...manualRevenueItems, ...expenseItems]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [orders, expenses, manualRevenues]);
+
+  // REFCOM160: Filtro aplicado (data, tipo e forma de pagamento) compartilhado entre
+  // a lista "Transações Recentes" e os cards de resumo — exatamente o mesmo conjunto.
+  const filteredTransactions = useMemo(() => {
+    let filtered = allTransactions;
+
+    if (financialDateFilter.from || financialDateFilter.to) {
+      filtered = filtered.filter(t => {
+        const transactionDate = new Date(t.date);
+        const fromDate = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
+        const toDate = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
+        if (fromDate && transactionDate < fromDate) return false;
+        if (toDate && transactionDate > toDate) return false;
+        return true;
+      });
+    }
+
+    if (financialTypeFilter !== 'all') {
+      filtered = filtered.filter(t => t.type === financialTypeFilter);
+    }
+
+    if (financialPaymentFilter !== 'all') {
+      filtered = filtered.filter(t => {
+        if (t.type === 'revenue' && (t.category.includes('PDV') || t.category.includes('Online'))) {
+          const order = orders.find(o => o.id === t.id);
+          if (order && order.paymentMethod) {
+            return order.paymentMethod.toLowerCase() === financialPaymentFilter;
+          }
+        }
+        return false;
+      });
+    }
+
+    return filtered;
+  }, [allTransactions, orders, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+
+  const financialStats = useMemo(() => {
+    // REFCOM160: Os cards consomem exatamente o mesmo conjunto filtrado de "Transações Recentes".
     let totalRevenue = 0;
     let pdvRevenue = 0;
     let onlineRevenue = 0;
     let totalExpenses = 0;
 
-    if (financialTypeFilter === 'all' || financialTypeFilter === 'revenue') {
-      const revenueOrders = orders.filter(order => {
-        if (!filterByDate(order.date)) return false;
-        if (order.isBudget) {
-          const convertedStatuses = ['paid', 'processing', 'shipped', 'delivered'];
-          if (!convertedStatuses.includes(order.status)) return false;
-        }
-        if (order.status === 'cancelled') return false;
-        if (financialPaymentFilter !== 'all' && order.paymentMethod !== financialPaymentFilter) return false;
-
-        const hasService = order.items?.some(item => {
-          const product = products.find(p => p.id === item.productId);
-          return product?.category === 'Serviços';
-        });
-
-        if (hasService) return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
-        return ['paid', 'processing', 'shipped', 'delivered'].includes(order.status) ||
-          (order.salesChannel === 'physical' && order.status !== 'pending');
-      });
-
-      totalRevenue = revenueOrders.reduce((sum, order) => sum + order.total, 0);
-      pdvRevenue = revenueOrders.filter(o => o.salesChannel === 'physical').reduce((sum, order) => sum + order.total, 0);
-      onlineRevenue = revenueOrders.filter(o => !o.salesChannel || o.salesChannel === 'online').reduce((sum, order) => sum + order.total, 0);
-    }
-
-    if (financialTypeFilter === 'all' || financialTypeFilter === 'expense') {
-      const filteredExpenses = expenses.filter(e => {
-        if (!filterByDate(e.date)) return false;
-        return true;
-      });
-      totalExpenses = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-    }
-
-    const filteredManualRevenues = manualRevenues.filter(r => {
-      if (!filterByDate(r.date)) return false;
-      if (financialPaymentFilter !== 'all' && r.category.toLowerCase() !== financialPaymentFilter) return false;
-      if (financialTypeFilter === 'expense') return false;
-      return true;
+    filteredTransactions.forEach(t => {
+      if (t.type === 'revenue') {
+        totalRevenue += t.amount;
+        if (t.category.includes('PDV')) pdvRevenue += t.amount;
+        else if (t.category.includes('Online')) onlineRevenue += t.amount;
+      } else {
+        totalExpenses += Math.abs(t.amount);
+      }
     });
-    const manualRevenueTotal = filteredManualRevenues.reduce((sum, r) => sum + r.amount, 0);
 
-    const netProfit = (totalRevenue + manualRevenueTotal) - totalExpenses;
+    const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
-  }, [orders, expenses, products, financialDateFilter, manualRevenues, financialPaymentFilter, financialTypeFilter]);
+  }, [filteredTransactions]);
 
   // ERRCOM114: Validação de sincronização de estoque (diagnóstico)
   const validateStockConsistency = (product: Product): boolean => {
@@ -1218,87 +1288,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     products.forEach(validateStockConsistency);
   }, [products]);
 
-  const recentTransactions = useMemo(() => {
-    // ERRCOM026: Filtrar cancelados e orçamentos da lista de receitas
-    // ERRCOM158: Excluir pedidos 'Aguardando Pagamento' (status 'pending')
-    const revenue = orders
-      .filter(order => {
-        const isPaidBudget = order.isBudget && order.status === 'paid';
-        const isRegularRevenue = !order.isBudget && order.status !== 'cancelled' && order.status !== 'pending';
-        return isPaidBudget || isRegularRevenue;
-      })
-      .map(order => ({
-        id: order.id,
-        description: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}${order.isBudget ? ' (Orçamento Finalizado)' : ''}`,
-        amount: order.total,
-        type: 'revenue' as const,
-        date: order.date,
-        category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
-        notes: order.notes || ''
-      }));
-
-    // ERRCOM136: Incluir lançamentos manuais na lista de transações recentes
-    const manualRevenueItems = manualRevenues.map(rev => ({
-      id: String(rev.id),
-      description: rev.description,
-      amount: rev.amount,
-      type: 'revenue' as const,
-      date: rev.date,
-      category: `Receita: ${rev.category}`,
-      notes: rev.notes || ''
-    }));
-
-    const expenseItems = expenses.map(expense => ({
-      id: String(expense.id),
-      description: expense.description,
-      amount: -expense.amount,
-      type: 'expense' as const,
-      date: expense.date,
-      category: expense.category,
-      expenseId: expense.id,
-      notes: expense.notes || '' // Novo: exibir observações
-    }));
-
-    const all = [...revenue, ...manualRevenueItems, ...expenseItems]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    // REFCOM160: Aplicar filtros
-    let filtered = all;
-
-    // Filtro de data
-    if (financialDateFilter.from || financialDateFilter.to) {
-      filtered = filtered.filter(t => {
-        const transactionDate = new Date(t.date);
-        const fromDate = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
-        const toDate = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
-
-        if (fromDate && transactionDate < fromDate) return false;
-        if (toDate && transactionDate > toDate) return false;
-        return true;
-      });
-    }
-
-    // Filtro por tipo (receita/despesa)
-    if (financialTypeFilter !== 'all') {
-      filtered = filtered.filter(t => t.type === financialTypeFilter);
-    }
-
-    // Filtro por forma de pagamento (apenas para receitas de pedidos)
-    if (financialPaymentFilter !== 'all') {
-      filtered = filtered.filter(t => {
-        if (t.type === 'revenue' && t.category.includes('PDV') || t.category.includes('Online')) {
-          // Buscar o pedido para verificar a forma de pagamento
-          const order = orders.find(o => o.id === t.id);
-          if (order && order.paymentMethod) {
-            return order.paymentMethod.toLowerCase() === financialPaymentFilter;
-          }
-        }
-        return false; // Para despesas e receitas manuais, não aplica filtro de pagamento
-      });
-    }
-
-    return filtered.slice(0, 100);
-  }, [orders, expenses, manualRevenues, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+  // REFCOM160: A lista "Transações Recentes" exibe exatamente o mesmo conjunto filtrado
+  // dos cards de resumo (filteredTransactions), limitado a 100 itens para exibição.
+  const recentTransactions = useMemo(() => filteredTransactions.slice(0, 100), [filteredTransactions]);
 
   // ERRCOM033: Estatísticas de clientes
   const customerStats = useMemo(() => {
@@ -2716,8 +2708,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (financialTypeFilter === 'all' || financialTypeFilter === 'revenue') {
       const filteredOrders = orders.filter(order => {
         if (!filterByDate(order.date)) return false;
-        // REFCOM160: Aplicar filtro de forma de pagamento
-        if (financialPaymentFilter !== 'all' && order.paymentMethod !== financialPaymentFilter) return false;
+        // REFCOM160: Aplicar filtro de forma de pagamento (case-insensitive)
+        if (financialPaymentFilter !== 'all' && (order.paymentMethod || '').toLowerCase() !== financialPaymentFilter) return false;
         // ERRCOM104: Orçamentos convertidos (paid, processing, shipped, delivered) refletem no financeiro
         if (order.isBudget) {
           const convertedStatuses = ['paid', 'processing', 'shipped', 'delivered'];
@@ -2745,8 +2737,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (financialTypeFilter === 'all' || financialTypeFilter === 'expense') {
       const filteredExpenses = expenses.filter(expense => {
         if (!filterByDate(expense.date)) return false;
-        // REFCOM160: Aplicar filtro de forma de pagamento
-        if (financialPaymentFilter !== 'all' && expense.paymentMethod !== financialPaymentFilter) return false;
+        // REFCOM160: Aplicar filtro de forma de pagamento (case-insensitive)
+        if (financialPaymentFilter !== 'all' && (expense.paymentMethod || '').toLowerCase() !== financialPaymentFilter) return false;
         return true;
       });
 
@@ -4449,17 +4441,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={() => {
-                  const manualRevenueTotal = manualRevenues.filter(r => {
-                    if (!financialDateFilter.from && !financialDateFilter.to) return true;
-                    const date = new Date(r.date);
-                    const from = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
-                    const to = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
-                    if (from && date < from) return false;
-                    if (to && date > to) return false;
-                    return true;
-                  }).reduce((sum, r) => sum + r.amount, 0);
-                  
-                  alert(`Lucro Líquido: ${formatCurrency(financialStats.netProfit)}\n\nCálculo:\nReceita de Vendas: ${formatCurrency(financialStats.totalRevenue)}\n(+) Receitas Avulsas: ${formatCurrency(manualRevenueTotal)}\n(=) Receita Total: ${formatCurrency(financialStats.totalRevenue + manualRevenueTotal)}\n(-) Despesas: ${formatCurrency(financialStats.totalExpenses)}\n(=) Lucro Líquido: ${formatCurrency(financialStats.netProfit)}`);
+                  // REFCOM160: "Receita Total" já inclui vendas + receitas avulsas (mesmo conjunto filtrado dos cards)
+                  alert(`Lucro Líquido: ${formatCurrency(financialStats.netProfit)}\n\nCálculo:\nReceita Total (Vendas + Avulsas): ${formatCurrency(financialStats.totalRevenue)}\n(-) Despesas: ${formatCurrency(financialStats.totalExpenses)}\n(=) Lucro Líquido: ${formatCurrency(financialStats.netProfit)}`);
                 }}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
@@ -6446,10 +6429,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="text"
                       value={(customerForm.addresses?.[0] as any)?.zipCode || ''}
                       onChange={e => {
-                        const addr = (customerForm.addresses?.[0] as any) || {};
+                        const addr = (customerForm.addresses?.[0] as Address | undefined) || {};
                         setCustomerForm({
                           ...customerForm,
-                          addresses: [{ ...addr, zipCode: e.target.value.replace(/\D/g, '') }]
+                          addresses: [buildCustomerAddress({ ...addr, zipCode: e.target.value.replace(/\D/g, '') })]
                         });
                       }}
                       className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
@@ -6462,10 +6445,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="text"
                       value={(customerForm.addresses?.[0] as any)?.street || ''}
                       onChange={e => {
-                        const addr = (customerForm.addresses?.[0] as any) || {};
+                        const addr = (customerForm.addresses?.[0] as Address | undefined) || {};
                         setCustomerForm({
                           ...customerForm,
-                          addresses: [{ ...addr, street: e.target.value }]
+                          addresses: [buildCustomerAddress({ ...addr, street: e.target.value })]
                         });
                       }}
                       className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
@@ -6479,11 +6462,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         type="text"
                         value={(customerForm.addresses?.[0] as any)?.number || ''}
                         onChange={e => {
-                          const addr = (customerForm.addresses?.[0] as any) || {};
-                          setCustomerForm({
-                            ...customerForm,
-                            addresses: [{ ...addr, number: e.target.value }]
-                          });
+                        const addr = (customerForm.addresses?.[0] as Address | undefined) || {};
+                        setCustomerForm({
+                          ...customerForm,
+                          addresses: [buildCustomerAddress({ ...addr, number: e.target.value })]
+                        });
                         }}
                         className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
                         placeholder="123"
@@ -6495,11 +6478,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         type="text"
                         value={(customerForm.addresses?.[0] as any)?.complement || ''}
                         onChange={e => {
-                          const addr = (customerForm.addresses?.[0] as any) || {};
-                          setCustomerForm({
-                            ...customerForm,
-                            addresses: [{ ...addr, complement: e.target.value }]
-                          });
+                        const addr = (customerForm.addresses?.[0] as Address | undefined) || {};
+                        setCustomerForm({
+                          ...customerForm,
+                          addresses: [buildCustomerAddress({ ...addr, complement: e.target.value })]
+                        });
                         }}
                         className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
                         placeholder="Apto..."
@@ -6512,10 +6495,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="text"
                       value={(customerForm.addresses?.[0] as any)?.neighborhood || ''}
                       onChange={e => {
-                        const addr = (customerForm.addresses?.[0] as any) || {};
+                        const addr = (customerForm.addresses?.[0] as Address | undefined) || {};
                         setCustomerForm({
                           ...customerForm,
-                          addresses: [{ ...addr, neighborhood: e.target.value }]
+                          addresses: [buildCustomerAddress({ ...addr, neighborhood: e.target.value })]
                         });
                       }}
                       className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
@@ -6529,11 +6512,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         type="text"
                         value={(customerForm.addresses?.[0] as any)?.city || ''}
                         onChange={e => {
-                          const addr = (customerForm.addresses?.[0] as any) || {};
-                          setCustomerForm({
-                            ...customerForm,
-                            addresses: [{ ...addr, city: e.target.value }]
-                          });
+                        const addr = (customerForm.addresses?.[0] as Address | undefined) || {};
+                        setCustomerForm({
+                          ...customerForm,
+                          addresses: [buildCustomerAddress({ ...addr, city: e.target.value })]
+                        });
                         }}
                         className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
                         placeholder="São Paulo"
@@ -6545,11 +6528,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         type="text"
                         value={(customerForm.addresses?.[0] as any)?.state || ''}
                         onChange={e => {
-                          const addr = (customerForm.addresses?.[0] as any) || {};
-                          setCustomerForm({
-                            ...customerForm,
-                            addresses: [{ ...addr, state: e.target.value.toUpperCase() }]
-                          });
+                        const addr = (customerForm.addresses?.[0] as Address | undefined) || {};
+                        setCustomerForm({
+                          ...customerForm,
+                          addresses: [buildCustomerAddress({ ...addr, state: e.target.value.toUpperCase() })]
+                        });
                         }}
                         className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
                         placeholder="SP"
@@ -6773,7 +6756,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             Sair
           </button>
-          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.8.0 (Estável)</span></p>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.9.0 (Estável)</span></p>
         </div>
       </footer>
     </div>

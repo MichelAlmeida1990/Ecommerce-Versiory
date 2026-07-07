@@ -8,6 +8,13 @@ import DanfePreview from './DanfePreview';
 const formatCurrency = (value: number) =>
   `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
+// REFCOM166/REFCOM181: Estado inicial do formulário de cliente (inclui endereço estruturado)
+const EMPTY_CUSTOMER_FORM = {
+  name: '', phone: '', email: '', cpf: '', birthDate: '', notes: '',
+  address: '', customPolicies: '',
+  street: '', number: '', neighborhood: '', city: '', state: '', zipCode: ''
+};
+
 interface PdvCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -33,7 +40,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
   discountAmount = 0,
   discountType = 'fixo'
 }) => {
-  const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', cpf: '', birthDate: '', notes: '', address: '', customPolicies: '' });
+  const [customerForm, setCustomerForm] = useState(EMPTY_CUSTOMER_FORM);
   const [customerSearch, setCustomerSearch] = useState(''); // REFCOM166_pesquisa_pdv: Estado para pesquisa de clientes
   const [showCustomerResults, setShowCustomerResults] = useState(false); // REFCOM166_pesquisa_pdv: Mostrar resultados da pesquisa
 
@@ -44,8 +51,38 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     customer.cpfCnpj?.toLowerCase().includes(customerSearch.toLowerCase())
   );
 
+  // REFCOM166/REFCOM181: Montar string de endereço (legado) a partir dos campos estruturados
+  const buildAddressString = (f: typeof customerForm): string => {
+    const parts: string[] = [];
+    if (f.street) parts.push(f.street);
+    if (f.number) parts.push(f.number);
+    if (f.neighborhood) parts.push(f.neighborhood);
+    if (f.city && f.state) parts.push(`${f.city}/${f.state}`);
+    else if (f.city) parts.push(f.city);
+    if (f.zipCode) parts.push(`CEP ${f.zipCode}`);
+    return parts.length > 0 ? parts.join(', ') : f.address;
+  };
+
+  // REFCOM166/REFCOM181: Construir objeto Address a partir dos campos preenchidos
+  const buildAddressObject = (f: typeof customerForm): Address | null => {
+    if (!f.street && !f.city && !f.neighborhood) return null;
+    return {
+      id: `addr_${Date.now()}`,
+      street: f.street,
+      number: f.number,
+      complement: f.address ? f.address : undefined,
+      neighborhood: f.neighborhood,
+      city: f.city,
+      state: f.state,
+      zipCode: f.zipCode,
+      country: 'Brasil',
+      type: 'shipping'
+    };
+  };
+
   // REFCOM166_pesquisa_pdv: Selecionar cliente da pesquisa
   const handleSelectCustomer = (customer: Customer) => {
+    const addr = customer.addresses?.[0];
     setCustomerForm({
       name: customer.name,
       phone: customer.phone || '',
@@ -54,7 +91,13 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       birthDate: customer.birthDate || '',
       notes: '',
       address: customer.addresses?.[0]?.street ? `${customer.addresses[0].street}, ${customer.addresses[0].number} - ${customer.addresses[0].city}` : '',
-      customPolicies: ''
+      customPolicies: '',
+      street: addr?.street || '',
+      number: addr?.number || '',
+      neighborhood: addr?.neighborhood || '',
+      city: addr?.city || '',
+      state: addr?.state || '',
+      zipCode: addr?.zipCode || ''
     });
     setCustomerSearch('');
     setShowCustomerResults(false);
@@ -85,7 +128,8 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         birthDate: '',
         notes: editingOrder.notes || '',
         address: editingOrder.address || '',
-        customPolicies: editingOrder.customPolicies || ''
+        customPolicies: editingOrder.customPolicies || '',
+        street: '', number: '', neighborhood: '', city: '', state: '', zipCode: ''
       });
       setEmitNF(editingOrder.emitNF || false);
       setIsBudget(editingOrder.isBudget || false);
@@ -165,7 +209,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       salesChannel: 'physical',
       emitNF: false,
       notes: customerForm.notes,
-      address: customerForm.address,
+      address: buildAddressString(customerForm),
       isBudget: true,
       customPolicies: customerForm.customPolicies
     };
@@ -228,7 +272,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       setIsBudget(false);
       setSaleFinished(true);
       setBudgetPendingOrder(null);
-      setCustomerForm({ name: '', phone: '', email: '', cpf: '', birthDate: '', notes: '', address: '', customPolicies: '' });
+      setCustomerForm({ ...EMPTY_CUSTOMER_FORM });
     } catch (err: any) { }
   };
 
@@ -268,7 +312,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       salesChannel: 'physical',
       emitNF,
       notes: customerForm.notes,
-      address: customerForm.address,
+      address: buildAddressString(customerForm),
       isBudget: false,
       customPolicies: customerForm.customPolicies,
       installments: paymentMethod === 'credito' ? installments : 1,
@@ -277,17 +321,28 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     };
 
     if (emitNF) {
+      // REFCOM166/REFCOM181: Reutilizar cliente existente (por CPF/CNPJ) para mesclar dados sem perder
+      const existingCustomer = customers.find(c => c.cpfCnpj && c.cpfCnpj.trim() === customerForm.cpf.trim());
+      const newAddress = buildAddressObject(customerForm);
+      const mergedAddresses: Address[] = existingCustomer ? [...existingCustomer.addresses] : [];
+      if (newAddress) {
+        const shippingIdx = mergedAddresses.findIndex(a => a.type === 'shipping');
+        if (shippingIdx >= 0) mergedAddresses[shippingIdx] = newAddress;
+        else mergedAddresses.push(newAddress);
+      }
+
       const customer: Customer = {
-        id: Date.now(),
+        id: existingCustomer ? existingCustomer.id : Date.now(),
         name: customerForm.name,
         email: order.customerEmail,
         phone: customerForm.phone,
         cpfCnpj: customerForm.cpf,
-        addresses: [],
-        totalOrders: 1,
-        totalSpent: total,
-        createdAt: new Date().toISOString(),
-        orderHistory: []
+        birthDate: customerForm.birthDate || existingCustomer?.birthDate,
+        addresses: mergedAddresses,
+        totalOrders: existingCustomer ? existingCustomer.totalOrders + 1 : 1,
+        totalSpent: (existingCustomer?.totalSpent || 0) + total,
+        createdAt: existingCustomer?.createdAt || new Date().toISOString(),
+        orderHistory: existingCustomer?.orderHistory || []
       };
 
       const invoiceResult = await generateInvoice({
@@ -317,7 +372,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         setSoldTotal(total);
         setLastFinishedOrder(order);
         setSaleFinished(true);
-      setCustomerForm({ name: '', phone: '', email: '', cpf: '', birthDate: '', notes: '', address: '', customPolicies: '' });
+        setCustomerForm({ ...EMPTY_CUSTOMER_FORM });
         setEmitNF(false);
         setErrors([]);
         setIsBudget(false);
@@ -329,7 +384,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
     setShowDanfe(false);
     setGeneratedOrder(null);
     setGeneratedCustomer(null);
-    setCustomerForm({ name: '', phone: '', email: '', cpf: '', birthDate: '', notes: '', address: '', customPolicies: '' });
+    setCustomerForm({ ...EMPTY_CUSTOMER_FORM });
     setEmitNF(false);
     setErrors([]);
     onClose();
@@ -563,14 +618,78 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-black text-gray-700 mb-2">Endereço (opcional)</label>
+            <label className="block text-sm font-black text-gray-700 mb-2">Endereço (texto livre / complemento - opcional)</label>
             <input
               type="text"
               value={customerForm.address}
               onChange={e => setCustomerForm(prev => ({ ...prev, address: e.target.value }))}
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-              placeholder="Ex: Rua das Flores, 123"
+              placeholder="Ex: Apto 12, Bloco B"
             />
+          </div>
+
+          {/* REFCOM166/REFCOM181: Campos de endereço estruturados */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-black text-gray-700 mb-2">Rua</label>
+              <input
+                type="text"
+                value={customerForm.street}
+                onChange={e => setCustomerForm(prev => ({ ...prev, street: e.target.value }))}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                placeholder="Ex: Rua das Flores"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-black text-gray-700 mb-2">Número</label>
+              <input
+                type="text"
+                value={customerForm.number}
+                onChange={e => setCustomerForm(prev => ({ ...prev, number: e.target.value }))}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                placeholder="123"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-black text-gray-700 mb-2">Bairro</label>
+              <input
+                type="text"
+                value={customerForm.neighborhood}
+                onChange={e => setCustomerForm(prev => ({ ...prev, neighborhood: e.target.value }))}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                placeholder="Centro"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-black text-gray-700 mb-2">Cidade</label>
+              <input
+                type="text"
+                value={customerForm.city}
+                onChange={e => setCustomerForm(prev => ({ ...prev, city: e.target.value }))}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                placeholder="São Paulo"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-black text-gray-700 mb-2">Estado</label>
+              <input
+                type="text"
+                value={customerForm.state}
+                onChange={e => setCustomerForm(prev => ({ ...prev, state: e.target.value }))}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                placeholder="SP"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-black text-gray-700 mb-2">CEP</label>
+              <input
+                type="text"
+                value={customerForm.zipCode}
+                onChange={e => setCustomerForm(prev => ({ ...prev, zipCode: e.target.value }))}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                placeholder="00000-000"
+              />
+            </div>
           </div>
 
           <div>

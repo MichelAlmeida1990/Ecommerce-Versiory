@@ -69,7 +69,7 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [otpError, setOtpError] = useState('');
   const [customerPhone, setCustomerPhone] = useState(''); // ERRCOM070
   const [customerCpfCnpj, setCustomerCpfCnpj] = useState(''); // ERRCOM070
-
+  const [customerBirthDate, setCustomerBirthDate] = useState(''); // REFCOM166/181: Data de Nascimento
   // ERRCOM080: Campos de endereço estruturados
   const [addressZip, setAddressZip] = useState('');
   const [addressStreet, setAddressStreet] = useState('');
@@ -120,6 +120,7 @@ const Checkout: React.FC<CheckoutProps> = ({
             }
             if (found.phone) setCustomerPhone(found.phone);
             if (found.cpfCnpj) setCustomerCpfCnpj(found.cpfCnpj);
+            if (found.birthDate) setCustomerBirthDate(found.birthDate); // REFCOM166/181
           } else {
             setSelectedAddressId('manual');
             setCustomAddress(customerAddress || '');
@@ -264,7 +265,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         discountAmount: discount > 0 ? discount : undefined, // ERRCOM108
         couponCode: couponApplied ? couponCode.toUpperCase().trim() : undefined, // ERRCOM108
         status: 'pending',
-        address: isStorePickup ? 'Retirada na Loja - Rua do Comércio, 123 - Centro, São Paulo - SP' : finalAddress,
+        address: isStorePickup ? `Retirada na Loja - ${storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}` : finalAddress,
         estimatedDelivery: isStorePickup ? 'Retirada imediata (Seg-Sex: 09h às 18h)' : '5 a 10 dias úteis', // REFCOM169
         items: items.map(item => {
           const orderItem: any = {
@@ -312,6 +313,7 @@ const Checkout: React.FC<CheckoutProps> = ({
 
       if (customerData) {
         targetCustomer = { ...customerData };
+        if (customerBirthDate) targetCustomer.birthDate = customerBirthDate; // REFCOM166/181
         targetCustomer.totalOrders = (targetCustomer.totalOrders || 0) + 1;
         targetCustomer.totalSpent = (targetCustomer.totalSpent || 0) + total;
         if (!targetCustomer.orderHistory) targetCustomer.orderHistory = [];
@@ -335,6 +337,7 @@ const Checkout: React.FC<CheckoutProps> = ({
 
         if (existing) {
           targetCustomer = { ...existing };
+          if (customerBirthDate) targetCustomer.birthDate = customerBirthDate; // REFCOM166/181
           targetCustomer.totalOrders = (targetCustomer.totalOrders || 0) + 1;
           targetCustomer.totalSpent = (targetCustomer.totalSpent || 0) + total;
           if (finalCpfCnpjForSearch && !targetCustomer.cpfCnpj) {
@@ -350,6 +353,7 @@ const Checkout: React.FC<CheckoutProps> = ({
             email: effectiveEmail,
             phone: customerPhone,
             cpfCnpj: finalCpfCnpjForSearch || undefined,
+            birthDate: customerBirthDate || undefined, // REFCOM166/181
             totalOrders: 1,
             totalSpent: total,
             addresses: [],
@@ -725,6 +729,15 @@ const Checkout: React.FC<CheckoutProps> = ({
                       placeholder="000.000.000-00"
                       className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
                       required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data de Nascimento</label>
+                    <input
+                      type="date"
+                      value={customerBirthDate}
+                      onChange={(e) => setCustomerBirthDate(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
                     />
                   </div>
                 </div>
