@@ -382,14 +382,12 @@ const Checkout: React.FC<CheckoutProps> = ({
       }
 
       if (paymentMethod === 'whatsapp') {
-        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, customAddress, paymentMethod);
+        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, isStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : customAddress, paymentMethod);
         const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
-      } else if (paymentMethod === 'pix') {
-        alert('Pagamento via PIX em desenvolvimento. Seu pedido foi registrado com sucesso!');
       } else if (paymentMethod === 'credito') {
         // REFCOM161: Integração WhatsApp automática para vendas em crédito
-        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, finalAddress, paymentMethod);
+        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, isStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : finalAddress, paymentMethod);
         const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
         alert('Pagamento via cartão em desenvolvimento. Seu pedido foi registrado com sucesso!');
@@ -619,7 +617,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                 <span className="text-xs font-black uppercase">Entrega Normal</span>
               </button>
               <button
-                onClick={() => { setIsStorePickup(true); setSelectedAddressId('store'); setCustomAddress('Rua do Comércio, 123 - Centro, São Paulo - SP'); }}
+                onClick={() => { setIsStorePickup(true); setSelectedAddressId('store'); setCustomAddress(storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'); }}
                 className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${isStorePickup ? 'border-versiory-coral bg-versiory-coral/5' : 'border-slate-100 bg-white'}`}
               >
                 <span className="text-xl">🏪</span>
@@ -1052,7 +1050,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                     const savedOrders = JSON.parse(localStorage.getItem('versiory_orders') || '[]');
                     const lastOrder = savedOrders[savedOrders.length - 1];
                     if (lastOrder) {
-                      const message = buildWhatsAppMessage(lastOrder.id, lastOrder.customerName, effectiveEmail, effectiveAddress, 'whatsapp');
+                      const message = buildWhatsAppMessage(lastOrder.id, lastOrder.customerName, effectiveEmail, lastOrder.address || effectiveAddress, 'whatsapp');
                       const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
                       window.open(url, '_blank');
                     }

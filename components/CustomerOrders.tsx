@@ -80,7 +80,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
       const products = await getProducts();
       for (const item of orderToCancel.items) {
         const product = products.find(p => p.id === item.productId);
-        if (product && product.category !== 'Serviços') { // ERRCOM104: Não estornar estoque de serviços
+        if (product) { // REFCOM187: Produtos de Serviço também estornam estoque ao cancelar
           const previousStock = product.stock || 0;
           const newStock = previousStock + item.quantity;
 

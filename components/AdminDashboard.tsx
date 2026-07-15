@@ -161,6 +161,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [productSearch, setProductSearch] = useState('');
   // REFCOM179_periodo: Filtro de período para análise de vendas
   const [dashboardPeriod, setDashboardPeriod] = useState<number>(30);
+  // REFCOM186: Filtro direto por intervalo de datas (sobrepõe o período fixo quando preenchido)
+  const [dashboardDateFrom, setDashboardDateFrom] = useState('');
+  const [dashboardDateTo, setDashboardDateTo] = useState('');
   const [dashboardChannelFilter, setDashboardChannelFilter] = useState<'all' | 'physical' | 'online'>('all');
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
@@ -330,7 +333,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (productIndex === -1) continue;
 
       const p = updatedProductsList[productIndex];
-      if (p.category === 'Serviços') continue; // Serviços não possuem controle de estoque físico
 
       const qty = item.quantity;
       const factor = type === 'decrement' ? -1 : 1;
@@ -955,16 +957,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [products, orders, customers]);
 
   // REFCOM179_periodo: Permitir análise de vendas em períodos superiores a 30 dias
+  // REFCOM186: Suportar intervalo de datas customizado (dashboardDateFrom/To) além do período fixo
   const last30DaysData = useMemo(() => {
     const data = [];
     const today = new Date();
     // Ajustar para o final do dia local para garantir que pegamos as últimas 24h corretamente no loop
     today.setHours(23, 59, 59, 999);
 
-    for (let i = dashboardPeriod - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
+    // REFCOM186: Se houver intervalo de datas definido, usá-lo; caso contrário, usar o período fixo
+    const hasCustomRange = dashboardDateFrom && dashboardDateTo;
+    let startDate: Date;
+    let endDate: Date;
+    if (hasCustomRange) {
+      startDate = new Date(dashboardDateFrom + 'T00:00:00');
+      endDate = new Date(dashboardDateTo + 'T23:59:59');
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+        // Faixa inválida: mantém o período fixo como fallback
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - (dashboardPeriod - 1));
+        endDate = today;
+      }
+    } else {
+      startDate = new Date(today);
+      startDate.setDate(today.getDate() - (dashboardPeriod - 1));
+      endDate = today;
+    }
 
+    // Gera a lista de dias entre startDate e endDate (inclusive)
+    const days: Date[] = [];
+    const cursor = new Date(startDate);
+    cursor.setHours(0, 0, 0, 0);
+    const lastDay = new Date(endDate);
+    lastDay.setHours(23, 59, 59, 999);
+    while (cursor <= lastDay) {
+      days.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    for (const d of days) {
       // ERRCOM105: Usar data local (YYYY-MM-DD) em vez de UTC para o bucket do gráfico
       const dateStr = d.toLocaleDateString('en-CA'); // en-CA retorna YYYY-MM-DD
       const shortDate = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -1019,7 +1049,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
     }
     return data;
-  }, [orders, dashboardPeriod, dashboardChannelFilter]);
+  }, [orders, products, dashboardPeriod, dashboardDateFrom, dashboardDateTo, dashboardChannelFilter]);
 
   const finalDashboardTop5 = useMemo(() => {
     const productSales: Record<number, { count: number, revenue: number }> = {};
@@ -1124,10 +1154,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (customerBirthDateFilterFrom || customerBirthDateFilterTo) {
         if (!customer.birthDate) return false;
         // REFCOM166: considerar apenas DIA/MÊS (aniversariantes), ignorando o ano
-        const md = customer.birthDate.slice(5, 10); // 'MM-DD'
-        const from = customerBirthDateFilterFrom ? customerBirthDateFilterFrom.slice(5, 10) : '01-01';
-        const to = customerBirthDateFilterTo ? customerBirthDateFilterTo.slice(5, 10) : '12-31';
-        const inRange = from <= to ? (md >= from && md <= to) : (md >= from || md <= to);
+        const bDate = new Date(customer.birthDate + 'T00:00:00');
+        if (isNaN(bDate.getTime())) return false;
+        const bValue = (bDate.getMonth() + 1) * 100 + bDate.getDate();
+        const fromDate = customerBirthDateFilterFrom ? new Date(customerBirthDateFilterFrom + 'T00:00:00') : null;
+        const toDate = customerBirthDateFilterTo ? new Date(customerBirthDateFilterTo + 'T00:00:00') : null;
+        const fromValue = fromDate ? (fromDate.getMonth() + 1) * 100 + fromDate.getDate() : 101;
+        const toValue = toDate ? (toDate.getMonth() + 1) * 100 + toDate.getDate() : 1231;
+        const inRange = fromValue <= toValue
+          ? (bValue >= fromValue && bValue <= toValue)
+          : (bValue >= fromValue || bValue <= toValue);
         if (!inRange) return false;
       }
 
@@ -2237,7 +2273,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // 2. Atualizar Estoque (Somente se não for orçamento)
       const updatedProducts = [...products];
       if (!isBudget) {
-        const itemsToDecrement = pdvCart.filter(item => item.product.category !== 'Serviços');
+        const itemsToDecrement = pdvCart;
 
         for (const item of itemsToDecrement) {
           const productIndex = updatedProducts.findIndex(p => p.id === item.product.id);
@@ -2851,7 +2887,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span className="text-slate-300 text-sm font-bold">Período:</span>
               <select
                 value={dashboardPeriod}
-                onChange={e => setDashboardPeriod(Number(e.target.value))}
+                onChange={e => { setDashboardPeriod(Number(e.target.value)); setDashboardDateFrom(''); setDashboardDateTo(''); }}
                 className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
               >
                 <option value={7}>Últimos 7 dias</option>
@@ -2862,6 +2898,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value={180}>Últimos 180 dias</option>
                 <option value={365}>Últimos 365 dias</option>
               </select>
+              {/* REFCOM186: Filtro direto por intervalo de datas */}
+              <span className="text-slate-300 text-sm font-bold ml-4">De:</span>
+              <input
+                type="date"
+                value={dashboardDateFrom}
+                onChange={e => setDashboardDateFrom(e.target.value)}
+                className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+              />
+              <span className="text-slate-300 text-sm font-bold">Até:</span>
+              <input
+                type="date"
+                value={dashboardDateTo}
+                onChange={e => setDashboardDateTo(e.target.value)}
+                className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+              />
+              {(dashboardDateFrom || dashboardDateTo) && (
+                <button
+                  onClick={() => { setDashboardDateFrom(''); setDashboardDateTo(''); }}
+                  className="text-slate-400 hover:text-white text-sm underline"
+                >
+                  Limpar intervalo
+                </button>
+              )}
               <span className="text-slate-300 text-sm font-bold ml-4">Canal:</span>
               <select
                 value={dashboardChannelFilter}
@@ -2919,12 +2978,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-[#17223b] rounded-xl p-6 border border-white/5 shadow-lg">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-2">
                   <h3 className="text-white font-bold">Vendas por Dia</h3>
                   {/* REFCOM179_periodo: Filtro de período */}
                   <select
                     value={dashboardPeriod}
-                    onChange={e => setDashboardPeriod(Number(e.target.value))}
+                    onChange={e => { setDashboardPeriod(Number(e.target.value)); setDashboardDateFrom(''); setDashboardDateTo(''); }}
                     className="bg-[#1b2a47] text-white text-sm px-3 py-1 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
                   >
                     <option value={7}>Últimos 7 dias</option>
@@ -2937,6 +2996,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value={365}>Últimos 365 dias</option>
                   </select>
                 </div>
+                {/* REFCOM186: Total de pedidos exibido apenas como referência (título), não como linha do gráfico */}
+                <p className="text-xs text-amber-300 font-bold mb-3">
+                  📊 Total de pedidos no período: {last30DaysData.reduce((s, d) => s + (d.Pedidos || 0), 0)}
+                </p>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={last30DaysData} onClick={handleChartClick}>
@@ -2947,7 +3010,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}
                       />
                       <Legend />
-                      <Line type="monotone" dataKey="Pedidos" stroke="#fbbf24" strokeWidth={2} dot={{ fill: '#fbbf24', r: 4 }} activeDot={{ r: 6 }} />
+                      {/* REFCOM186: Linhas apenas por canal (PDV/Online); total é referência no título */}
                       <Line type="monotone" dataKey="PedidosPDV" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e', r: 4 }} activeDot={{ r: 6 }} />
                       <Line type="monotone" dataKey="PedidosOnline" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 4 }} activeDot={{ r: 6 }} />
                     </LineChart>
@@ -2955,12 +3018,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
               <div className="bg-[#17223b] rounded-xl p-6 border border-white/5 shadow-lg">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-2">
                   <h3 className="text-white font-bold">Faturamento por Dia</h3>
                   {/* REFCOM179_periodo: Filtro de período */}
                   <select
                     value={dashboardPeriod}
-                    onChange={e => setDashboardPeriod(Number(e.target.value))}
+                    onChange={e => { setDashboardPeriod(Number(e.target.value)); setDashboardDateFrom(''); setDashboardDateTo(''); }}
                     className="bg-[#1b2a47] text-white text-sm px-3 py-1 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
                   >
                     <option value={7}>Últimos 7 dias</option>
@@ -2973,6 +3036,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value={365}>Últimos 365 dias</option>
                   </select>
                 </div>
+                {/* REFCOM186: Faturamento total exibido apenas como referência (título), não como barra do gráfico */}
+                <p className="text-xs text-amber-300 font-bold mb-3">
+                  💰 Faturamento total no período: {formatCurrency(last30DaysData.reduce((s, d) => s + (d.Faturamento || 0), 0))}
+                </p>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={last30DaysData} onClick={handleChartClick} onDoubleClick={(data: any) => {
@@ -2994,7 +3061,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         cursor={{ fill: '#ffffff10' }}
                       />
                       <Legend />
-                      <Bar dataKey="Faturamento" fill="#fbbf24" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                      {/* REFCOM186: Barras apenas por canal (PDV/Online); total é referência no título */}
                       <Bar dataKey="FaturamentoPDV" fill="#22c55e" radius={[4, 4, 0, 0]} maxBarSize={40} />
                       <Bar dataKey="FaturamentoOnline" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
                     </BarChart>
@@ -3915,9 +3982,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           if (!matchesText) return false;
                           if (customerSearchDateFrom || customerSearchDateTo) {
                             if (!c.birthDate) return false;
-                            const d = new Date(c.birthDate);
-                            if (customerSearchDateFrom && d < new Date(customerSearchDateFrom + 'T00:00:00')) return false;
-                            if (customerSearchDateTo && d > new Date(customerSearchDateTo + 'T23:59:59')) return false;
+                            // REFCOM166: considerar apenas DIA/MÊS (aniversariantes), ignorando o ano
+                            const bDate = new Date(c.birthDate + 'T00:00:00');
+                            if (isNaN(bDate.getTime())) return false;
+                            const bValue = (bDate.getMonth() + 1) * 100 + bDate.getDate();
+                            const fromDate = customerSearchDateFrom ? new Date(customerSearchDateFrom + 'T00:00:00') : null;
+                            const toDate = customerSearchDateTo ? new Date(customerSearchDateTo + 'T00:00:00') : null;
+                            const fromValue = fromDate ? (fromDate.getMonth() + 1) * 100 + fromDate.getDate() : 101;
+                            const toValue = toDate ? (toDate.getMonth() + 1) * 100 + toDate.getDate() : 1231;
+                            const inRange = fromValue <= toValue
+                              ? (bValue >= fromValue && bValue <= toValue)
+                              : (bValue >= fromValue || bValue <= toValue);
+                            if (!inRange) return false;
                           }
                           return true;
                         });
