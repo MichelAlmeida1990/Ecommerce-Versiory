@@ -196,7 +196,7 @@ const Checkout: React.FC<CheckoutProps> = ({
     setIsProcessing(true);
 
     try {
-      const { saveOrder, getCustomers, saveCustomer, getProducts } = await import('../services/firebase');
+      const { saveOrder, getCustomers, saveCustomer, getProducts, saveProduct, saveInventoryMovement } = await import('../services/firebase');
 
       // ERRCOM112: Validação de estoque em tempo real no checkout
       const currentProducts = await getProducts();
@@ -265,7 +265,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         total: total,
         discountAmount: discount > 0 ? discount : undefined, // ERRCOM108
         couponCode: couponApplied ? couponCode.toUpperCase().trim() : undefined, // ERRCOM108
-        status: 'pending',
+        status: 'reserved',
         address: isStorePickup ? `Retirada na Loja - ${storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}` : finalAddress,
         estimatedDelivery: isStorePickup ? 'Retirada imediata (Seg-Sex: 09h às 18h)' : '5 a 10 dias úteis', // REFCOM169
         items: items.map(item => {
@@ -375,6 +375,51 @@ const Checkout: React.FC<CheckoutProps> = ({
         saveOrder(sanitizedOrder),
         saveCustomer(sanitizedCustomer)
       ]);
+
+        // REFCOM190: Baixar estoque para pedido de e-commerce com status Reservado
+        const allProducts = await getProducts();
+        for (const item of items) {
+          if (item.category === 'Serviços') continue;
+          const productIndex = allProducts.findIndex(p => p.id === item.id);
+          if (productIndex === -1) continue;
+          const p = allProducts[productIndex];
+        const previousStock = p.stock || 0;
+        const newStock = Math.max(0, previousStock - item.quantity);
+
+        const updatedProduct: any = { ...p, stock: newStock };
+
+        if (item.selectedSize && p.stockBySize) {
+          updatedProduct.stockBySize = {
+            ...p.stockBySize,
+            [item.selectedSize]: Math.max(0, (p.stockBySize[item.selectedSize] || 0) - item.quantity)
+          };
+        }
+
+        if (item.selectedColor && p.stockBySizeColor) {
+          const key = item.selectedSize ? `${item.selectedSize}-${item.selectedColor}` : item.selectedColor;
+          updatedProduct.stockBySizeColor = {
+            ...p.stockBySizeColor,
+            [key]: Math.max(0, (p.stockBySizeColor[key] || 0) - item.quantity)
+          };
+        }
+
+        const sanitizedProduct = sanitizeData(updatedProduct);
+        await saveProduct(sanitizedProduct);
+
+        const movement = {
+          id: Date.now() + item.id,
+          productId: item.id,
+          productName: item.name,
+          type: 'out' as const,
+          quantity: item.quantity,
+          previousStock,
+          newStock,
+          reason: `Pedido ${orderId} - Status Reservado`,
+          date: new Date().toISOString(),
+          user: 'Sistema'
+        };
+        await saveInventoryMovement(movement);
+      }
 
       if (emitNF) {
         setInvoiceStatus('generating');

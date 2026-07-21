@@ -108,7 +108,7 @@ export interface Order {
   discountAmount?: number; // ERRCOM108: Valor do desconto concedido
   discountType?: 'percentual' | 'fixo'; // ERRCOM125: Tipo do desconto (PDV)
   couponCode?: string; // ERRCOM108: Cupom utilizado
-  status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'budget' | 'returned';
+  status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'budget' | 'returned' | 'reserved';
   statusHistory?: { status: string; date: string; notes?: string }[]; // ERRCOM101: Histórico de status
   items: OrderItem[];
   address?: string;

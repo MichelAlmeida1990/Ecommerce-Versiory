@@ -77,7 +77,8 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   delivered: 'bg-slate-200 text-slate-700',
   cancelled: 'bg-slate-800 text-white',
   budget: 'bg-purple-100 text-purple-800',
-  returned: 'bg-orange-100 text-orange-800'
+  returned: 'bg-orange-100 text-orange-800',
+  reserved: 'bg-teal-100 text-teal-800'
 };
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -88,7 +89,8 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   delivered: 'Entregue',
   cancelled: 'Cancelado',
   budget: 'Orçamento',
-  returned: 'Devolução'
+  returned: 'Devolução',
+  reserved: 'Reservado'
 };
 
 const TRACKING_COLORS: Record<TrackingStatus, string> = {
@@ -629,6 +631,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     addresses: []
   });
 
+  // REFCOM189: Estado para modal de Sugestão de Distribuição da Receita Bruta
+  const [isRevenueDistributionOpen, setIsRevenueDistributionOpen] = useState(false);
+
+  // REFCOM190: Estado para modal de Estoque Reservado
+  const [isReservedStockOpen, setIsReservedStockOpen] = useState(false);
+
   // REFCOM166/181: Garante que o endereço salvo siga a interface Address (id, country, type)
   const buildCustomerAddress = (a: Partial<Address>): Address => ({
     id: a.id || `addr_${Date.now()}`,
@@ -904,8 +912,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [cashRegisterHistory]);
 
   const stats = useMemo(() => {
+    const hasCustomRange = dashboardDateFrom && dashboardDateTo;
+    let startDate: Date;
+    let endDate: Date;
+    if (hasCustomRange) {
+      startDate = new Date(dashboardDateFrom + 'T00:00:00');
+      endDate = new Date(dashboardDateTo + 'T23:59:59');
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - (dashboardPeriod - 1));
+        endDate = new Date();
+      }
+    } else {
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - (dashboardPeriod - 1));
+      endDate = new Date();
+    }
+
+    const filteredOrdersForDashboard = orders.filter(order => {
+      const orderDate = new Date(order.date);
+      if (orderDate < startDate || orderDate > endDate) return false;
+      if (dashboardChannelFilter !== 'all' && order.salesChannel !== dashboardChannelFilter) return false;
+      return true;
+    });
+
     // BUGFIX #4 & #10: Unificar lógica de faturamento para Dashboard, Pedidos e Financeiro
-    const revenueOrders = orders.filter(order => {
+    const revenueOrders = filteredOrdersForDashboard.filter(order => {
       // REFCOM182: Orçamento convertido (paid/processing/shipped/delivered) conta como venda
       const isPaidBudget = order.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
       const isRegularRevenue = !order.isBudget && order.status !== 'cancelled';
@@ -921,7 +953,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (hasServiceOnly) return ['paid', 'delivered', 'processing', 'shipped'].includes(order.status);
 
       const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
-      const isPdvImmediate = order.salesChannel === 'physical' && order.status !== 'pending';
+      const isPdvImmediate = order.salesChannel === 'physical' && !['pending', 'reserved'].includes(order.status);
 
       return isConfirmed || isPdvImmediate;
     });
@@ -942,19 +974,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
     const totalCustomers = new Set(customers.map(getCustomerUniqueKey)).size;
 
+    const totalOrders = filteredOrdersForDashboard.filter(o => {
+      if (o.status === 'cancelled') return false;
+      if (!o.isBudget) return true;
+      return ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
+    }).length;
+
+    const onlineOrders = revenueOrders.filter(o => (!o.salesChannel || o.salesChannel === 'online'));
+    const onlineRevenue = onlineOrders.reduce((sum, o) => sum + o.total, 0);
+    const pdvOrders = revenueOrders.filter(o => o.salesChannel === 'physical');
+    const pdvRevenue = pdvOrders.reduce((sum, o) => sum + o.total, 0);
+
     return {
       totalProducts: products.length,
-      // BUGFIX #6: Excluir cancelados da contagem total de pedidos do Dashboard
-      totalOrders: orders.filter(o => {
-        if (o.status === 'cancelled') return false;
-        if (!o.isBudget) return true;
-        return ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
-      }).length,
+      totalOrders,
       totalCustomers,
       totalRevenue,
-      totalDiscounts // ERRCOM108
+      totalDiscounts,
+      onlineRevenue,
+      pdvRevenue
     };
-  }, [products, orders, customers]);
+  }, [products, orders, customers, dashboardPeriod, dashboardDateFrom, dashboardDateTo, dashboardChannelFilter]);
 
   // REFCOM179_periodo: Permitir análise de vendas em períodos superiores a 30 dias
   // REFCOM186: Suportar intervalo de datas customizado (dashboardDateFrom/To) além do período fixo
@@ -1015,7 +1055,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (hasServiceOnly) return ['paid', 'delivered', 'processing', 'shipped'].includes(o.status);
 
         const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
-        const isPdvImmediate = o.salesChannel === 'physical' && o.status !== 'pending';
+        const isPdvImmediate = o.salesChannel === 'physical' && !['pending', 'reserved'].includes(o.status);
 
         if (!isConfirmed && !isPdvImmediate) return false;
 
@@ -1809,7 +1849,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // REFCOM132: Baixa/estorno de estoque por status — todos os itens participam
       // Baixar: Pagamento Efetuado, Em Processamento, Enviado, Entregue
       // Estornar: Aguardando Pagamento, Cancelado, Orçamento, Devolução
-      const stockDecrStatuses = ["paid", "processing", "shipped", "delivered"];
+      const stockDecrStatuses = ["paid", "processing", "shipped", "delivered", "reserved"];
       const stockIncrStatuses = ["pending", "cancelled", "budget", "returned"];
       const isNowDecr = stockDecrStatuses.includes(updatedOrder.status);
       const wasDecr = stockDecrStatuses.includes(orderToUpdate.status);
@@ -2236,10 +2276,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           customer.totalSpent = (customer.totalSpent || 0) + order.total;
         }
         customer.cpfCnpj = customerData.cpf || customer.cpfCnpj;
-        if (customerData.address && !customer.addresses?.length) {
+        if (customerData.address) {
           customer.addresses = [{ street: customerData.address, city: '', state: '', zipCode: '', number: '', complement: '', neighborhood: '' }];
         }
-        if (customerData.birthDate && !customer.birthDate) {
+        if (customerData.birthDate) {
           customer.birthDate = customerData.birthDate;
         }
         order.customerId = customer.id;
@@ -2256,7 +2296,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           email: order.customerEmail,
           ...(customerData.phone ? { phone: customerData.phone } : {}),
           ...(customerData.cpf ? { cpfCnpj: customerData.cpf } : {}),
-          addresses: [],
+          birthDate: customerData.birthDate || undefined,
+          addresses: customerData.address ? [{ street: customerData.address, city: '', state: '', zipCode: '', number: '', complement: '', neighborhood: '' }] : [],
           totalOrders: isBudget ? 0 : 1,
           totalSpent: isBudget ? 0 : order.total,
           createdAt: new Date().toISOString(),
@@ -2308,10 +2349,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       // 3. Salvar Pedido/Orçamento (Sanitizado)
-      // Se tiver serviço, status inicial é pending
+      // Se tiver serviço, status inicial é reserved
       const hasService = pdvCart.some(item => item.product.category === 'Serviços');
       if (hasService && !isBudget) {
-        order.status = 'pending';
+        order.status = 'reserved';
       }
 
       // ERRCOM108: Garantir que a flag de contabilização seja salva no banco ANTES do saveOrder
@@ -2931,6 +2972,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="online">Online</option>
                 <option value="physical">PDV Loja</option>
               </select>
+              {/* REFCOM189: Botão Sugestão de Distribuição da Receita Bruta */}
+              <button
+                onClick={() => setIsRevenueDistributionOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-black text-sm transition-all shadow-lg ml-auto"
+              >
+                📊 Sugestão Distribuição da Receita Bruta
+              </button>
             </div>
 
             {/* Top Cards — ERRCOM122: Cards Vendas Online e PDV Loja adicionados */}
@@ -2960,7 +3008,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className={`bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border shadow-lg text-left transition-all ${dashboardChannelFilter === 'all' || dashboardChannelFilter === 'online' ? 'border-blue-500/30' : 'border-white/5 opacity-50'}`}
               >
                 <div className="text-3xl font-bold text-blue-400 mb-2">
-                  {dashboardChannelFilter !== 'physical' ? formatCurrency(orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0)) : formatCurrency(0)}
+                  {stats.onlineRevenue > 0 || dashboardChannelFilter !== 'physical' ? formatCurrency(stats.onlineRevenue) : formatCurrency(0)}
                 </div>
                 <div className="text-slate-400 font-medium text-sm">🌐 Vendas Online — detalhes</div>
               </button>
@@ -2969,7 +3017,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className={`bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border shadow-lg text-left transition-all ${dashboardChannelFilter === 'all' || dashboardChannelFilter === 'physical' ? 'border-green-500/30' : 'border-white/5 opacity-50'}`}
               >
                 <div className="text-3xl font-bold text-green-400 mb-2">
-                  {dashboardChannelFilter !== 'online' ? formatCurrency(orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0)) : formatCurrency(0)}
+                  {stats.pdvRevenue > 0 || dashboardChannelFilter !== 'online' ? formatCurrency(stats.pdvRevenue) : formatCurrency(0)}
                 </div>
                 <div className="text-slate-400 font-medium text-sm">🏪 Vendas PDV — detalhes</div>
               </button>
@@ -3789,12 +3837,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-xl font-black text-white">{formatCurrency(orders.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}</div>
                 <div className="text-slate-300 text-xs font-medium mt-1">Valor Total de Pedidos</div>
               </div>
-              {(['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as OrderStatus[]).map(status => (
+              {(['pending', 'reserved', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as OrderStatus[]).map(status => (
                 <div key={status} className="bg-white/10 backdrop-blur-xl rounded-2xl p-3 border border-white/20">
                   <div className="text-lg font-black text-white">{orders.filter(o => o.status === status).length}</div>
                   <div className="text-xs text-slate-300">{STATUS_LABELS[status]}</div>
                 </div>
               ))}
+              {/* REFCOM190: Card exclusivo de Estoque Reservado */}
+              <button
+                onClick={() => {
+                  const reservedOrders = orders.filter(o => o.status === 'reserved');
+                  if (reservedOrders.length === 0) {
+                    alert('Nenhum pedido com estoque reservado no momento.');
+                    return;
+                  }
+                  setIsReservedStockOpen(true);
+                }}
+                className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-teal-500/30 shadow-lg text-left transition-all hover:bg-white/20"
+              >
+                <div className="text-xl font-black text-teal-400">
+                  {orders.filter(o => o.status === 'reserved').reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0)}
+                </div>
+                <div className="text-slate-300 text-xs font-medium mt-1">Itens em Estoque Reservado</div>
+              </button>
             </div>
 
             <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
@@ -3822,6 +3887,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="all">Todos os Status</option>
                   <option value="budget">Orçamento</option>
                   <option value="converted">Conversões</option>
+                  <option value="reserved">Reservado</option>
                   <option value="pending">Aguardando Pagamento</option>
                   <option value="paid">Pagamento Efetuado</option>
                   <option value="processing">Em Processamento</option>
@@ -6433,23 +6499,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* REFCOM166: Modal de Edição/Criação de Cliente */}
-      {isCustomerModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setIsCustomerModalOpen(false)} />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-              <h3 className="text-2xl font-black text-slate-900">
-                {editingCustomer ? 'Editar Cliente' : 'Novo Cliente'}
-              </h3>
-              <button
-                onClick={() => setIsCustomerModalOpen(false)}
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+        {isCustomerModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+            <div className="bg-white border-0 shadow-2xl rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
             <div className="p-6 space-y-4">
               <div>
@@ -6830,6 +6882,109 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         </div>
+        )}
+
+      {/* REFCOM189: Modal Sugestão de Distribuição da Receita Bruta */}
+      {isRevenueDistributionOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop:blur-md flex items-center justify-center p-4 z-[100]">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsRevenueDistributionOpen(false)} />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+              <h3 className="text-2xl font-black text-slate-900">Sugestão de Distribuição da Receita Bruta</h3>
+              <button onClick={() => setIsRevenueDistributionOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {(() => {
+                const revenue = financialStats.totalRevenue;
+                const profitReserve = revenue * 0.10;
+                const taxes = revenue * 0.18;
+                const expenses = revenue * 0.22;
+                const proLabore = revenue * 0.50;
+                const items = [
+                  { label: 'Reserva de Lucro da Empresa', percent: '10%', value: profitReserve },
+                  { label: 'Pagamento de Impostos', percent: '18%', value: taxes },
+                  { label: 'Despesas (fornecedores, aluguel, insumos, funcionários)', percent: '22%', value: expenses },
+                  { label: 'Pró-labore (remuneração do dono/sócios)', percent: '50%', value: proLabore }
+                ];
+                return (
+                  <>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                      <div className="text-sm font-bold text-emerald-800 mb-1">Receita Bruta Total</div>
+                      <div className="text-2xl font-black text-emerald-900">{formatCurrency(revenue)}</div>
+                    </div>
+                    <div className="space-y-3">
+                      {items.map(item => (
+                        <div key={item.label} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                          <div>
+                            <div className="text-sm font-bold text-slate-900">{item.label}</div>
+                            <div className="text-xs text-slate-500">{item.percent}</div>
+                          </div>
+                          <div className="text-lg font-black text-slate-900">{formatCurrency(item.value)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between items-center p-4 bg-slate-900 text-white rounded-xl">
+                      <div className="text-sm font-bold">Total Receita Bruta</div>
+                      <div className="text-lg font-black">{formatCurrency(revenue)}</div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REFCOM190: Modal Estoque Reservado */}
+      {isReservedStockOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop:blur-md flex items-center justify-center p-4 z-[100]">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsReservedStockOpen(false)} />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+              <h3 className="text-2xl font-black text-slate-900">Pedidos com Estoque Reservado</h3>
+              <button onClick={() => setIsReservedStockOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              {orders.filter(o => o.status === 'reserved').length === 0 ? (
+                <p className="text-slate-500 text-sm">Nenhum pedido com estoque reservado no momento.</p>
+              ) : (
+                orders.filter(o => o.status === 'reserved').map(order => {
+                  const orderDate = new Date(order.date);
+                  const now = new Date();
+                  const daysInReservation = Math.max(1, Math.floor((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24)));
+                  return (
+                    <div key={order.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <div className="text-sm font-black text-slate-900">Pedido #{order.id} - {order.customerName}</div>
+                          <div className="text-xs text-slate-500">{formatDate(order.date)} • {order.salesChannel === 'physical' ? 'PDV Loja' : 'Online'}</div>
+                        </div>
+                        <div className="text-xs font-black bg-teal-100 text-teal-800 px-2 py-1 rounded-full">
+                          {daysInReservation} {daysInReservation === 1 ? 'dia' : 'dias'} em reserva
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        {order.items.map((item, idx) => (
+                          <div key={idx} className="text-xs text-slate-600">
+                            • {item.name} x{item.quantity}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Footer */}
@@ -6842,7 +6997,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             Sair
           </button>
-          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.9.2 (Estável)</span></p>
+          <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.9.3 (Estável)</span></p>
         </div>
       </footer>
     </div>

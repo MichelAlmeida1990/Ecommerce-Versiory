@@ -44,7 +44,11 @@ interface CashRegisterData {
 export const generateCashReportHTML = (data: CashRegisterData): string => {
   const isPartial = !data.closedAt;
   const title = isPartial ? 'LEITURA X (PARCIAL)' : 'FECHAMENTO DE CAIXA';
-  const headerColor = isPartial ? '#475569' : '#000000'; // Slate-600 vs Black
+  const shortId = isPartial
+    ? data.id.replace('PARTIAL-', '').slice(-8).toUpperCase()
+    : new Date(data.closedAt || data.openedAt).toLocaleDateString('pt-BR').split('/').join('');
+  const titleWithId = isPartial ? `${title} – ${shortId}` : `${title} - ${shortId}`;
+  const headerColor = isPartial ? '#475569' : '#000000';
   const bgColor = isPartial ? '#f8fafc' : '#ffffff';
 
   // REFCOM128: Calcular o saldo de forma robusta e idêntica ao CashRegisterReport
@@ -61,7 +65,7 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>${title} - ${data.id.slice(-8)}</title>
+      <title>${titleWithId}</title>
       <meta charset="UTF-8">
       <style>
         body { 
@@ -103,8 +107,8 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
     <body>
       <div class="header">
         <p class="title">VERSIORY STORE</p>
-        <p class="info" style="font-weight: bold; font-size: 1.1em;">${title}</p>
-        <p class="info">ID: #${data.id.slice(-8)}</p>
+        <p class="info" style="font-weight: bold; font-size: 1.1em;">${titleWithId}</p>
+        <p class="info">ID: #${shortId}</p>
       </div>
 
       <div class="info">

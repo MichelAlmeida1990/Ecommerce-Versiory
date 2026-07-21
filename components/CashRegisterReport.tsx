@@ -15,7 +15,9 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
 
   const isPartial = cashRegister.status === 'open';
   const reportTitle = isPartial ? 'LEITURA X (PARCIAL)' : 'FECHAMENTO DE CAIXA';
-  const shortId = cashRegister.id.replace('PARTIAL-', '').slice(-8).toUpperCase();
+  const shortId = isPartial
+    ? cashRegister.id.replace('PARTIAL-', '').slice(-8).toUpperCase()
+    : new Date(cashRegister.closedAt || cashRegister.openedAt).toLocaleDateString('pt-BR').split('/').join('');
 
   const paymentLabels: Record<string, string> = {
     dinheiro: 'DINHEIRO',
