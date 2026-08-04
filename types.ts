@@ -45,6 +45,7 @@ export interface Product {
   mlId?: string; // ID do anúncio no Mercado Livre
   shopeeId?: string; // ID do produto na Shopee
   marketplaceAttributes?: { [key: string]: any }; // Atributos específicos exigidos por cada canal
+  serviceAttributes?: { [key: string]: string }; // REFCOM201: Atributos personalizados para serviços (ex: tipo, horário)
 }
 
 

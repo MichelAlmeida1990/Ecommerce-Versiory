@@ -4723,7 +4723,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* REFCOM160: Filtros por Tipo e Forma de Pagamento */}
             <div className="flex flex-wrap gap-3 items-center mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
-              <span className="text-slate-300 text-sm font-bold">Filtrar por tipo:</span>
+              <span className="text-black text-sm font-bold">Filtrar por tipo:</span>
               <select
                 value={financialTypeFilter}
                 onChange={e => setFinancialTypeFilter(e.target.value as 'all' | 'revenue' | 'expense')}
@@ -4734,7 +4734,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="expense">Despesas</option>
               </select>
 
-              <span className="text-slate-300 text-sm font-bold ml-4">Forma de pagamento:</span>
+              <span className="text-black text-sm font-bold ml-4">Forma de pagamento:</span>
               <select
                 value={financialPaymentFilter}
                 onChange={e => setFinancialPaymentFilter(e.target.value as 'all' | 'dinheiro' | 'pix' | 'debito' | 'credito')}
@@ -5058,7 +5058,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               value={productForm.sizes || ''}
                               onChange={event => setProductForm(prev => ({ ...prev, sizes: event.target.value }))}
                               className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
-                              placeholder={productForm.category === 'Cama, Mesa e Banho' ? 'Digite o tipo: Lençol, Edredom, Toalha de Banho, etc.' : 'Ex: P, M, G, GG'}
+                              placeholder={productForm.category === 'Serviços' ? 'Selecione o tipo de serviço' : 'Ex: P, M, G, GG'}
                             />
                             <p className="text-xs text-slate-500 mt-1">
                               💡 Separe por vírgula. Use o botão "📏 Tamanhos" no card do produto para gerenciar estoque por tamanho.
@@ -5071,12 +5071,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               value={productForm.colors || ''}
                               onChange={event => setProductForm(prev => ({ ...prev, colors: event.target.value }))}
                               className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
-                              placeholder="Ex: Preto, Branco, Vermelho, Azul"
+                              placeholder={productForm.category === 'Serviços' ? 'Selecione o horário disponível' : 'Ex: Preto, Branco, Vermelho, Azul'}
                             />
                             <p className="text-xs text-slate-500 mt-1">
                               🎨 Separe por vírgula. Se usar cores + tamanhos, gerencie estoque por combinação (ex: M-Preto).
                             </p>
                           </div>
+                          {productForm.category === 'Serviços' && (
+                            <div>
+                              <label className="block text-sm font-bold text-slate-700 mb-2">Características do Serviço</label>
+                              <textarea
+                                rows={3}
+                                value={(productForm.serviceAttributes?.caracteristicas || '')}
+                                onChange={event => setProductForm(prev => ({ ...prev, serviceAttributes: { ...(prev.serviceAttributes || {}), caracteristicas: event.target.value } }))}
+                                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900 resize-none"
+                                placeholder="Ex: Tipo de serviço, Horário, Duração, Observações..."
+                              />
+                              <p className="text-xs text-slate-500 mt-1">
+                                📝 Detalhes personalizados que aparecerão no site para este serviço.
+                              </p>
+                            </div>
+                          )}
                         </div>
 
                         {/* ERRCOM134: Preços diferenciados */}
@@ -5948,68 +5963,79 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <div className="space-y-6">
-                  {pdvProductModal.product.sizes && (
-                    <div>
-                      <label className="block text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Tamanho</label>
-                      <div className="grid grid-cols-4 gap-2">
-                        {pdvProductModal.product.sizes.split(',').map(size => {
-                          const trimmedSize = size.trim();
-                          let stock = 0;
-                          if (pdvProductModal.product!.colors && pdvProductModal.product!.stockBySizeColor) {
-                            pdvProductModal.product!.colors.split(',').forEach(c => {
-                              stock += pdvProductModal.product!.stockBySizeColor?.[`${trimmedSize}-${c.trim()}`] || 0;
-                            });
-                          } else {
-                            stock = pdvProductModal.product!.stockBySize?.[trimmedSize] || 0;
-                          }
-                          const isSelected = pdvModalSelection.size === trimmedSize;
-                          const isAvailable = stock > 0;
-                          return (
-                            <button
-                              key={trimmedSize}
-                              onClick={() => isAvailable && setPdvModalSelection({ ...pdvModalSelection, size: trimmedSize })}
-                              disabled={!isAvailable}
-                              className={`py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${isSelected ? 'bg-versiory-coral text-white scale-105' : isAvailable ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20 line-through'}`}
-                            >
-                              {trimmedSize}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  {!pdvProductModal.product || pdvProductModal.product.category !== 'Serviços' ? (
+                    <>
+                      {pdvProductModal.product.sizes && (
+                        <div>
+                          <label className="block text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Tamanho</label>
+                          <div className="grid grid-cols-4 gap-2">
+                            {pdvProductModal.product.sizes.split(',').map(size => {
+                              const trimmedSize = size.trim();
+                              let stock = 0;
+                              if (pdvProductModal.product!.colors && pdvProductModal.product!.stockBySizeColor) {
+                                pdvProductModal.product!.colors.split(',').forEach(c => {
+                                  stock += pdvProductModal.product!.stockBySizeColor?.[`${trimmedSize}-${c.trim()}`] || 0;
+                                });
+                              } else {
+                                stock = pdvProductModal.product!.stockBySize?.[trimmedSize] || 0;
+                              }
+                              const isSelected = pdvModalSelection.size === trimmedSize;
+                              const isAvailable = stock > 0;
+                              return (
+                                <button
+                                  key={trimmedSize}
+                                  onClick={() => isAvailable && setPdvModalSelection({ ...pdvModalSelection, size: trimmedSize })}
+                                  disabled={!isAvailable}
+                                  className={`py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${isSelected ? 'bg-versiory-coral text-white scale-105' : isAvailable ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20 line-through'}`}
+                                >
+                                  {trimmedSize}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
-                  {pdvProductModal.product.colors && (
-                    <div>
-                      <label className="block text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Cor</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {pdvProductModal.product.colors.split(',').map(color => {
-                          const trimmedColor = color.trim();
-                          let colorStock = 0;
-                          if (pdvModalSelection.size && pdvProductModal.product!.stockBySizeColor) {
-                            colorStock = pdvProductModal.product!.stockBySizeColor[`${pdvModalSelection.size}-${trimmedColor}`] || 0;
-                          } else if (pdvProductModal.product!.sizes && pdvProductModal.product!.stockBySizeColor) {
-                            pdvProductModal.product!.sizes.split(',').forEach(s => {
-                              colorStock += pdvProductModal.product!.stockBySizeColor?.[`${s.trim()}-${trimmedColor}`] || 0;
-                            });
-                          } else {
-                            colorStock = pdvProductModal.product!.stock || 0;
-                          }
-                          const isAvailable = colorStock > 0;
-                          const isSelected = pdvModalSelection.color === trimmedColor;
-                          return (
-                            <button
-                              key={trimmedColor}
-                              onClick={() => isAvailable && setPdvModalSelection({ ...pdvModalSelection, color: trimmedColor })}
-                              disabled={!isAvailable}
-                              className={`py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${isSelected ? 'bg-versiory-coral text-white scale-105' : isAvailable ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20 line-through'}`}
-                            >
-                              <span className="truncate block px-1">{trimmedColor}</span>
-                              {isAvailable && <span className="text-[9px] block opacity-60">({colorStock})</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      {pdvProductModal.product.colors && (
+                        <div>
+                          <label className="block text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Cor</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {pdvProductModal.product.colors.split(',').map(color => {
+                              const trimmedColor = color.trim();
+                              let colorStock = 0;
+                              if (pdvModalSelection.size && pdvProductModal.product!.stockBySizeColor) {
+                                colorStock = pdvProductModal.product!.stockBySizeColor[`${pdvModalSelection.size}-${trimmedColor}`] || 0;
+                              } else if (pdvProductModal.product!.sizes && pdvProductModal.product!.stockBySizeColor) {
+                                pdvProductModal.product!.sizes.split(',').forEach(s => {
+                                  colorStock += pdvProductModal.product!.stockBySizeColor?.[`${s.trim()}-${trimmedColor}`] || 0;
+                                });
+                              } else {
+                                colorStock = pdvProductModal.product!.stock || 0;
+                              }
+                              const isAvailable = colorStock > 0;
+                              const isSelected = pdvModalSelection.color === trimmedColor;
+                              return (
+                                <button
+                                  key={trimmedColor}
+                                  onClick={() => isAvailable && setPdvModalSelection({ ...pdvModalSelection, color: trimmedColor })}
+                                  disabled={!isAvailable}
+                                  className={`py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${isSelected ? 'bg-versiory-coral text-white scale-105' : isAvailable ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20 line-through'}`}
+                                >
+                                  <span className="truncate block px-1">{trimmedColor}</span>
+                                  {isAvailable && <span className="text-[9px] block opacity-60">({colorStock})</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
+                      <p className="text-xs text-white/60">Serviço sem variação de tamanho/cor.</p>
+                      {pdvProductModal.product.serviceAttributes?.caracteristicas && (
+                        <p className="text-xs text-white/80 mt-2 font-medium">{pdvProductModal.product.serviceAttributes.caracteristicas}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -6021,20 +6047,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span className="text-white/40 text-xs font-bold uppercase tracking-widest">Preço Unitário</span>
                   <span className="text-3xl font-black text-white">{formatCurrency(pdvProductModal.product.pricePOS || pdvProductModal.product.priceEcommerce || pdvProductModal.product.price)}</span>
                 </div>
-                <button
-                  onClick={() => {
-                    const product = pdvProductModal.product!;
-                    if (product.sizes && product.sizes.trim() !== '' && !pdvModalSelection.size) return alert('⚠️ Selecione um tamanho');
-                    if (product.colors && !pdvModalSelection.color) return alert('⚠️ Selecione uma cor');
-                    setSelectedSizes(prev => ({ ...prev, [product.id]: pdvModalSelection.size }));
-                    addToPdvCart(product);
-                    setPdvProductModal({ isOpen: false, product: null });
-                    setPdvModalSelection({ size: '', color: '' });
-                  }}
-                  className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-5 rounded-2xl font-black text-lg transition-all active:scale-[0.98] shadow-xl shadow-versiory-coral/20 flex items-center justify-center gap-3"
-                >
-                  <span>🛒</span> Adicionar ao Carrinho
-                </button>
+                  <button
+                    onClick={() => {
+                      const product = pdvProductModal.product!;
+                      const isService = product.category === 'Serviços';
+                      if (!isService && product.sizes && product.sizes.trim() !== '' && !pdvModalSelection.size) return alert('⚠️ Selecione um tamanho');
+                      if (!isService && product.colors && !pdvModalSelection.color) return alert('⚠️ Selecione uma cor');
+                      setSelectedSizes(prev => ({ ...prev, [product.id]: pdvModalSelection.size }));
+                      addToPdvCart(product);
+                      setPdvProductModal({ isOpen: false, product: null });
+                      setPdvModalSelection({ size: '', color: '' });
+                    }}
+                    className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-5 rounded-2xl font-black text-lg transition-all active:scale-[0.98] shadow-xl shadow-versiory-coral/20 flex items-center justify-center gap-3"
+                  >
+                    <span>🛒</span> Adicionar ao Carrinho
+                  </button>
               </div>
             </div>
           </div>

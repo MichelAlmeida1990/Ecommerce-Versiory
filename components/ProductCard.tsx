@@ -15,15 +15,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
   const [showColorError, setShowColorError] = useState(false);
 
   const handleAddToCart = () => {
+    const isService = product.category === 'Serviços';
     let hasError = false;
 
-    if (product.sizes && !selectedSize) {
+    if (!isService && product.sizes && !selectedSize) {
       setShowSizeError(true);
       setTimeout(() => setShowSizeError(false), 2000);
       hasError = true;
     }
 
-    if (product.colors && !selectedColor) {
+    if (!isService && product.colors && !selectedColor) {
       setShowColorError(true);
       setTimeout(() => setShowColorError(false), 2000);
       hasError = true;
@@ -33,18 +34,18 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
 
     // ERRCOM077: Validação adicional de estoque na vitrine
     let stock = product.stock || 0;
-    if (selectedSize && selectedColor && product.stockBySizeColor) {
+    if (!isService && selectedSize && selectedColor && product.stockBySizeColor) {
       stock = product.stockBySizeColor[`${selectedSize}-${selectedColor}`] || 0;
-    } else if (selectedSize && product.stockBySize) {
+    } else if (!isService && selectedSize && product.stockBySize) {
       stock = product.stockBySize[selectedSize] || 0;
     }
 
-    if (stock <= 0) {
+    if (stock <= 0 && !isService) {
       alert('⚠️ Este item (nesta variação) está temporariamente sem estoque.');
       return;
     }
 
-    onAddToCart(product, selectedSize || undefined, selectedColor || undefined);
+    onAddToCart(product, isService ? undefined : (selectedSize || undefined), isService ? undefined : (selectedColor || undefined));
     setSelectedSize('');
     setSelectedColor('');
   };
@@ -101,7 +102,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
           </p>
         </div>
 
-        {product.sizes && (
+        {product.category !== 'Serviços' && product.sizes && (
           <div className="mb-4">
             <label className="text-xs font-bold text-slate-700 mb-2 block">Tamanho:</label>
             <div className="flex flex-wrap gap-2">
@@ -145,7 +146,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
           </div>
         )}
 
-        {product.colors && (
+        {product.category !== 'Serviços' && product.colors && (
           <div className="mb-4">
             <label className="text-xs font-bold text-slate-700 mb-2 block">Cor:</label>
             <div className="flex flex-wrap gap-2">
