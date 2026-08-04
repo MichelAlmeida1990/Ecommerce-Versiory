@@ -61,7 +61,8 @@ type TabKey =
   | 'fiscal'
   | 'settings'
   | 'marketplaces'
-  | 'payment'; // REFCOM175: Configurações de Pagamento
+  | 'payment'
+  | 'coupons'; // REFCOM204: Módulo Cupom Desconto
 
 type StockFilter = 'all' | 'low' | 'out' | 'normal';
 
@@ -2933,6 +2934,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ['fiscal', 'Fiscal/NF-e'],
                   ['marketplaces', 'Marketplaces'],
                   ['payment', 'Pagamento'],
+                  ['coupons', 'Cupom Desconto'],
                   ['settings', 'Configuração']
                 ]
                 : [
@@ -4882,7 +4884,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 * Requisito ERRCOM093: Estas configurações permitirão o envio de códigos de validação e confirmação de pedidos automaticamente.
               </p>
             </div>
-            <CouponManagement />
           </div>
         )}
 
@@ -4948,10 +4949,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            {/* REFCOM160: CouponManagement removido daqui — já renderizado na aba de configurações acima (linha 4100) */}
-            <div className="p-6 bg-white/5 rounded-2xl border border-white/10 text-center text-slate-400">
-              <p className="text-sm">⚙️ Para gerenciar cupons, acesse a seção <strong className="text-white">Configurações → E-mail</strong> no menu acima.</p>
-            </div>
+          </div>
+        )}
+
+        {activeTab === 'coupons' && (
+          <div className="space-y-6">
+            <CouponManagement />
           </div>
         )}
       </div>
