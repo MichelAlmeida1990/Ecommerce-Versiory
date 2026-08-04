@@ -1236,14 +1236,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Conjunto completo de transações (sem filtro de exibição), usado tanto pela lista
   // "Transações Recentes" quanto pelos cards de resumo do Financeiro (REFCOM160).
   const allTransactions = useMemo(() => {
-    // REFCOM182: Orçamento convertido (paid/processing/shipped/delivered) entra como receita
-    const revenue = orders
-      .filter(order => {
-        const isPaidBudget = order.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
-        const isRegularRevenue = !order.isBudget && order.status !== 'cancelled' && order.status !== 'pending';
-        return isPaidBudget || isRegularRevenue;
-      })
-      .map(order => ({
+      // REFCOM182: Orçamento convertido (paid/processing/shipped/delivered) entra como receita
+      // REFCOM202: Pedidos 'reserved' não contabilizam como venda no financeiro
+      const revenue = orders
+        .filter(order => {
+          const isPaidBudget = order.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
+          const isRegularRevenue = !order.isBudget && order.status !== 'cancelled' && order.status !== 'pending' && order.status !== 'reserved';
+          return isPaidBudget || isRegularRevenue;
+        })
+        .map(order => ({
         id: order.id,
         description: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}${order.isBudget ? ' (Orçamento Finalizado)' : ''}`,
         amount: order.total,
@@ -1306,7 +1307,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             return order.paymentMethod.toLowerCase() === financialPaymentFilter;
           }
         }
-        return false;
+        return true;
       });
     }
 
@@ -2801,6 +2802,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           if (!convertedStatuses.includes(order.status)) return false;
         }
         if (order.status === 'cancelled') return false;
+        // REFCOM202: Pedidos 'reserved' não contabilizam como venda no financeiro
+        if (order.status === 'reserved') return false;
         return true;
       });
 
@@ -2822,8 +2825,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (financialTypeFilter === 'all' || financialTypeFilter === 'expense') {
       const filteredExpenses = expenses.filter(expense => {
         if (!filterByDate(expense.date)) return false;
-        // REFCOM160: Aplicar filtro de forma de pagamento (case-insensitive)
-        if (financialPaymentFilter !== 'all' && (expense.paymentMethod || '').toLowerCase() !== financialPaymentFilter) return false;
+        // REFCOM192/196: Não aplicar filtro de forma de pagamento para despesas,
+        // pois o modelo atual não armazena paymentMethod nas despesas.
         return true;
       });
 
