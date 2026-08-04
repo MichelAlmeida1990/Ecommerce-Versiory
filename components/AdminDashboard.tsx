@@ -3871,6 +3871,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="text-xs text-slate-300">{STATUS_LABELS[status]}</div>
                 </div>
               ))}
+              {/* REFCOM197: Card Orçamentos Pendentes */}
+              <button
+                onClick={() => {
+                  const pendingBudgets = orders.filter(o => o.isBudget && !['paid', 'processing', 'shipped', 'delivered'].includes(o.status));
+                  if (pendingBudgets.length === 0) {
+                    alert('Nenhum orçamento pendente no momento.');
+                    return;
+                  }
+                  setOrderFilter('budget');
+                }}
+                className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-purple-500/30 shadow-lg text-left transition-all hover:bg-white/20"
+              >
+                <div className="text-xl font-black text-purple-400">
+                  {orders.filter(o => o.isBudget && !['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).length}
+                </div>
+                <div className="text-slate-300 text-xs font-medium mt-1">Orçamentos Pendentes</div>
+              </button>
               {/* REFCOM190: Card exclusivo de Estoque Reservado */}
               <button
                 onClick={() => {
