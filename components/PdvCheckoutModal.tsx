@@ -21,7 +21,7 @@ interface PdvCheckoutModalProps {
   onClose: () => void;
   onClearCart?: () => void;
   cart: { product: Product; quantity: number; selectedSize?: string; selectedColor?: string }[];
-  onSubmit: (customerData: { name: string; phone: string; email: string; cpf: string; emitNF: boolean; notes: string; customPolicies?: string; isBudget?: boolean }, order: Order) => Promise<void>;
+  onSubmit: (customerData: { name: string; phone: string; email: string; cpf: string; emitNF: boolean; notes: string; customPolicies?: string; isBudget?: boolean; address?: string; birthDate?: string; street?: string; number?: string; neighborhood?: string; city?: string; state?: string; zipCode?: string }, order: Order) => Promise<void>;
   isSubmitting: boolean;
   editingOrder?: Order | null;
   discountAmount?: number;

@@ -2198,7 +2198,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsPdvCheckoutModalOpen(true);
   };
 
-  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; email: string; cpf: string; notes: string; address?: string; birthDate?: string; isBudget?: boolean }, order: Order) => {
+  const handlePdvCheckoutSubmit = async (customerData: { name: string; phone: string; email: string; cpf: string; notes: string; address?: string; birthDate?: string; street?: string; number?: string; neighborhood?: string; city?: string; state?: string; zipCode?: string; isBudget?: boolean }, order: Order) => {
     const wasBudget = order.isBudget || false;
     // REFCOM182: Ao converter orçamento em venda, o pedido deixa de ser orçamento
     if (editingOrder && wasBudget) {
@@ -2277,7 +2277,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           customer.totalSpent = (customer.totalSpent || 0) + order.total;
         }
         customer.cpfCnpj = customerData.cpf || customer.cpfCnpj;
-        if (customerData.address) {
+        if (customerData.street || customerData.city || customerData.neighborhood) {
+          customer.addresses = [{
+            id: customer.addresses?.[0]?.id || `addr_${Date.now()}`,
+            street: customerData.street || customer.addresses?.[0]?.street || '',
+            number: customerData.number || customer.addresses?.[0]?.number || '',
+            complement: customerData.address || customer.addresses?.[0]?.complement || '',
+            neighborhood: customerData.neighborhood || customer.addresses?.[0]?.neighborhood || '',
+            city: customerData.city || customer.addresses?.[0]?.city || '',
+            state: customerData.state || customer.addresses?.[0]?.state || '',
+            zipCode: customerData.zipCode || customer.addresses?.[0]?.zipCode || '',
+            country: customer.addresses?.[0]?.country || 'Brasil',
+            type: 'shipping'
+          }];
+        } else if (customerData.address && !customer.addresses?.length) {
           customer.addresses = [{ street: customerData.address, city: '', state: '', zipCode: '', number: '', complement: '', neighborhood: '' }];
         }
         if (customerData.birthDate) {
@@ -2298,7 +2311,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           ...(customerData.phone ? { phone: customerData.phone } : {}),
           ...(customerData.cpf ? { cpfCnpj: customerData.cpf } : {}),
           birthDate: customerData.birthDate || undefined,
-          addresses: customerData.address ? [{ street: customerData.address, city: '', state: '', zipCode: '', number: '', complement: '', neighborhood: '' }] : [],
+          addresses: (() => {
+            if (customerData.street || customerData.city || customerData.neighborhood) {
+              return [{
+                id: `addr_${Date.now()}`,
+                street: customerData.street || '',
+                number: customerData.number || '',
+                complement: customerData.address || '',
+                neighborhood: customerData.neighborhood || '',
+                city: customerData.city || '',
+                state: customerData.state || '',
+                zipCode: customerData.zipCode || '',
+                country: 'Brasil',
+                type: 'shipping'
+              }];
+            }
+            if (customerData.address) {
+              return [{ street: customerData.address, city: '', state: '', zipCode: '', number: '', complement: '', neighborhood: '' }];
+            }
+            return [];
+          })(),
           totalOrders: isBudget ? 0 : 1,
           totalSpent: isBudget ? 0 : order.total,
           createdAt: new Date().toISOString(),
