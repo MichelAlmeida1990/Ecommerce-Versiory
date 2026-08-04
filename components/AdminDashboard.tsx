@@ -6842,73 +6842,73 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* REFCOM175: Configurações de Pagamento */}
       {activeTab === 'payment' && (
         <div className="space-y-6">
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
-            <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+            <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
               💳 Configurações de Condições de Pagamento
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Taxa Débito (%)</label>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Taxa Débito (%)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={paymentConfig.debitRate}
                   onChange={e => setPaymentConfig({ ...paymentConfig, debitRate: parseFloat(e.target.value) })}
-                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                  className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Taxa Crédito à Vista (%)</label>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Taxa Crédito à Vista (%)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={paymentConfig.creditRate}
                   onChange={e => setPaymentConfig({ ...paymentConfig, creditRate: parseFloat(e.target.value) })}
-                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                  className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Taxa PIX (%)</label>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Taxa PIX (%)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={paymentConfig.pixRate}
                   onChange={e => setPaymentConfig({ ...paymentConfig, pixRate: parseFloat(e.target.value) })}
-                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                  className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Taxa Antecipação (%)</label>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Taxa Antecipação (%)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={paymentConfig.anticipationRate}
                   onChange={e => setPaymentConfig({ ...paymentConfig, anticipationRate: parseFloat(e.target.value) })}
-                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                  className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Prazo de Recebimento (dias)</label>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Prazo de Recebimento (dias)</label>
                 <input
                   type="number"
                   value={paymentConfig.receiptDays}
                   onChange={e => setPaymentConfig({ ...paymentConfig, receiptDays: parseInt(e.target.value) })}
-                  className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                  className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
                 />
               </div>
             </div>
 
             <div className="mt-6">
-              <h4 className="text-sm font-bold text-white mb-4">Taxas de Parcelamento</h4>
+              <h4 className="text-sm font-bold text-slate-900 mb-4">Taxas de Parcelamento</h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {Object.entries(paymentConfig.installmentRates).map(([installments, rate]) => (
                   <div key={installments}>
-                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">{installments}x Parcelas (%)</label>
+                    <label className="block text-xs font-black text-slate-500 uppercase mb-2">{installments}x Parcelas (%)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -6917,7 +6917,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         ...paymentConfig,
                         installmentRates: { ...paymentConfig.installmentRates, [installments]: parseFloat(e.target.value) }
                       })}
-                      className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
+                      className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-versiory-coral outline-none"
                     />
                   </div>
                 ))}
@@ -6925,10 +6925,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div className="mt-6">
-              <h4 className="text-sm font-bold text-white mb-4">Processadoras de Pagamento</h4>
+              <h4 className="text-sm font-bold text-slate-900 mb-4">Processadoras de Pagamento</h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {Object.keys(paymentConfig.processors || {}).map(processor => (
-                  <label key={processor} className="flex items-center gap-2 bg-white/5 p-3 rounded-xl border border-white/20 cursor-pointer hover:bg-white/10">
+                  <label key={processor} className="flex items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100">
                     <input
                       type="checkbox"
                       checked={paymentConfig.processors?.[processor as keyof typeof paymentConfig.processors]?.enabled || false}
@@ -6941,7 +6941,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       })}
                       className="w-5 h-5 rounded"
                     />
-                    <span className="text-white font-bold capitalize">{processor}</span>
+                    <span className="text-slate-900 font-bold capitalize">{processor}</span>
                   </label>
                 ))}
               </div>
