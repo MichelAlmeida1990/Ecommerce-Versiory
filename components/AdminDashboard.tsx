@@ -4001,7 +4001,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
 
         {activeTab === 'customers' && (
-          <div>
+          <div className="space-y-6 overflow-y-auto max-h-[calc(100vh-180px)] pr-1">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-black text-white">Gerenciar Clientes</h2>
               <button
@@ -6537,8 +6537,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {isCustomerModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
             <div className="bg-white border-0 shadow-2xl rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-
-            <div className="p-6 space-y-4">
+              <div className="p-6 border-b border-slate-200 flex justify-between items-center shrink-0">
+                <h3 className="text-2xl font-black text-slate-900">{editingCustomer ? 'Editar Cliente' : 'Novo Cliente'}</h3>
+                <button onClick={() => { setIsCustomerModalOpen(false); setEditingCustomer(null); }} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
               <div>
                 <label className="block text-sm font-bold text-slate-900 mb-2">Nome Completo *</label>
                 <input
