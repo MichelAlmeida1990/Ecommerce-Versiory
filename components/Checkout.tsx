@@ -98,6 +98,9 @@ const Checkout: React.FC<CheckoutProps> = ({
     return { effectiveEmail: email, effectiveAddress: address };
   }, [customerEmail, customerAddress]);
 
+  const hasService = items.some(item => item.category === 'Serviços');
+  const effectiveIsStorePickup = isStorePickup && !hasService;
+
   // Carregar dados do cliente ao abrir
   React.useEffect(() => {
     if (isOpen && effectiveEmail) {
@@ -140,8 +143,8 @@ const Checkout: React.FC<CheckoutProps> = ({
   // ERRCOM134: No checkout online, priorizar priceEcommerce
   // REFCOM169: Se for Retire na Loja, usar pricePOS
   const subtotal = items.reduce((sum, item) => {
-    const activePrice = isStorePickup 
-      ? (item.pricePOS || item.price) 
+    const activePrice = effectiveIsStorePickup
+      ? (item.pricePOS || item.price)
       : (item.priceEcommerce || item.price);
     return sum + activePrice * item.quantity;
   }, 0);
@@ -266,15 +269,15 @@ const Checkout: React.FC<CheckoutProps> = ({
         discountAmount: discount > 0 ? discount : undefined, // ERRCOM108
         couponCode: couponApplied ? couponCode.toUpperCase().trim() : undefined, // ERRCOM108
         status: 'reserved',
-        address: isStorePickup ? `Retirada na Loja - ${storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}` : finalAddress,
-        estimatedDelivery: isStorePickup ? 'Retirada imediata (Seg-Sex: 09h às 18h)' : '5 a 10 dias úteis', // REFCOM169
+        address: effectiveIsStorePickup ? `Retirada na Loja - ${storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}` : finalAddress,
+        estimatedDelivery: effectiveIsStorePickup ? 'Retirada imediata (Seg-Sex: 09h às 18h)' : '5 a 10 dias úteis', // REFCOM169
         items: items.map(item => {
           const orderItem: any = {
             productId: item.id,
             name: item.name,
             quantity: item.quantity,
-            price: isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169
-            priceEcommerce: isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169: Salvar preço correto baseado em isStorePickup
+            price: effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169
+            priceEcommerce: effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169: Salvar preço correto baseado em isStorePickup
             image: item.image,
             description: item.description,
             selectedSize: item.selectedSize,
@@ -376,10 +379,9 @@ const Checkout: React.FC<CheckoutProps> = ({
         saveCustomer(sanitizedCustomer)
       ]);
 
-        // REFCOM190: Baixar estoque para pedido de e-commerce com status Reservado
+        // REFCOM190/REFCOM199: Baixar estoque para pedido de e-commerce com status Reservado, incluindo serviços
         const allProducts = await getProducts();
         for (const item of items) {
-          if (item.category === 'Serviços') continue;
           const productIndex = allProducts.findIndex(p => p.id === item.id);
           if (productIndex === -1) continue;
           const p = allProducts[productIndex];
@@ -427,12 +429,12 @@ const Checkout: React.FC<CheckoutProps> = ({
       }
 
       if (paymentMethod === 'whatsapp') {
-        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, isStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : customAddress, paymentMethod);
+        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, effectiveIsStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : customAddress, paymentMethod);
         const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
       } else if (paymentMethod === 'credito') {
         // REFCOM161: Integração WhatsApp automática para vendas em crédito
-        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, isStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : finalAddress, paymentMethod);
+        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, effectiveIsStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : finalAddress, paymentMethod);
         const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
         alert('Pagamento via cartão em desenvolvimento. Seu pedido foi registrado com sucesso!');
@@ -462,7 +464,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       `📞 Telefone: ${customerData?.phone || 'Não informado'}`,
       `🆔 CPF/CNPJ: ${customerData?.cpfCnpj || 'Não informado'}`,
       `📍 *Endereço de Entrega:* ${address}`,
-      isStorePickup ? `🏬 *MODALIDADE:* Retire na Loja` : `🚚 *MODALIDADE:* Entrega via Transportadora`,
+      effectiveIsStorePickup ? `🏬 *MODALIDADE:* Retire na Loja` : `🚚 *MODALIDADE:* Entrega via Transportadora`,
       '',
       '*DETALHES DA VENDA:*',
       `🕒 Hora: ${new Date().toLocaleTimeString('pt-BR')}`,
@@ -475,7 +477,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         if (item.selectedSize) details.push(`Tamanho: ${item.selectedSize}`);
         if (item.selectedColor) details.push(`Cor: ${item.selectedColor}`);
         const detailsStr = details.length > 0 ? ` (${details.join(', ')})` : '';
-        const unitPrice = isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price);
+        const unitPrice = effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price);
         return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${(unitPrice * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       }),
       '',
@@ -514,12 +516,12 @@ const Checkout: React.FC<CheckoutProps> = ({
       orderTime: timeStr, // ERRCOM083
       customerName: customerData?.name || (effectiveEmail ? effectiveEmail.split('@')[0] : 'Não informado'),
       customerEmail: effectiveEmail,
-      customerAddress: effectiveAddress,
+      customerAddress: effectiveIsStorePickup ? `Retirada na Loja - ${storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}` : (customAddress || effectiveAddress),
       customerPhone: customerData?.phone || customerPhone,
       customerCpfCnpj: customerData?.cpfCnpj || undefined, // ERRCOM081
       notes: orderNotes,
       storePolicies: fiscalConfig?.storePolicies,
-      items: items.map(item => ({ ...item, productId: item.id, price: isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), installments: paymentMethod === 'credito' ? installments : 1 })), 
+      items: items.map(item => ({ ...item, productId: item.id, price: effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), installments: paymentMethod === 'credito' ? installments : 1 })), 
       total: total,
       paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod, // REFCOM135: Salvar paymentMethod como 'credito' para verificação correta
       salesChannel: 'online',
@@ -601,7 +603,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                     </div>
                   </div>
                   <p className="font-bold text-slate-900 whitespace-nowrap">
-                    R$ {((isStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price)) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {((effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price)) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
               ))}
