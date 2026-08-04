@@ -260,11 +260,20 @@ const CashRegisterReport: React.FC<CashRegisterReportProps> = ({ cashRegister, o
             </button>
             <button
               onClick={async () => {
-                // REFCOM139: Abrir em janela dedicada para evitar duplicação
                 const { generateCashReportHTML } = await import('../utils/cashReportGenerator');
                 const html = generateCashReportHTML(cashRegister as any);
-                const win = window.open('', '_blank', 'width=420,height=700');
-                if (win) { win.document.write(html); win.document.close(); }
+                const blob = new Blob([html], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const win = window.open(url, '_blank', 'width=420,height=700');
+                if (!win) {
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${reportTitle.replace(/[^a-zA-Z0-9]/g, '_')}_${shortId}.html`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
               }}
               className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2"
             >

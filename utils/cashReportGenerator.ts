@@ -205,8 +205,7 @@ export const generateCashReportHTML = (data: CashRegisterData): string => {
         window.onload = () => {
           setTimeout(() => {
             window.print();
-            window.close();
-          }, 500);
+          }, 800);
         };
       </script>
     </body>

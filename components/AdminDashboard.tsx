@@ -4756,7 +4756,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-4">
               <h3 className="text-lg font-bold text-white mb-4">Transacoes Recentes</h3>
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
                 {recentTransactions.map(transaction => (
                   <button
                     key={`${transaction.type}-${transaction.id}`}
@@ -5687,7 +5687,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {
         isExpenseModalOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
               <div className="p-6 border-b border-gray-200">
                 <h3 className="text-xl font-black text-gray-900">{editingExpenseId ? 'Editar Despesa' : 'Lancar Despesa'}</h3>
               </div>
@@ -5770,9 +5770,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* ERRCOM136: Modal de Lançamento de Receita */}
       {isManualRevenueModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6">
-            <h3 className="text-xl font-black text-gray-900 mb-4">Lançar Receita Avulsa</h3>
-            <div className="space-y-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="p-6">
+              <h3 className="text-xl font-black text-gray-900 mb-4">Lançar Receita Avulsa</h3>
+              <div className="space-y-4">
               <div>
                 <label className="block text-sm font-black text-gray-700 mb-2">Descrição</label>
                 <input type="text" value={manualRevenueForm.description} onChange={e => setManualRevenueForm({ ...manualRevenueForm, description: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
@@ -5797,6 +5798,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button onClick={handleManualRevenueSubmit} className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl transition-all">Lançar Receita</button>
                 <button onClick={() => setIsManualRevenueModalOpen(false)} className="flex-1 bg-gray-200 text-gray-800 font-black py-3 rounded-xl transition-all">Cancelar</button>
               </div>
+            </div>
             </div>
           </div>
         </div>
