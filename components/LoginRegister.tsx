@@ -39,6 +39,24 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
   const MAX_ATTEMPTS = 3;
   const LOCK_TIME = 60000;
 
+  // REFCOM198: Regra simples de vencimento e bloqueio baseada em localStorage
+  const getSubscriptionStatus = () => {
+    try {
+      const raw = localStorage.getItem('versiory_subscription');
+      if (!raw) return { blocked: false, daysRemaining: 30 };
+      const data = JSON.parse(raw);
+      const expiry = data?.expiryDate ? new Date(data.expiryDate) : null;
+      if (!expiry || isNaN(expiry.getTime())) return { blocked: false, daysRemaining: 30 };
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const diff = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const blocked = today >= expiry || diff <= 0;
+      return { blocked: !!blocked, daysRemaining: Math.max(0, diff) };
+    } catch {
+      return { blocked: false, daysRemaining: 30 };
+    }
+  };
+
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -122,12 +140,18 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
+    const subscription = getSubscriptionStatus();
+    if (subscription.blocked) {
+      setError('🔒 Sua fatura venceu e o acesso foi bloqueado. Regularize o pagamento para continuar.');
+      return;
+    }
+
     if (isLocked) {
       setError('🔒 Conta bloqueada. Aguarde 1 minuto antes de tentar novamente.');
       return;
     }
-    
+
     if (!form.email || !form.password) {
       setError('⚠️ Preencha todos os campos obrigatórios.');
       return;
@@ -544,6 +568,19 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
               </>
             )}
             {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">{error}</div>}
+
+            {(() => {
+              const subscription = getSubscriptionStatus();
+              if (!subscription.blocked && subscription.daysRemaining <= 5) {
+                return (
+                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm">
+                    ⚠️ Sua fatura vence em <strong>{subscription.daysRemaining}</strong> dia(s). Clique aqui para regularizar.
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             <button type="submit" className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl active:scale-[0.98]">
               {isRegister ? 'Criar Conta' : 'Entrar'}
             </button>
