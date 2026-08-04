@@ -2972,13 +2972,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="online">Online</option>
                 <option value="physical">PDV Loja</option>
               </select>
-              {/* REFCOM189: Botão Sugestão de Distribuição da Receita Bruta */}
-              <button
-                onClick={() => setIsRevenueDistributionOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-black text-sm transition-all shadow-lg ml-auto"
-              >
-                📊 Sugestão Distribuição da Receita Bruta
-              </button>
             </div>
 
             {/* Top Cards — ERRCOM122: Cards Vendas Online e PDV Loja adicionados */}
@@ -4629,6 +4622,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
               >
                 + Lancar Receita
+              </button>
+              {/* REFCOM189: Botão Sugestão de Distribuição da Receita Bruta movido para Financeiro */}
+              <button
+                onClick={() => setIsRevenueDistributionOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg hover:-translate-y-1 active:scale-95"
+              >
+                📊 Sugestão Distribuição da Receita Bruta
               </button>
               <button
                 onClick={generateFinancialReport}
