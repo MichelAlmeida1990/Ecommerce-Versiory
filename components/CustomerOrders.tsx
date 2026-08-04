@@ -249,6 +249,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
   const getStatusConfig = (status: string) => {
     const configs = {
       pending: { label: 'Aguardando Pagamento', color: 'text-amber-600', bg: 'bg-amber-50', icon: '🕒' },
+      reserved: { label: 'Reservado', color: 'text-teal-700', bg: 'bg-teal-50', icon: '🔒' },
       paid: { label: 'Pagamento Confirmado', color: 'text-emerald-600', bg: 'bg-emerald-50', icon: '✅' },
       processing: { label: 'Processando', color: 'text-blue-600', bg: 'bg-blue-50', icon: '📦' },
       shipped: { label: 'Em Trânsito', color: 'text-indigo-600', bg: 'bg-indigo-50', icon: '🚚' },
@@ -424,15 +425,15 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
               {/* Visual Order Progress Bar */}
               <div className="relative px-4 pt-4 pb-8 border-b border-slate-50 mb-4">
                 <div className="flex justify-between relative z-10">
-                  {['pending', 'paid', 'processing', 'shipped', 'delivered'].map((step, sidx) => {
-                    const steps = ['pending', 'paid', 'processing', 'shipped', 'delivered'];
+                  {['reserved', 'pending', 'paid', 'processing', 'shipped', 'delivered'].map((step, sidx) => {
+                    const steps = ['reserved', 'pending', 'paid', 'processing', 'shipped', 'delivered'];
                     const currentIndex = steps.indexOf(selectedOrder.status);
                     const isCompleted = steps.indexOf(step) <= currentIndex;
                     const isCurrent = step === selectedOrder.status;
 
                     return (
                       <div key={step} className="flex flex-col items-center gap-2">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black transition-all ${isCompleted ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-100 text-slate-400'
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black transition-all ${isCompleted ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-100 text-slate-400'}
                           } ${isCurrent ? 'ring-4 ring-emerald-100 scale-110' : ''}`}>
                           {isCompleted ? '✓' : sidx + 1}
                         </div>
@@ -446,7 +447,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                   <div className="absolute top-5 left-10 right-10 h-0.5 bg-slate-100 -z-10">
                     <div
                       className="h-full bg-emerald-500 transition-all duration-1000"
-                      style={{ width: `${(Math.max(0, ['pending', 'paid', 'processing', 'shipped', 'delivered'].indexOf(selectedOrder.status)) / 4) * 100}%` }}
+                      style={{ width: `${(Math.max(0, ['reserved', 'pending', 'paid', 'processing', 'shipped', 'delivered'].indexOf(selectedOrder.status)) / 5) * 100}%` }}
                     />
                   </div>
                 </div>

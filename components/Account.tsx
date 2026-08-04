@@ -700,6 +700,7 @@ const Account: React.FC = () => {
                           {customerOrders.map((order: Order) => {
                             const statusMap: Record<string, { label: string, color: string, bg: string }> = {
                               pending: { label: 'Aguardando Pagamento', color: 'text-amber-600', bg: 'bg-amber-50' },
+                              reserved: { label: 'Reservado', color: 'text-teal-700', bg: 'bg-teal-50' },
                               paid: { label: 'Pagamento Confirmado', color: 'text-emerald-600', bg: 'bg-emerald-50' },
                               processing: { label: 'Processando', color: 'text-blue-600', bg: 'bg-blue-50' },
                               shipped: { label: 'Em Trânsito', color: 'text-indigo-600', bg: 'bg-indigo-50' },
