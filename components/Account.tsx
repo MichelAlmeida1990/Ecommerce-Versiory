@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Customer, Address, Order } from '../types';
 import CustomerOrders from './CustomerOrders';
+import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
 
 const Account: React.FC = () => {
   const navigate = useNavigate();
@@ -840,7 +841,7 @@ const Account: React.FC = () => {
               <button
                 onClick={() => {
                   const message = `Olá! Gostaria de falar com um consultor Versiory sobre minha conta ou pedidos.`;
-                  window.open(`https://wa.me/5511958540171?text=${encodeURIComponent(message)}`, '_blank');
+                  window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
                 }}
                 className="w-full border-2 border-slate-100 hover:border-slate-900 py-4 rounded-2xl font-black text-slate-900 transition-all flex items-center justify-center gap-2"
               >

@@ -373,3 +373,6 @@ export const validateAndUseCoupon = async (
         return { coupon: null, error: 'Erro ao validar cupom. Tente novamente.' };
     }
 };
+
+// REFCOM199: Número do WhatsApp da loja (centralizado para facilitar configuração)
+export const STORE_WHATSAPP_NUMBER = '5511958540171';

@@ -102,9 +102,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
           </p>
         </div>
 
-        {product.category !== 'Serviços' && product.sizes && (
+        {(product.category === 'Serviços' ? true : product.sizes && product.category !== 'Serviços') && (
           <div className="mb-4">
-            <label className="text-xs font-bold text-slate-700 mb-2 block">Tamanho:</label>
+            <label className="text-xs font-bold text-slate-700 mb-2 block">
+              {product.category === 'Serviços' ? 'Tipo de Serviço:' : 'Tamanho:'}
+            </label>
             <div className="flex flex-wrap gap-2">
               {product.sizes.split(',').map(size => {
                 const trimmedSize = size.trim();
@@ -146,9 +148,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
           </div>
         )}
 
-        {product.category !== 'Serviços' && product.colors && (
+        {(product.category === 'Serviços' ? true : product.colors && product.category !== 'Serviços') && (
           <div className="mb-4">
-            <label className="text-xs font-bold text-slate-700 mb-2 block">Cor:</label>
+            <label className="text-xs font-bold text-slate-700 mb-2 block">
+              {product.category === 'Serviços' ? 'Horário Disponível:' : 'Cor:'}
+            </label>
             <div className="flex flex-wrap gap-2">
               {product.colors.split(',').map(color => {
                 const trimmedColor = color.trim();
@@ -188,6 +192,12 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
                 ⚠️ Selecione uma cor
               </p>
             )}
+          </div>
+        )}
+
+        {product.category === 'Serviços' && product.serviceAttributes && (
+          <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+            <p className="text-xs text-slate-700 whitespace-pre-line">{product.serviceAttributes.caracteristicas || product.serviceAttributes.descricao || ''}</p>
           </div>
         )}
 

@@ -24,7 +24,7 @@ import ProductSizeSelector from './ProductSizeSelector';
 import { sanitizeData } from '../services/utils';
 import ProductMediaShowcase from './ProductMediaShowcase';
 import CashRegisterReport from './CashRegisterReport';
-import { saveProduct } from '../services/firebase';
+import { saveProduct, STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import CouponManagement from './CouponManagement';
 import MarketplaceFields from './MarketplaceFields'; // Importar o novo componente
 import MarketplaceSettings from './MarketplaceSettings'; // Importar o novo componente de configurações
@@ -951,7 +951,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
 
       // REFCOM104: Serviços e Orçamentos pagos/em processamento/enviados contam como receita
-      if (hasServiceOnly) return ['paid', 'delivered', 'processing', 'shipped'].includes(order.status);
+      // REFCOM186: Respeitar filtro de canal também para vendas de serviço
+      if (hasServiceOnly) {
+        if (dashboardChannelFilter !== 'all' && order.salesChannel !== dashboardChannelFilter) return false;
+        return ['paid', 'delivered', 'processing', 'shipped'].includes(order.status);
+      }
 
       const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
       const isPdvImmediate = order.salesChannel === 'physical' && !['pending', 'reserved'].includes(order.status);
@@ -1053,7 +1057,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           return product?.category === 'Serviços';
         });
 
-        if (hasServiceOnly) return ['paid', 'delivered', 'processing', 'shipped'].includes(o.status);
+        if (hasServiceOnly) {
+          // REFCOM186: Respeitar filtro de canal também para vendas de serviço
+          if (dashboardChannelFilter !== 'all' && o.salesChannel !== dashboardChannelFilter) return false;
+          if (o.salesChannel === 'physical' && o.status === 'reserved') return true;
+          return ['paid', 'delivered', 'processing', 'shipped'].includes(o.status);
+        }
 
         const isConfirmed = ['paid', 'processing', 'shipped', 'delivered'].includes(o.status);
         const isPdvImmediate = o.salesChannel === 'physical' && !['pending', 'reserved'].includes(o.status);
@@ -1287,11 +1296,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     if (financialDateFilter.from || financialDateFilter.to) {
       filtered = filtered.filter(t => {
-        const transactionDate = new Date(t.date);
-        const fromDate = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
-        const toDate = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
-        if (fromDate && transactionDate < fromDate) return false;
-        if (toDate && transactionDate > toDate) return false;
+        const tDate = typeof t.date === 'string' ? t.date.split('T')[0] : new Date(t.date).toISOString().split('T')[0];
+        const fromDate = financialDateFilter.from || '1900-01-01';
+        const toDate = financialDateFilter.to || '2099-12-31';
+        if (tDate < fromDate) return false;
+        if (tDate > toDate) return false;
         return true;
       });
     }
@@ -2812,11 +2821,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // REFCOM160: Ajustar exportação CSV para respeitar os filtros aplicados
     const filterByDate = (dateStr: string) => {
       if (!financialDateFilter.from && !financialDateFilter.to) return true;
-      const date = new Date(dateStr);
-      const from = financialDateFilter.from ? new Date(financialDateFilter.from + 'T00:00:00') : null;
-      const to = financialDateFilter.to ? new Date(financialDateFilter.to + 'T23:59:59') : null;
-      if (from && date < from) return false;
-      if (to && date > to) return false;
+      const tDate = typeof dateStr === 'string' ? dateStr.split('T')[0] : new Date(dateStr).toISOString().split('T')[0];
+      const fromDate = financialDateFilter.from || '1900-01-01';
+      const toDate = financialDateFilter.to || '2099-12-31';
+      if (tDate < fromDate) return false;
+      if (tDate > toDate) return false;
       return true;
     };
 
@@ -2899,7 +2908,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
               {/* ERRCOM038: Botão Suporte WhatsApp */}
               <button
-                onClick={() => window.open('https://wa.me/5511958540171?text=Olá! Preciso de suporte no painel Versiory Store.', '_blank')}
+                onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte no painel Versiory Store.`, '_blank')}
                 className="bg-green-600 hover:bg-green-700 px-3 sm:px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2 text-sm sm:text-base order-2 sm:order-1"
               >
                 <span>💬</span> <span className="hidden sm:inline">Suporte</span>
@@ -3761,8 +3770,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all"
                         >
                           🗑️
-                        </button>
-                      </div>
+              </button>
+              {/* REFCOM208: Card Devoluções */}
+              <button
+                onClick={() => {
+                  const returnOrders = orders.filter(o => o.status === 'returned');
+                  if (returnOrders.length === 0) {
+                    alert('Nenhuma devolução no momento.');
+                    return;
+                  }
+                  setOrderFilter('returned');
+                }}
+                className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-purple-500/30 shadow-lg text-left transition-all hover:bg-white/20"
+              >
+                <div className="text-xl font-black text-purple-400">
+                  {orders.filter(o => o.status === 'returned').length}
+                </div>
+                <div className="text-slate-300 text-xs font-medium mt-1">Devoluções</div>
+              </button>
+            </div>
                     )}
                     {userRole === 'seller' && (
                       <div className="text-center text-slate-400 text-sm py-2">
@@ -4204,7 +4230,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <div className="mb-6 p-4 bg-white/5 rounded-xl border border-white/10">
               <span className="text-slate-300 text-sm font-bold">Aniversariantes do mês:</span>
-              <p className="text-slate-400 text-xs mt-1">Filtra apenas por <b>dia/mês</b> (ignora o ano). Ex.: 01/09 até 30/09 retorna todos os aniversariantes de setembro.</p>
+              <p className="text-slate-400 text-xs mt-1">Para filtrar por dia/mês, insira 1 no campo Ano. Ex: 01/09/0001 até 30/09/0001 retorna todos os aniversariantes de setembro.</p>
               <div className="flex flex-wrap gap-3 items-center mt-2">
                 <input
                   type="date"
@@ -4287,6 +4313,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 email: customer.email,
                                 phone: customer.phone,
                                 cpfCnpj: customer.cpfCnpj,
+                                birthDate: customer.birthDate,
                                 addresses: customer.addresses
                               });
                               setIsCustomerModalOpen(true);
@@ -4725,22 +4752,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* REFCOM160: Filtros por Tipo e Forma de Pagamento */}
             <div className="flex flex-wrap gap-3 items-center mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
-              <span className="text-black text-sm font-bold">Filtrar por tipo:</span>
+              <span className="text-slate-900 text-sm font-bold">Filtrar por tipo:</span>
               <select
                 value={financialTypeFilter}
                 onChange={e => setFinancialTypeFilter(e.target.value as 'all' | 'revenue' | 'expense')}
-                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                className="px-3 py-2 bg-white border border-slate-200 text-slate-900 rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
               >
                 <option value="all">Todos</option>
                 <option value="revenue">Receitas</option>
                 <option value="expense">Despesas</option>
               </select>
 
-              <span className="text-black text-sm font-bold ml-4">Forma de pagamento:</span>
+              <span className="text-slate-900 text-sm font-bold ml-4">Forma de pagamento:</span>
               <select
                 value={financialPaymentFilter}
                 onChange={e => setFinancialPaymentFilter(e.target.value as 'all' | 'dinheiro' | 'pix' | 'debito' | 'credito')}
-                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                className="px-3 py-2 bg-white border border-slate-200 text-slate-900 rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
               >
                 <option value="all">Todas</option>
                 <option value="dinheiro">Dinheiro</option>
@@ -4750,7 +4777,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </select>
 
               {(financialTypeFilter !== 'all' || financialPaymentFilter !== 'all') && (
-                <button onClick={() => { setFinancialTypeFilter('all'); setFinancialPaymentFilter('all'); }} className="text-slate-400 hover:text-white text-sm underline">Limpar</button>
+                <button onClick={() => { setFinancialTypeFilter('all'); setFinancialPaymentFilter('all'); }} className="text-slate-900 hover:text-versiory-coral text-sm underline font-medium">Limpar</button>
               )}
             </div>
 
@@ -6086,6 +6113,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <p><span className="font-bold text-white">E-mail:</span> {selectedOrderDetail.customerEmail}</p>
               {selectedOrderDetail.customerPhone && <p><span className="font-bold text-white">Telefone:</span> {selectedOrderDetail.customerPhone}</p>}
               {selectedOrderDetail.customerCpfCnpj && <p><span className="font-bold text-white">CPF/CNPJ:</span> {selectedOrderDetail.customerCpfCnpj}</p>}
+              {selectedOrderDetail.customerBirthDate && <p><span className="font-bold text-white">Nascimento:</span> {selectedOrderDetail.customerBirthDate}</p>}
               <p><span className="font-bold text-white">Data:</span> {formatDate(selectedOrderDetail.date)} {selectedOrderDetail.orderTime ? `às ${selectedOrderDetail.orderTime}` : ''}</p>
               <p><span className="font-bold text-white">Status:</span> <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[selectedOrderDetail.status]}`}>{STATUS_LABELS[selectedOrderDetail.status]}</span></p>
               <p><span className="font-bold text-white">Canal:</span> {selectedOrderDetail.salesChannel === 'physical' ? '🏪 PDV Loja' : '🌐 Online'}</p>
@@ -6179,7 +6207,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }
 
                     const subtotalVal = (order.items || []).reduce((s, i) => s + i.price * i.quantity, 0);
-                    const html = `<!DOCTYPE html><html><head><title>Pedido ${formatOrderId(order.id)}</title><style>body{font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:0 auto;}h1{font-size:18px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;}table{width:100%;border-collapse:collapse;}th{background:#f0f0f0;padding:6px 8px;text-align:left;font-size:12px;}td{font-size:12px;border-bottom:1px solid #eee;}.total{font-size:16px;font-weight:bold;text-align:right;padding-top:8px;}.info{margin:8px 0;font-size:13px;}.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5e7eb;font-size:11px;}</style></head><body><h1>VERSIORY STORE — PEDIDO ${formatOrderId(order.id)}</h1><div class="info"><b>Cliente:</b> ${order.customerName}</div>${order.customerEmail ? `<div class="info"><b>E-mail:</b> ${order.customerEmail}</div>` : ''} ${order.customerPhone ? `<div class="info"><b>Telefone:</b> ${order.customerPhone}</div>` : ''} ${order.customerCpfCnpj ? `<div class="info"><b>CPF/CNPJ:</b> ${order.customerCpfCnpj}</div>` : ''} <div class="info"><b>Data:</b> ${new Date(order.date).toLocaleString('pt-BR')}</div><div class="info"><b>Canal:</b> ${channelLabel}</div><div class="info"><b>Status:</b> <span class="badge">${statusLabel.toUpperCase()}</span></div>${installmentDetailsHtml}${order.address ? `<div class="info"><b>Endereço:</b> ${order.address}</div>` : ''}<br><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço</th><th>Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><div class="total">Subtotal: R$ ${subtotalVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.discountAmount && order.discountAmount > 0 ? `<div style="text-align:right;font-size:13px;color:green;">Desconto${order.couponCode ? ` (${order.couponCode})` : ''}:-R$ ${order.discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>` : ''}<div class="total">TOTAL: R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.notes ? `<div class="info" style="margin-top:12px;"><b>Observações:</b> ${order.notes}</div>` : ''}<div style="text-align:center;margin-top:24px;font-size:11px;color:#666;">www.versiory.store</div></body></html>`;
+                    const html = `<!DOCTYPE html><html><head><title>Pedido ${formatOrderId(order.id)}</title><style>body{font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:0 auto;}h1{font-size:18px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;}table{width:100%;border-collapse:collapse;}th{background:#f0f0f0;padding:6px 8px;text-align:left;font-size:12px;}td{font-size:12px;border-bottom:1px solid #eee;}.total{font-size:16px;font-weight:bold;text-align:right;padding-top:8px;}.info{margin:8px 0;font-size:13px;}.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#e5e7eb;font-size:11px;}</style></head><body><h1>VERSIORY STORE — PEDIDO ${formatOrderId(order.id)}</h1><div class="info"><b>Cliente:</b> ${order.customerName}</div>${order.customerEmail ? `<div class="info"><b>E-mail:</b> ${order.customerEmail}</div>` : ''} ${order.customerPhone ? `<div class="info"><b>Telefone:</b> ${order.customerPhone}</div>` : ''} ${order.customerCpfCnpj ? `<div class="info"><b>CPF/CNPJ:</b> ${order.customerCpfCnpj}</div>` : ''} ${order.customerBirthDate ? `<div class="info"><b>Nascimento:</b> ${order.customerBirthDate}</div>` : ''} <div class="info"><b>Data:</b> ${new Date(order.date).toLocaleString('pt-BR')}</div><div class="info"><b>Canal:</b> ${channelLabel}</div><div class="info"><b>Status:</b> <span class="badge">${statusLabel.toUpperCase()}</span></div>${installmentDetailsHtml}${order.address ? `<div class="info"><b>Endereço:</b> ${order.address}</div>` : ''}<br><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço</th><th>Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><div class="total">Subtotal: R$ ${subtotalVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.discountAmount && order.discountAmount > 0 ? `<div style="text-align:right;font-size:13px;color:green;">Desconto${order.couponCode ? ` (${order.couponCode})` : ''}:-R$ ${order.discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>` : ''}<div class="total">TOTAL: R$ ${order.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>${order.notes ? `<div class="info" style="margin-top:12px;"><b>Observações:</b> ${order.notes}</div>` : ''}<div style="text-align:center;margin-top:24px;font-size:11px;color:#666;">www.versiory.store</div></body></html>`;
                     const w = window.open('', '_blank', 'width=640,height=800');
                     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
                   }}
@@ -6843,7 +6871,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* REFCOM175: Configurações de Pagamento */}
       {activeTab === 'payment' && (
-        <div className="space-y-6">
+        <div className="max-w-7xl mx-auto w-full space-y-6">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
             <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
               💳 Configurações de Condições de Pagamento

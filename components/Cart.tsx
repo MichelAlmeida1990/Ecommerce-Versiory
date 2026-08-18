@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { CartItem } from '../types';
 import Checkout from './Checkout';
+import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
 
 interface CartProps {
   isOpen: boolean;
@@ -17,7 +18,7 @@ interface CartProps {
 const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove, customerEmail, customerAddress, onOrderComplete }) => {
   // REFCOM138: Usar priceEcommerce para e-commerce checkout
   const total = items.reduce((sum, item) => sum + (item.priceEcommerce || item.price) * item.quantity, 0);
-  const whatsappNumber = '5511958540171';
+  const whatsappNumber = STORE_WHATSAPP_NUMBER;
   const [isCheckoutInfoOpen, setIsCheckoutInfoOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);

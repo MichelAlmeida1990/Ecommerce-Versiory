@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
 
 interface ChatMessage {
   id: string;
@@ -9,7 +10,7 @@ interface ChatMessage {
 
 const ChatWidget: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const whatsappNumber = '5511958540171';
+  const whatsappNumber = STORE_WHATSAPP_NUMBER;
   const supportHours = 'Seg-Sex 9h-18h';
 
   const handleWhatsAppSupport = () => {

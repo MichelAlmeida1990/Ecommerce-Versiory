@@ -9,6 +9,7 @@ interface ReceiptData {
   customerPhone?: string;
   customerEmail?: string;
   customerCpfCnpj?: string; // ERRCOM070
+  customerBirthDate?: string; // REFCOM193
   items: CartItem[];
   total: number;
   paymentMethod?: string;
@@ -24,7 +25,7 @@ interface ReceiptData {
 }
 
 export const generateReceiptHTML = (data: ReceiptData): string => {
-  const { orderId, date, orderTime, customerName, customerAddress, customerPhone, customerEmail, customerCpfCnpj, items, total, paymentMethod, notes, storePolicies, isBudget, salesChannel, discountAmount, discountType, couponCode } = data;
+  const { orderId, date, orderTime, customerName, customerAddress, customerPhone, customerEmail, customerCpfCnpj, customerBirthDate, items, total, paymentMethod, notes, storePolicies, isBudget, salesChannel, discountAmount, discountType, couponCode } = data;
 
   // Verificar se há serviços no pedido
   const hasServices = items.some(item => item.category === 'Serviços');
@@ -86,6 +87,7 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         ${customerPhone ? `<strong>TELEFONE:</strong> ${customerPhone}<br>` : ''}
         ${customerEmail ? `<strong>E-MAIL:</strong> ${customerEmail}<br>` : ''}
         ${customerCpfCnpj ? `<strong>CPF/CNPJ:</strong> ${customerCpfCnpj}<br>` : ''}
+        ${customerBirthDate ? `<strong>NASCIMENTO:</strong> ${customerBirthDate}<br>` : ''}
         ${customerAddress ? `<strong>ENDEREÇO:</strong> ${customerAddress}<br>` : ''}
         ${salesChannel ? `<strong>ORIGEM:</strong> ${salesChannel === 'physical' ? 'PDV Loja' : 'E-commerce (Site)'}` : ''}
       </div>

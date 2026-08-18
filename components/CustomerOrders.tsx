@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Order, Customer, Product } from '../types';
 import DanfePreview from './DanfePreview';
 import { fetchAddressByCep } from '../services/cep';
+import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
 
 interface CustomerOrdersProps {
   customerEmail: string;
@@ -34,6 +35,56 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
     type: 'shipping' as const
   });
   const [loadingCep, setLoadingCep] = useState(false);
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
+  const [orderToReturn, setOrderToReturn] = useState<Order | null>(null);
+  const [isReturning, setIsReturning] = useState(false);
+
+  const canReturnOrder = (order: Order) => {
+    return order.status === 'delivered';
+  };
+
+  const openReturnModal = (order: Order) => {
+    setOrderToReturn(order);
+    setReturnReason('');
+    setShowReturnModal(true);
+  };
+
+  const handleReturnOrder = async () => {
+    if (!orderToReturn || !returnReason.trim()) {
+      alert('⚠️ Por favor, informe o motivo da devolução.');
+      return;
+    }
+
+    if (returnReason.trim().length < 10) {
+      alert('⚠️ O motivo deve ter pelo menos 10 caracteres.');
+      return;
+    }
+
+    setIsReturning(true);
+    try {
+      const { saveOrder } = await import('../services/firebase');
+      const updatedOrder = {
+        ...orderToReturn,
+        status: 'returned' as const,
+        notes: `DEVOLUÇÃO SOLICITADA PELO CLIENTE: ${returnReason.trim()}${orderToReturn.notes ? '\n\n' + orderToReturn.notes : ''}`,
+        returnedAt: new Date().toISOString(),
+        returnReason: returnReason.trim()
+      };
+      await saveOrder(updatedOrder);
+      setOrders(prev => prev.map(o => o.id === orderToReturn.id ? { ...updatedOrder, emitNF: o.emitNF } as any : o));
+      setSelectedOrder({ ...updatedOrder, emitNF: selectedOrder?.emitNF } as any);
+      setShowReturnModal(false);
+      setOrderToReturn(null);
+      setReturnReason('');
+      alert('✅ Devolução solicitada com sucesso! Nossa equipe entrará em contato em até 48h úteis.');
+    } catch (error) {
+      console.error('Erro ao solicitar devolução:', error);
+      alert('Erro ao solicitar devolução. Tente novamente.');
+    } finally {
+      setIsReturning(false);
+    }
+  };
 
   const canCancelOrder = (order: Order) => {
     if (order.status === 'cancelled' || order.status === 'delivered') return false;
@@ -383,6 +434,15 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                               ❌ Cancelar Pedido
                             </button>
                           )}
+                          {canReturnOrder(order) && (
+                            <button
+                              onClick={() => openReturnModal(order)}
+                              disabled={isReturning}
+                              className="w-full flex items-center justify-center gap-2 bg-purple-50 text-purple-600 p-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-purple-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              🔄 Solicitar Devolução
+                            </button>
+                          )}
                           {order.trackingCode && (
                             <button
                               onClick={() => trackOrder(order.trackingCode!)}
@@ -478,7 +538,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                             'Olá! Gostaria de finalizar o pagamento deste pedido, poderia verificar se ainda tem em estoque, quais são as formas de pagamento e os próximos passos?'
                           ].join('\n');
 
-                          const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
+                          const url = `https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
                           window.open(url, '_blank');
                         }}
                         className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-amber-200 transition-all active:scale-95"
@@ -711,6 +771,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                         customerAddress: selectedOrder.address,
                         customerPhone: selectedOrder.customerPhone,
                         customerCpfCnpj: selectedOrder.customerCpfCnpj,
+                        customerBirthDate: selectedOrder.customerBirthDate,
                         items: selectedOrder.items as any,
                         total: selectedOrder.total,
                         paymentMethod: selectedOrder.paymentMethod,
@@ -763,7 +824,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                         `*DETALHE O PROBLEMA:*`,
                         '...'
                       ].join('\n');
-                      const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
+                      const url = `https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
                       window.open(url, '_blank');
                     }}
                     className="flex-1 md:flex-none border-2 border-green-200 hover:border-green-500 text-green-700 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2"
@@ -787,7 +848,7 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                         '',
                         'Olá! Gostaria de falar sobre este pedido específico. Pode me ajudar?'
                       ].join('\n');
-                      window.open(`https://wa.me/5511958540171?text=${encodeURIComponent(message)}`, '_blank');
+                      window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
                     }}
                     className="flex-1 md:flex-none bg-emerald-50 text-emerald-700 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center justify-center gap-2"
                   >
@@ -1010,6 +1071,89 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
                     </>
                   ) : (
                     'Confirmar Cancelamento'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REFCOM208: Modal de Solicitação de Devolução */}
+      {showReturnModal && orderToReturn && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => !isReturning && setShowReturnModal(false)} />
+          <div className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="p-8">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-16 h-16 bg-purple-50 rounded-3xl flex items-center justify-center text-3xl">
+                  🔄
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-black text-slate-900">Solicitar Devolução</h3>
+                  <p className="text-sm text-slate-500 font-medium">Pedido #{orderToReturn.id.slice(0, 8)}</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-6 rounded-3xl mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-bold text-slate-600">Valor do Pedido:</span>
+                  <span className="text-xl font-black text-slate-900">R$ {orderToReturn.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-600">Status atual:</span>
+                  <span className="text-sm font-black text-purple-600">Devolução</span>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-black text-slate-700 mb-2">
+                  Motivo da Devolução *
+                </label>
+                <textarea
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="Por favor, informe o motivo da devolução (mínimo 10 caracteres)..."
+                  className="w-full h-32 px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-purple-500 focus:bg-white outline-none transition-all resize-none font-medium text-slate-900"
+                  disabled={isReturning}
+                  maxLength={500}
+                />
+                <div className="flex justify-between items-center mt-2">
+                  <p className="text-xs text-slate-400 font-medium">
+                    {returnReason.length < 10 ? `Faltam ${10 - returnReason.length} caracteres` : '✅ Motivo válido'}
+                  </p>
+                  <p className="text-xs text-slate-400 font-medium">
+                    {returnReason.length}/500
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-purple-50 border border-purple-200 p-4 rounded-2xl mb-6">
+                <p className="text-xs text-purple-800 font-bold leading-relaxed">
+                  📌 Ao solicitar a devolução, o pedido será atualizado para status "Devolução" e a equipe entrará em contato em até 48h úteis.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => !isReturning && setShowReturnModal(false)}
+                  disabled={isReturning}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-2xl font-black transition-all disabled:opacity-50"
+                >
+                  Voltar
+                </button>
+                <button
+                  onClick={handleReturnOrder}
+                  disabled={isReturning || returnReason.trim().length < 10}
+                  className="flex-1 bg-purple-500 hover:bg-purple-600 text-white py-4 rounded-2xl font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isReturning ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Processando...
+                    </>
+                  ) : (
+                    'Atualizar Status'
                   )}
                 </button>
               </div>

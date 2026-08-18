@@ -103,6 +103,7 @@ export interface Order {
   customerName: string;
   customerPhone?: string;
   customerCpfCnpj?: string; // ERRCOM070
+  customerBirthDate?: string; // REFCOM193: Data de nascimento do cliente no pedido
   date: string;
   orderTime?: string; // ERRCOM083
   total: number;

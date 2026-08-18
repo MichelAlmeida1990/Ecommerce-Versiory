@@ -193,6 +193,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''),
       customerPhone: customerForm.phone || undefined,
       customerCpfCnpj: customerForm.cpf || undefined, // ERRCOM109
+      customerBirthDate: customerForm.birthDate || undefined, // REFCOM193
       date: new Date().toISOString(),
       total,
       status: 'pending',
@@ -224,6 +225,8 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       date: new Date().toLocaleString('pt-BR'),
       customerName: previewOrder.customerName,
       customerPhone: previewOrder.customerPhone,
+      customerCpfCnpj: previewOrder.customerCpfCnpj,
+      customerBirthDate: previewOrder.customerBirthDate,
       customerAddress: previewOrder.address || undefined,
       notes: previewOrder.notes,
       storePolicies: previewOrder.customPolicies || fiscalConfig?.storePolicies,
@@ -296,6 +299,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
       customerEmail: customerForm.email || (customerForm.phone ? `${customerForm.phone}@pdv.local` : ''),
       customerPhone: customerForm.phone || undefined,
       customerCpfCnpj: customerForm.cpf || undefined, // ERRCOM109/ERRCOM116
+      customerBirthDate: customerForm.birthDate || undefined, // REFCOM193
       date: new Date().toISOString(),
       total,
       status: 'delivered',
@@ -419,6 +423,7 @@ const PdvCheckoutModal: React.FC<PdvCheckoutModalProps> = ({
         customerPhone: displayPhone || lastFinishedOrder.customerPhone || undefined,
         customerEmail: displayEmail,
         customerCpfCnpj: lastFinishedOrder.customerCpfCnpj, // ERRCOM110
+        customerBirthDate: lastFinishedOrder.customerBirthDate,
         customerAddress: lastFinishedOrder.address || undefined,
         notes: lastFinishedOrder.notes,
         storePolicies: lastFinishedOrder.customPolicies || fiscalConfig?.storePolicies,

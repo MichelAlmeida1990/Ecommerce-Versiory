@@ -264,6 +264,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         customerName: fullName,
         customerPhone: finalPhone || undefined,
         customerCpfCnpj: finalCpfCnpj || undefined, // ERRCOM070 / ERRCOM081
+        customerBirthDate: customerBirthDate || undefined, // REFCOM193
         date: new Date().toISOString(),
         total: total,
         discountAmount: discount > 0 ? discount : undefined, // ERRCOM108
@@ -430,12 +431,14 @@ const Checkout: React.FC<CheckoutProps> = ({
 
       if (paymentMethod === 'whatsapp') {
         const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, effectiveIsStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : customAddress, paymentMethod);
-        const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
+        const { STORE_WHATSAPP_NUMBER } = await import('../services/firebase');
+        const url = `https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
       } else if (paymentMethod === 'credito') {
         // REFCOM161: Integração WhatsApp automática para vendas em crédito
         const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, effectiveIsStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : finalAddress, paymentMethod);
-        const url = `https://wa.me/5511958540171?text=${encodeURIComponent(message)}`;
+        const { STORE_WHATSAPP_NUMBER } = await import('../services/firebase');
+        const url = `https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
         alert('Pagamento via cartão em desenvolvimento. Seu pedido foi registrado com sucesso!');
       }
@@ -519,6 +522,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       customerAddress: effectiveIsStorePickup ? `Retirada na Loja - ${storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}` : (customAddress || effectiveAddress),
       customerPhone: customerData?.phone || customerPhone,
       customerCpfCnpj: customerData?.cpfCnpj || undefined, // ERRCOM081
+      customerBirthDate: customerData?.birthDate || customerBirthDate || undefined, // REFCOM193
       notes: orderNotes,
       storePolicies: fiscalConfig?.storePolicies,
       items: items.map(item => ({ ...item, productId: item.id, price: effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), installments: paymentMethod === 'credito' ? installments : 1 })), 

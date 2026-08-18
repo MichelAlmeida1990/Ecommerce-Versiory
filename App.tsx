@@ -473,7 +473,7 @@ const App: React.FC = () => {
                 <h4 className="font-bold mb-4 text-white">Links Rápidos</h4>
                 <ul className="space-y-2 text-white font-medium">
                   <li><a href="#" onClick={(e) => { e.preventDefault(); setInfoPage('about'); }} className="hover:text-versiory-coral transition-colors cursor-pointer">Sobre Nós</a></li>
-                  <li><a href="https://wa.me/5511958540171" target="_blank" rel="noopener noreferrer" className="hover:text-versiory-coral transition-colors">Contato</a></li>
+                  <li><a href={`https://wa.me/5511958540171`} target="_blank" rel="noopener noreferrer" className="hover:text-versiory-coral transition-colors">Contato</a></li>
                   <li><a href="/admin.html" className="text-versiory-coral hover:brightness-110 transition-colors font-bold">Painel Admin</a></li>
                   <li><a href="#" onClick={(e) => { e.preventDefault(); setInfoPage('privacy'); }} className="hover:text-versiory-coral transition-colors cursor-pointer">Política de Privacidade</a></li>
                   <li><a href="#" onClick={(e) => { e.preventDefault(); setInfoPage('terms'); }} className="hover:text-versiory-coral transition-colors cursor-pointer">Termos de Uso</a></li>

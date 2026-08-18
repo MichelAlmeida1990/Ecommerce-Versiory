@@ -101,7 +101,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
 
           {product.sizes && (
             <div className="mb-6">
-              <h3 className="text-lg font-bold text-slate-800 mb-3">📏 Selecione o Tamanho</h3>
+              <h3 className="text-lg font-bold text-slate-800 mb-3">
+                {product.category === 'Serviços' ? '📋 Tipo de Serviço' : '📏 Selecione o Tamanho'}
+              </h3>
               <div className="flex flex-wrap gap-2">
                 {product.sizes.split(',').map(size => {
                   const trimmedSize = size.trim();
@@ -144,7 +146,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
 
           {product.colors && (
             <div className="mb-6">
-              <h3 className="text-lg font-bold text-slate-800 mb-3">🎨 Selecione a Cor</h3>
+              <h3 className="text-lg font-bold text-slate-800 mb-3">
+                {product.category === 'Serviços' ? '🕒 Horário Disponível' : '🎨 Selecione a Cor'}
+              </h3>
               <div className="flex flex-wrap gap-2">
                 {product.colors.split(',').map(color => {
                   const trimmedColor = color.trim();
@@ -194,6 +198,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
               {colorError && (
                 <p className="text-red-500 font-bold mt-2 animate-pulse">⚠️ Selecione uma cor</p>
               )}
+            </div>
+          )}
+
+          {product.category === 'Serviços' && product.serviceAttributes && (
+            <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-2">Características do Serviço</h3>
+              <p className="text-sm text-slate-700 whitespace-pre-line">{product.serviceAttributes.caracteristicas || product.serviceAttributes.descricao || ''}</p>
             </div>
           )}
 
