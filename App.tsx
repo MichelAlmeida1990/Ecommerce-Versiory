@@ -47,6 +47,8 @@ const App: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [categoriesList, setCategoriesList] = useState<string[]>([]);
   const [infoPage, setInfoPage] = useState<'about' | 'privacy' | 'terms' | 'faq' | 'returns' | 'shipping' | 'payment' | null>(null);
+  // REFCOM218: Filtro de ordenação de produtos
+  const [sortBy, setSortBy] = useState<'default' | 'price-asc' | 'price-desc' | 'rating'>('default');
 
   // REFCOM210: Banners do e-commerce
   const [bannerConfig, setBannerConfig] = useState(() => getBannerConfig() || getDefaultBannerConfig());
@@ -234,7 +236,7 @@ const App: React.FC = () => {
   // -------------------------------
 
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
+    let result = products.filter(p => {
       // ERRCOM105: Filtrar inativos na vitrine
       if (p.active === false) return false;
 
@@ -248,7 +250,26 @@ const App: React.FC = () => {
 
       return matchesCategory && (nameMatch || descMatch || catMatch);
     });
-  }, [products, activeCategory, searchQuery]);
+
+    // REFCOM218: Aplicar ordenação de produtos
+    switch (sortBy) {
+      case 'price-asc':
+        result.sort((a, b) => (a.priceEcommerce || a.price) - (b.priceEcommerce || b.price));
+        break;
+      case 'price-desc':
+        result.sort((a, b) => (b.priceEcommerce || b.price) - (a.priceEcommerce || a.price));
+        break;
+      case 'rating':
+        result.sort((a, b) => b.rating - a.rating);
+        break;
+      case 'default':
+      default:
+        // Mantém ordem original (pode ser ordenada por mais vendidos no futuro)
+        break;
+    }
+
+    return result;
+  }, [products, activeCategory, searchQuery, sortBy]);
 
   const addToCart = (product: Product, selectedSize?: string, selectedColor?: string) => {
     // Validação de estoque (Item 17)
@@ -513,8 +534,26 @@ const App: React.FC = () => {
                   </div>
 
                   <section className="mb-6">
-                    <h2 className="text-2xl font-black text-slate-900 mb-2">Produtos em Destaque</h2>
-                    <p className="text-slate-600">{filteredProducts.length} produtos encontrados</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div>
+                        <h2 className="text-2xl font-black text-slate-900 mb-2">Produtos em Destaque</h2>
+                        <p className="text-slate-600">{filteredProducts.length} produtos encontrados</p>
+                      </div>
+                      {/* REFCOM218: Filtro de ordenação */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm font-bold text-slate-700">Ordenar por:</label>
+                        <select
+                          value={sortBy}
+                          onChange={(e) => setSortBy(e.target.value as any)}
+                          className="px-4 py-2 rounded-xl border-2 border-slate-200 text-slate-700 font-medium focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral outline-none bg-white hover:border-slate-300 transition-all"
+                        >
+                          <option value="default">Padrão</option>
+                          <option value="price-asc">Menor Preço</option>
+                          <option value="price-desc">Maior Preço</option>
+                          <option value="rating">Melhor Avaliação</option>
+                        </select>
+                      </div>
+                    </div>
                   </section>
 
                   <div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">

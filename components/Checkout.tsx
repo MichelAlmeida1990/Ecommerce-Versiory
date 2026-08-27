@@ -99,7 +99,7 @@ const Checkout: React.FC<CheckoutProps> = ({
   }, [customerEmail, customerAddress]);
 
   const hasService = items.some(item => item.category === 'Serviços');
-  const effectiveIsStorePickup = isStorePickup && !hasService;
+  const effectiveIsStorePickup = isStorePickup;
 
   // Carregar dados do cliente ao abrir
   React.useEffect(() => {
@@ -142,10 +142,20 @@ const Checkout: React.FC<CheckoutProps> = ({
 
   // ERRCOM134: No checkout online, priorizar priceEcommerce
   // REFCOM169: Se for Retire na Loja, usar pricePOS
+  // REFCOM211: Para serviços, aplicar preço baseado no método de entrega (Retira Loja = pricePOS, Entrega Normal = priceEcommerce)
   const subtotal = items.reduce((sum, item) => {
-    const activePrice = effectiveIsStorePickup
-      ? (item.pricePOS || item.price)
-      : (item.priceEcommerce || item.price);
+    let activePrice: number;
+    
+    if (item.category === 'Serviços') {
+      // REFCOM211: Serviços usam preço baseado no método de entrega
+      activePrice = effectiveIsStorePickup
+        ? (item.pricePOS || item.price)
+        : (item.priceEcommerce || item.price);
+    } else {
+      // Produtos regulares sempre usam priceEcommerce no checkout online
+      activePrice = item.priceEcommerce || item.price;
+    }
+    
     return sum + activePrice * item.quantity;
   }, 0);
   const total = Math.max(0, subtotal - discount);
@@ -273,12 +283,17 @@ const Checkout: React.FC<CheckoutProps> = ({
         address: effectiveIsStorePickup ? `Retirada na Loja - ${storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}` : finalAddress,
         estimatedDelivery: effectiveIsStorePickup ? 'Retirada imediata (Seg-Sex: 09h às 18h)' : '5 a 10 dias úteis', // REFCOM169
         items: items.map(item => {
+          // REFCOM211: Para serviços, aplicar preço baseado no método de entrega
+          const itemPrice = item.category === 'Serviços'
+            ? (effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price))
+            : (item.priceEcommerce || item.price);
+          
           const orderItem: any = {
             productId: item.id,
             name: item.name,
             quantity: item.quantity,
-            price: effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169
-            priceEcommerce: effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), // REFCOM169: Salvar preço correto baseado em isStorePickup
+            price: itemPrice, // REFCOM169/REFCOM211
+            priceEcommerce: itemPrice, // REFCOM169/REFCOM211: Salvar preço correto baseado em categoria e isStorePickup
             image: item.image,
             description: item.description,
             selectedSize: item.selectedSize,
@@ -294,6 +309,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         orderTime: new Date().toLocaleTimeString('pt-BR'), // ERRCOM083
         installments: paymentMethod === 'credito' ? installments : 1, // ERRCOM088
         paymentMethod: paymentMethod, // REFCOM135: Garantir que paymentMethod seja salvo
+        stockDecremented: true, // REFCOM219: Marcar que estoque já foi baixado no checkout (status reserved)
         installmentDetails: paymentMethod === 'credito' && installments > 1 ? (() => {
           const cardRate = items[0]?.cardRate || 0;
           return calculateInstallments({
@@ -480,7 +496,10 @@ const Checkout: React.FC<CheckoutProps> = ({
         if (item.selectedSize) details.push(`Tamanho: ${item.selectedSize}`);
         if (item.selectedColor) details.push(`Cor: ${item.selectedColor}`);
         const detailsStr = details.length > 0 ? ` (${details.join(', ')})` : '';
-        const unitPrice = effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price);
+        // REFCOM211: Para serviços, aplicar preço baseado no método de entrega
+        const unitPrice = item.category === 'Serviços'
+          ? (effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price))
+          : (item.priceEcommerce || item.price);
         return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${(unitPrice * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       }),
       '',
@@ -525,7 +544,13 @@ const Checkout: React.FC<CheckoutProps> = ({
       customerBirthDate: customerData?.birthDate || customerBirthDate || undefined, // REFCOM193
       notes: orderNotes,
       storePolicies: fiscalConfig?.storePolicies,
-      items: items.map(item => ({ ...item, productId: item.id, price: effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price), installments: paymentMethod === 'credito' ? installments : 1 })), 
+      items: items.map(item => {
+        // REFCOM211: Para serviços, aplicar preço baseado no método de entrega
+        const itemPrice = item.category === 'Serviços'
+          ? (effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price))
+          : (item.priceEcommerce || item.price);
+        return { ...item, productId: item.id, price: itemPrice, installments: paymentMethod === 'credito' ? installments : 1 };
+      }), 
       total: total,
       paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod, // REFCOM135: Salvar paymentMethod como 'credito' para verificação correta
       salesChannel: 'online',
@@ -607,7 +632,10 @@ const Checkout: React.FC<CheckoutProps> = ({
                     </div>
                   </div>
                   <p className="font-bold text-slate-900 whitespace-nowrap">
-                    R$ {((effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price)) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {/* REFCOM211: Para serviços, aplicar preço baseado no método de entrega */}
+                    R$ {((item.category === 'Serviços'
+                      ? (effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price))
+                      : (item.priceEcommerce || item.price)) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
               ))}
@@ -661,7 +689,18 @@ const Checkout: React.FC<CheckoutProps> = ({
             {/* REFCOM169: Opção Retire na Loja */}
             <div className="grid grid-cols-2 gap-3 mb-6">
               <button
-                onClick={() => { setIsStorePickup(false); setSelectedAddressId(customerData?.addresses?.[0]?.id || 'manual'); }}
+                onClick={() => { 
+                  setIsStorePickup(false); 
+                  if (customerData?.addresses && customerData.addresses.length > 0) {
+                    const defaultAddr = customerData.addresses.find(a => a.isDefault) || customerData.addresses[0];
+                    setSelectedAddressId(defaultAddr.id || 'default_0');
+                    const fullAddr = `${defaultAddr.street}, ${defaultAddr.number}${defaultAddr.complement ? ` - ${defaultAddr.complement}` : ''}, ${defaultAddr.neighborhood}, ${defaultAddr.city} - ${defaultAddr.state}, CEP: ${defaultAddr.zipCode}`;
+                    setCustomAddress(fullAddr);
+                  } else {
+                    setSelectedAddressId('manual');
+                    setCustomAddress(customerAddress || '');
+                  }
+                }}
                 className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${!isStorePickup ? 'border-versiory-coral bg-versiory-coral/5' : 'border-slate-100 bg-white'}`}
               >
                 <span className="text-xl">🚚</span>

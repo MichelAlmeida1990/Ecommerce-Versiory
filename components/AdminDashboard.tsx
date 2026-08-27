@@ -1938,11 +1938,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      // REFCOM132: Baixa/estorno de estoque por status — todos os itens participam
-      // Baixar: Pagamento Efetuado, Em Processamento, Enviado, Entregue
-      // Estornar: Aguardando Pagamento, Cancelado, Orçamento, Devolução
+      // REFCOM132/REFCOM219: Baixa/estorno de estoque por status — todos os itens participam
+      // Baixar: Reservado, Pagamento Efetuado, Em Processamento, Enviado, Entregue
+      // Estornar: Cancelado, Devolução
+      // REFCOM219: Estoque deve ser baixado apenas uma vez (no momento da venda/Reservado)
       const stockDecrStatuses = ["paid", "processing", "shipped", "delivered", "reserved"];
-      const stockIncrStatuses = ["pending", "cancelled", "budget", "returned"];
+      const stockIncrStatuses = ["cancelled", "returned"];
       const isNowDecr = stockDecrStatuses.includes(updatedOrder.status);
       const wasDecr = stockDecrStatuses.includes(orderToUpdate.status);
 
@@ -1951,11 +1952,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         updatedOrder.status === "cancelled" && orderToUpdate.status === "cancelled";
 
       if (!isSameCancelledStatus) {
-        // REFCOM132: Todos os itens participam (não só serviços/online)
-        if (isNowDecr && !wasDecr && !updatedOrder.stockDecremented) {
+        // REFCOM132/REFCOM219: Todos os itens participam (não só serviços/online)
+        // REFCOM219: Só decrementa se ainda não foi decrementado (stockDecremented === false)
+        if (isNowDecr && !updatedOrder.stockDecremented) {
           finalProducts = await updateStockProgressively(updatedOrder, "decrement");
           updatedOrder.stockDecremented = true;
-        } else if (stockIncrStatuses.includes(updatedOrder.status) && wasDecr && updatedOrder.stockDecremented) {
+        } else if (stockIncrStatuses.includes(updatedOrder.status) && updatedOrder.stockDecremented) {
+          // REFCOM219: Estornar estoque quando status muda para Cancelado ou Devolução
           finalProducts = await updateStockProgressively(updatedOrder, "increment");
           updatedOrder.stockDecremented = false;
         }
@@ -2190,8 +2193,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const finalSize = size || pdvModalSelection.size || selectedSizes[product.id];
     const finalColor = color || pdvModalSelection.color; // Cor geralmente vem do modal no PDV
 
-    // REFCOM213: Não exigir tamanho e cor para serviços
+    // REFCOM213/REFCOM216: Validação de tamanho e cor
     const isService = product.category === 'Serviços';
+    
+    // Para produtos regulares, exigir tamanho e cor se definidos
     if (!isService && product.sizes && !finalSize) {
       window.alert('Selecione um tamanho antes de adicionar ao carrinho.');
       return;
@@ -2199,6 +2204,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     if (!isService && product.colors && !finalColor) {
       window.alert('Selecione uma cor antes de adicionar ao carrinho.');
+      return;
+    }
+
+    // REFCOM216: Para serviços, exigir tipo e horário se estiverem definidos
+    if (isService && product.sizes && !finalSize) {
+      window.alert('Selecione o tipo de serviço antes de adicionar ao carrinho.');
+      return;
+    }
+
+    if (isService && product.colors && !finalColor) {
+      window.alert('Selecione o horário disponível antes de adicionar ao carrinho.');
       return;
     }
 
@@ -2210,8 +2226,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       availableStock = product.stockBySize[finalSize] || 0;
     }
 
-    // REFCOM213: Serviços não têm verificação de estoque
-    if (!isService && availableStock <= 0) {
+    // REFCOM216: Validar estoque para serviços também (removendo isenção anterior)
+    if (availableStock <= 0) {
       window.alert('Produto/Variante sem estoque!');
       return;
     }
@@ -2317,12 +2333,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       order.orderTime = new Date().toLocaleTimeString('pt-BR'); // ERRCOM083: Hora com segundos
       order.accountedInCash = false; // Inicializa falso
 
-      // ERRCOM112: Trava de Estoque Síncrona no Admin/PDV
+      // ERRCOM112/REFCOM216: Trava de Estoque Síncrona no Admin/PDV (incluindo serviços)
       if (!isBudget) {
         const { getProducts } = await import('../services/firebase');
         const currentProducts = await getProducts();
         for (const cartItem of pdvCart) {
-          if (cartItem.product.category === 'Serviços') continue;
+          // REFCOM216: Validar estoque para serviços também (removendo isenção anterior)
           const actualProduct = currentProducts.find(p => p.id === cartItem.product.id);
           if (!actualProduct) {
             const msg = `❌ O produto ${cartItem.product.name} não está mais disponível no catálogo.`;
@@ -3105,6 +3121,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Top Cards — ERRCOM122: Cards Vendas Online e PDV Loja adicionados */}
+            {/* REFCOM217: Card Devoluções adicionado */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
                 <div className="text-3xl font-bold text-white mb-2">{stats.totalProducts}</div>
@@ -3143,6 +3160,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {stats.pdvRevenue > 0 || dashboardChannelFilter !== 'online' ? formatCurrency(stats.pdvRevenue) : formatCurrency(0)}
                 </div>
                 <div className="text-slate-400 font-medium text-sm">🏪 Vendas PDV — detalhes</div>
+              </button>
+              {/* REFCOM217: Card Devoluções */}
+              <button
+                onClick={() => {
+                  const returnOrders = orders.filter(o => o.status === 'returned');
+                  if (returnOrders.length === 0) {
+                    alert('Nenhuma devolução no momento.');
+                    return;
+                  }
+                  setOrderFilter('returned');
+                }}
+                className="bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border border-orange-500/30 shadow-lg text-left transition-all"
+              >
+                <div className="text-3xl font-bold text-orange-400 mb-2">
+                  {orders.filter(o => o.status === 'returned').length}
+                </div>
+                <div className="text-slate-400 font-medium text-sm">↩️ Devoluções</div>
               </button>
             </div>
 
@@ -5249,7 +5283,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <input
                               type="text"
                               value={productForm.sizes || ''}
-                              onChange={event => setProductForm(prev => ({ ...prev, sizes: event.target.value }))}
+                              onChange={event => {
+                                const newSizes = event.target.value;
+                                const newSizeArray = newSizes ? newSizes.split(',').map(s => s.trim()).filter(s => s) : [];
+                                
+                                // REFCOM215: Preservar dados de estoque existentes ao editar tamanhos
+                                const existingStockBySize = productForm.stockBySize || {};
+                                const existingStockBySizeColor = productForm.stockBySizeColor || {};
+                                
+                                const newStockBySize: { [size: string]: number } = {};
+                                const newStockBySizeColor: { [key: string]: number } = {};
+                                
+                                // Preservar stockBySize para tamanhos que continuam existindo
+                                newSizeArray.forEach(size => {
+                                  if (existingStockBySize[size] !== undefined) {
+                                    newStockBySize[size] = existingStockBySize[size];
+                                  } else {
+                                    newStockBySize[size] = 0;
+                                  }
+                                });
+                                
+                                // Preservar stockBySizeColor para combinações que continuam existindo
+                                const colorArray = productForm.colors ? productForm.colors.split(',').map(c => c.trim()).filter(c => c) : [];
+                                if (colorArray.length > 0) {
+                                  newSizeArray.forEach(size => {
+                                    colorArray.forEach(color => {
+                                      const key = `${size}-${color}`;
+                                      if (existingStockBySizeColor[key] !== undefined) {
+                                        newStockBySizeColor[key] = existingStockBySizeColor[key];
+                                      } else {
+                                        newStockBySizeColor[key] = 0;
+                                      }
+                                    });
+                                  });
+                                }
+                                
+                                setProductForm(prev => ({
+                                  ...prev,
+                                  sizes: newSizes,
+                                  stockBySize: newStockBySize,
+                                  stockBySizeColor: colorArray.length > 0 ? newStockBySizeColor : {}
+                                }));
+                              }}
                               className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
                               placeholder={productForm.category === 'Serviços' ? 'Selecione o tipo de serviço' : 'Ex: P, M, G, GG'}
                             />
@@ -5262,7 +5337,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <input
                               type="text"
                               value={productForm.colors || ''}
-                              onChange={event => setProductForm(prev => ({ ...prev, colors: event.target.value }))}
+                              onChange={event => {
+                                const newColors = event.target.value;
+                                const newColorArray = newColors ? newColors.split(',').map(c => c.trim()).filter(c => c) : [];
+                                
+                                // REFCOM215: Preservar dados de estoque existentes ao editar cores
+                                const existingStockBySizeColor = productForm.stockBySizeColor || {};
+                                const sizeArray = productForm.sizes ? productForm.sizes.split(',').map(s => s.trim()).filter(s => s) : [];
+                                
+                                const newStockBySizeColor: { [key: string]: number } = {};
+                                
+                                // Preservar stockBySizeColor para combinações que continuam existindo
+                                if (sizeArray.length > 0 && newColorArray.length > 0) {
+                                  sizeArray.forEach(size => {
+                                    newColorArray.forEach(color => {
+                                      const key = `${size}-${color}`;
+                                      if (existingStockBySizeColor[key] !== undefined) {
+                                        newStockBySizeColor[key] = existingStockBySizeColor[key];
+                                      } else {
+                                        newStockBySizeColor[key] = 0;
+                                      }
+                                    });
+                                  });
+                                }
+                                
+                                setProductForm(prev => ({
+                                  ...prev,
+                                  colors: newColors,
+                                  stockBySizeColor: newStockBySizeColor
+                                }));
+                              }}
                               className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral transition-all outline-none bg-slate-50 focus:bg-white text-slate-900"
                               placeholder={productForm.category === 'Serviços' ? 'Selecione o horário disponível' : 'Ex: Preto, Branco, Vermelho, Azul'}
                             />

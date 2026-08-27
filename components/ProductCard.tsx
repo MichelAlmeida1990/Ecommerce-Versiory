@@ -20,6 +20,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
     const isService = product.category === 'Serviços';
     let hasError = false;
 
+    // REFCOM216: Validação para produtos regulares
     if (!isService && product.sizes && !selectedSize) {
       setShowSizeError(true);
       setTimeout(() => setShowSizeError(false), 2000);
@@ -32,22 +33,43 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
       hasError = true;
     }
 
+    // REFCOM216: Validação para serviços - exigir tipo e horário se estiverem definidos
+    if (isService && product.sizes && !selectedSize) {
+      setShowSizeError(true);
+      setTimeout(() => setShowSizeError(false), 2000);
+      hasError = true;
+    }
+
+    if (isService && product.colors && !selectedColor) {
+      setShowColorError(true);
+      setTimeout(() => setShowColorError(false), 2000);
+      hasError = true;
+    }
+
     if (hasError) return;
 
-    // ERRCOM077: Validação adicional de estoque na vitrine
+    // REFCOM216: Validação de estoque para produtos e serviços
     let stock = product.stock || 0;
-    if (!isService && selectedSize && selectedColor && product.stockBySizeColor) {
+    if (selectedSize && selectedColor && product.stockBySizeColor) {
       stock = product.stockBySizeColor[`${selectedSize}-${selectedColor}`] || 0;
-    } else if (!isService && selectedSize && product.stockBySize) {
+    } else if (selectedSize && product.stockBySize) {
       stock = product.stockBySize[selectedSize] || 0;
     }
 
-    if (stock <= 0 && !isService) {
+    // REFCOM216: Validar estoque para serviços também
+    if (stock <= 0) {
       alert('⚠️ Este item (nesta variação) está temporariamente sem estoque.');
       return;
     }
 
-    onAddToCart(product, isService ? undefined : (selectedSize || undefined), isService ? undefined : (selectedColor || undefined));
+    // REFCOM216: Para serviços com tamanhos/cores definidos, passar os valores selecionados
+    // Para serviços sem tamanhos/cores definidos, passar undefined
+    const shouldPassSizeColor = isService ? (product.sizes || product.colors) : true;
+    onAddToCart(
+      product, 
+      shouldPassSizeColor ? (selectedSize || undefined) : undefined, 
+      shouldPassSizeColor ? (selectedColor || undefined) : undefined
+    );
     setSelectedSize('');
     setSelectedColor('');
   };
@@ -144,7 +166,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
             </div>
             {showSizeError && (
               <p className="text-xs text-red-600 font-bold mt-2 animate-pulse">
-                ⚠️ Selecione um tamanho
+                ⚠️ {product.category === 'Serviços' ? 'Selecione o tipo de serviço' : 'Selecione um tamanho'}
               </p>
             )}
           </div>
@@ -191,7 +213,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
             </div>
             {showColorError && (
               <p className="text-xs text-red-600 font-bold mt-2 animate-pulse">
-                ⚠️ Selecione uma cor
+                ⚠️ {product.category === 'Serviços' ? 'Selecione o horário disponível' : 'Selecione uma cor'}
               </p>
             )}
           </div>

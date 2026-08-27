@@ -18,15 +18,30 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
   if (!product) return null;
 
   const handleAddToCart = () => {
+    const isService = product.category === 'Serviços';
     let hasError = false;
 
-    if (product.sizes && !selectedSize) {
+    // REFCOM216: Validação para produtos regulares
+    if (!isService && product.sizes && !selectedSize) {
       setSizeError(true);
       setTimeout(() => setSizeError(false), 2000);
       hasError = true;
     }
 
-    if (product.colors && !selectedColor) {
+    if (!isService && product.colors && !selectedColor) {
+      setColorError(true);
+      setTimeout(() => setColorError(false), 2000);
+      hasError = true;
+    }
+
+    // REFCOM216: Validação para serviços - exigir tipo e horário se estiverem definidos
+    if (isService && product.sizes && !selectedSize) {
+      setSizeError(true);
+      setTimeout(() => setSizeError(false), 2000);
+      hasError = true;
+    }
+
+    if (isService && product.colors && !selectedColor) {
       setColorError(true);
       setTimeout(() => setColorError(false), 2000);
       hasError = true;
@@ -34,7 +49,28 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
 
     if (hasError) return;
 
-    onAddToCart(product, selectedSize, selectedColor);
+    // REFCOM216: Validação de estoque para produtos e serviços
+    let stock = product.stock || 0;
+    if (selectedSize && selectedColor && product.stockBySizeColor) {
+      stock = product.stockBySizeColor[`${selectedSize}-${selectedColor}`] || 0;
+    } else if (selectedSize && product.stockBySize) {
+      stock = product.stockBySize[selectedSize] || 0;
+    }
+
+    // REFCOM216: Validar estoque para serviços também
+    if (stock <= 0) {
+      alert('⚠️ Este item (nesta variação) está temporariamente sem estoque.');
+      return;
+    }
+
+    // REFCOM216: Para serviços com tamanhos/cores definidos, passar os valores selecionados
+    // Para serviços sem tamanhos/cores definidos, passar undefined
+    const shouldPassSizeColor = isService ? (product.sizes || product.colors) : true;
+    onAddToCart(
+      product, 
+      shouldPassSizeColor ? (selectedSize || undefined) : undefined, 
+      shouldPassSizeColor ? (selectedColor || undefined) : undefined
+    );
     onClose();
   };
 
@@ -139,7 +175,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                 })}
               </div>
               {sizeError && (
-                <p className="text-red-500 font-bold mt-2 animate-pulse">⚠️ Selecione um tamanho</p>
+                <p className="text-red-500 font-bold mt-2 animate-pulse">⚠️ {product.category === 'Serviços' ? 'Selecione o tipo de serviço' : 'Selecione um tamanho'}</p>
               )}
             </div>
           )}
@@ -196,7 +232,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
                 })}
               </div>
               {colorError && (
-                <p className="text-red-500 font-bold mt-2 animate-pulse">⚠️ Selecione uma cor</p>
+                <p className="text-red-500 font-bold mt-2 animate-pulse">⚠️ {product.category === 'Serviços' ? 'Selecione o horário disponível' : 'Selecione uma cor'}</p>
               )}
             </div>
           )}
