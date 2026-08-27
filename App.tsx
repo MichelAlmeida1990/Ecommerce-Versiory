@@ -12,6 +12,7 @@ import LoginRegister from './components/LoginRegister';
 import Tracking from './components/Tracking';
 import ProductDetail from './components/ProductDetail';
 import { getProducts, getCategories, subscribeToProducts } from './services/firebase';
+import { getBannerConfig, getDefaultBannerConfig } from './services/bannerConfig';
 
 
 const PrivateRoute: React.FC<{ children: React.ReactNode; isAuthenticated: boolean; isLoading: boolean }> = ({ children, isAuthenticated, isLoading }) => {
@@ -46,6 +47,18 @@ const App: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [categoriesList, setCategoriesList] = useState<string[]>([]);
   const [infoPage, setInfoPage] = useState<'about' | 'privacy' | 'terms' | 'faq' | 'returns' | 'shipping' | 'payment' | null>(null);
+
+  // REFCOM210: Banners do e-commerce
+  const [bannerConfig, setBannerConfig] = useState(() => getBannerConfig() || getDefaultBannerConfig());
+  const [bannerIndex, setBannerIndex] = useState(0);
+
+  useEffect(() => {
+    if (bannerConfig.mode !== 'autoplay' || bannerConfig.banners.length <= 1) return;
+    const t = setInterval(() => {
+      setBannerIndex(i => (i + 1) % bannerConfig.banners.length);
+    }, 4000);
+    return () => clearInterval(t);
+  }, [bannerConfig]);
 
 
   useEffect(() => {
@@ -373,32 +386,111 @@ const App: React.FC = () => {
               path="/"
               element={
                 <>
-                  {/* Hero Banner com Imagem */}
-                  <section className="mb-12 relative rounded-3xl overflow-hidden shadow-2xl h-[400px]">
-                    <img
-                      src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&h=400&fit=crop"
-                      alt="Banner"
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent"></div>
-                    <div className="relative h-full flex items-center px-8 md:px-12">
-                      <div className="max-w-2xl">
-                        <h1 className="text-4xl md:text-6xl font-black mb-4 text-white drop-shadow-lg">Versiory Store</h1>
-                        <p className="text-xl md:text-2xl font-medium mb-6 text-white drop-shadow-md">Transformando ideias em sucesso.</p>
-                        <div className="flex gap-4 flex-wrap">
-                          <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                            🚀 Frete Grátis Brasil
+                  {/* REFCOM210: Hero Banner Dinâmico */}
+                  {bannerConfig.banners.length > 0 ? (
+                    <section className="mb-12 relative rounded-3xl overflow-hidden shadow-2xl h-[400px]">
+                      {bannerConfig.banners.map((banner, index) => (
+                        <div
+                          key={banner.id}
+                          className={`absolute inset-0 w-full h-full transition-opacity duration-500 ${
+                            index === bannerIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                          }`}
+                        >
+                          <img
+                            src={banner.image}
+                            alt="Banner"
+                            className="w-full h-full object-cover"
+                            onClick={() => {
+                              if (banner.linkCategory) {
+                                const categoryName = categoriesList.find(c => c === banner.linkCategory);
+                                if (categoryName) {
+                                  setActiveCategory(categoryName as Category);
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }
+                              }
+                            }}
+                            style={{ cursor: banner.linkCategory ? 'pointer' : 'default' }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent"></div>
+                          <div className="relative h-full flex items-center px-8 md:px-12">
+                            <div className="max-w-2xl">
+                              <h1 className="text-4xl md:text-6xl font-black mb-4 text-white drop-shadow-lg">Versiory Store</h1>
+                              <p className="text-xl md:text-2xl font-medium mb-6 text-white drop-shadow-md">Transformando ideias em sucesso.</p>
+                              <div className="flex gap-4 flex-wrap">
+                                <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
+                                  🚀 Frete Grátis Brasil
+                                </div>
+                                <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
+                                  🔒 Pagamento Seguro
+                                </div>
+                                <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
+                                  ⚡ Entrega Rápida
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                            🔒 Pagamento Seguro
-                          </div>
-                          <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                            ⚡ Entrega Rápida
+                        </div>
+                      ))}
+                      {/* REFCOM210: Navegação manual */}
+                      {bannerConfig.mode === 'manual' && bannerConfig.banners.length > 1 && (
+                        <>
+                          <button
+                            onClick={() => setBannerIndex(i => (i - 1 + bannerConfig.banners.length) % bannerConfig.banners.length)}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 text-white w-12 h-12 rounded-full flex items-center justify-center transition-all"
+                          >
+                            ◀
+                          </button>
+                          <button
+                            onClick={() => setBannerIndex(i => (i + 1) % bannerConfig.banners.length)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 text-white w-12 h-12 rounded-full flex items-center justify-center transition-all"
+                          >
+                            ▶
+                          </button>
+                        </>
+                      )}
+                      {/* Indicadores */}
+                      {bannerConfig.banners.length > 1 && (
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                          {bannerConfig.banners.map((_, index) => (
+                            <button
+                              key={index}
+                              onClick={() => setBannerIndex(index)}
+                              className={`w-3 h-3 rounded-full transition-all ${
+                                index === bannerIndex ? 'bg-white scale-125' : 'bg-white/50'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  ) : (
+                    /* Banner padrão quando não há banners configurados */
+                    <section className="mb-12 relative rounded-3xl overflow-hidden shadow-2xl h-[400px]">
+                      <img
+                        src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&h=400&fit=crop"
+                        alt="Banner"
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent"></div>
+                      <div className="relative h-full flex items-center px-8 md:px-12">
+                        <div className="max-w-2xl">
+                          <h1 className="text-4xl md:text-6xl font-black mb-4 text-white drop-shadow-lg">Versiory Store</h1>
+                          <p className="text-xl md:text-2xl font-medium mb-6 text-white drop-shadow-md">Transformando ideias em sucesso.</p>
+                          <div className="flex gap-4 flex-wrap">
+                            <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
+                              🚀 Frete Grátis Brasil
+                            </div>
+                            <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
+                              🔒 Pagamento Seguro
+                            </div>
+                            <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
+                              ⚡ Entrega Rápida
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </section>
+                    </section>
+                  )}
 
                   <section className="mb-8">
                     <h2 className="text-2xl font-black text-slate-900 mb-2">Categorias</h2>
