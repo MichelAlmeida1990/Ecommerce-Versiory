@@ -13,6 +13,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [showSizeError, setShowSizeError] = useState(false);
   const [showColorError, setShowColorError] = useState(false);
+  // REFCOM214: Estado para controlar expansão das características do serviço
+  const [showServiceDetails, setShowServiceDetails] = useState(false);
 
   const handleAddToCart = () => {
     const isService = product.category === 'Serviços';
@@ -196,8 +198,18 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
         )}
 
         {product.category === 'Serviços' && product.serviceAttributes && (
-          <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-            <p className="text-xs text-slate-700 whitespace-pre-line">{product.serviceAttributes.caracteristicas || product.serviceAttributes.descricao || ''}</p>
+          <div className="mb-4">
+            <button
+              onClick={() => setShowServiceDetails(!showServiceDetails)}
+              className="text-[10px] font-bold uppercase tracking-widest text-versiory-coral hover:text-versiory-ink transition-colors text-left"
+            >
+              {showServiceDetails ? '▼ Menos detalhes' : '▶ Mais detalhes'}
+            </button>
+            {showServiceDetails && (
+              <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <p className="text-xs text-slate-700 whitespace-pre-line">{product.serviceAttributes.caracteristicas || product.serviceAttributes.descricao || ''}</p>
+              </div>
+            )}
           </div>
         )}
 
