@@ -12,7 +12,8 @@ import {
   SizeChart,
   ManualRevenue,
   SmtpSettings,
-  OrderInstallment
+  OrderInstallment,
+  BannerConfig
 } from '../types';
 import PdvCheckoutModal from './PdvCheckoutModal';
 import FiscalConfigModal from './FiscalConfigModal';
@@ -698,6 +699,57 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
   const [isTestingSmtp, setIsTestingSmtp] = useState(false);
 
+  // REFCOM210: Banner do e-commerce (lazy init do localStorage)
+  const [bannerConfig, setBannerConfig] = useState<BannerConfig>(() => {
+    try {
+      const { getBannerConfig, getDefaultBannerConfig } = require('../services/bannerConfig');
+      const saved = getBannerConfig();
+      return saved || getDefaultBannerConfig();
+    } catch {
+      return { mode: 'autoplay' as const, banners: [], updatedAt: new Date().toISOString() };
+    }
+  });
+  const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [bannerLinkCategory, setBannerLinkCategory] = useState<string>('');
+
+  const handleBannerUpload = async () => {
+    if (!bannerFile) { alert('Selecione uma imagem para o banner.'); return; }
+    if (bannerConfig.banners.length >= 5) { alert('Limite de 5 banners atingido.'); return; }
+    try {
+      const { fileToDataUrl, saveBannerConfig } = require('../services/bannerConfig');
+      const dataUrl = await fileToDataUrl(bannerFile);
+      const newBanner = {
+        id: `BN-${Date.now()}`,
+        image: dataUrl,
+        linkCategory: bannerLinkCategory || undefined,
+        createdAt: new Date().toISOString()
+      };
+      const next = { ...bannerConfig, banners: [...bannerConfig.banners, newBanner], updatedAt: new Date().toISOString() };
+      setBannerConfig(next);
+      saveBannerConfig(next);
+      setBannerFile(null);
+      setBannerLinkCategory('');
+      alert('✅ Banner adicionado!');
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao fazer upload do banner.');
+    }
+  };
+
+  const handleBannerDelete = (id: string) => {
+    const { saveBannerConfig } = require('../services/bannerConfig');
+    const next = { ...bannerConfig, banners: bannerConfig.banners.filter(b => b.id !== id), updatedAt: new Date().toISOString() };
+    setBannerConfig(next);
+    saveBannerConfig(next);
+  };
+
+  const handleBannerModeChange = (mode: 'autoplay' | 'manual' | 'static') => {
+    const { saveBannerConfig } = require('../services/bannerConfig');
+    const next = { ...bannerConfig, mode, updatedAt: new Date().toISOString() };
+    setBannerConfig(next);
+    saveBannerConfig(next);
+  };
+
   // REFCOM149: Função para testar conexão SMTP
   const handleTestSmtpConnection = async () => {
     if (!smtpSettings.host || !smtpSettings.port || !smtpSettings.user || !smtpSettings.pass) {
@@ -1250,6 +1302,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // REFCOM202: Pedidos 'reserved' não contabilizam como venda no financeiro
       const revenue = orders
         .filter(order => {
+          // REFCOM209: Vendas a crédito NÃO entram automaticamente no financeiro.
+          // O valor só aparece quando há baixa real (ManualRevenue gerado na Baixa Parcial).
+          if (order.paymentMethod === 'credito') return false;
           const isPaidBudget = order.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
           const isRegularRevenue = !order.isBudget && order.status !== 'cancelled' && order.status !== 'pending' && order.status !== 'reserved';
           return isPaidBudget || isRegularRevenue;
@@ -2109,12 +2164,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const finalSize = size || pdvModalSelection.size || selectedSizes[product.id];
     const finalColor = color || pdvModalSelection.color; // Cor geralmente vem do modal no PDV
 
-    if (product.sizes && !finalSize) {
+    // REFCOM213: Não exigir tamanho e cor para serviços
+    const isService = product.category === 'Serviços';
+    if (!isService && product.sizes && !finalSize) {
       window.alert('Selecione um tamanho antes de adicionar ao carrinho.');
       return;
     }
 
-    if (product.colors && !finalColor) {
+    if (!isService && product.colors && !finalColor) {
       window.alert('Selecione uma cor antes de adicionar ao carrinho.');
       return;
     }
@@ -2127,7 +2184,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       availableStock = product.stockBySize[finalSize] || 0;
     }
 
-    if (availableStock <= 0) {
+    // REFCOM213: Serviços não têm verificação de estoque
+    if (!isService && availableStock <= 0) {
       window.alert('Produto/Variante sem estoque!');
       return;
     }
@@ -4911,6 +4969,85 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 * Requisito ERRCOM093: Estas configurações permitirão o envio de códigos de validação e confirmação de pedidos automaticamente.
               </p>
             </div>
+
+            {/* REFCOM210: Configuração de Banners */}
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
+              <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                <span>🖼️</span> Upload de Banners (E-commerce)
+              </h3>
+
+              <div className="mb-6">
+                <label className="block text-xs font-black text-slate-400 uppercase mb-2">Modo de Exibição</label>
+                <div className="flex flex-wrap gap-3">
+                  {(['autoplay', 'manual', 'static'] as const).map(m => (
+                    <button
+                      key={m}
+                      onClick={() => handleBannerModeChange(m)}
+                      className={`px-5 py-2.5 rounded-xl font-black text-sm transition-all ${bannerConfig.mode === m ? 'bg-versiory-coral text-white' : 'bg-white/5 text-slate-300 border border-white/20 hover:bg-white/10'}`}
+                    >
+                      {m === 'autoplay' ? '🔄 Autoplay' : m === 'manual' ? '🖱️ Manual' : '📌 Estático'}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2 italic">
+                  Autoplay: troca sozinho • Manual: setas para navegar • Estático: imagem fixa.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Imagem do Banner ({bannerConfig.banners.length}/5)</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => setBannerFile(e.target.files?.[0] || null)}
+                    className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-versiory-coral file:text-white file:font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Categoria (link ao clicar)</label>
+                  <select
+                    value={bannerLinkCategory}
+                    onChange={e => setBannerLinkCategory(e.target.value)}
+                    className="w-full bg-white/5 border border-white/20 text-white rounded-xl px-4 py-3 outline-none"
+                  >
+                    <option value="" className="text-black">Nenhum (sem link)</option>
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id} className="text-black">{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <button
+                onClick={handleBannerUpload}
+                disabled={!bannerFile || bannerConfig.banners.length >= 5}
+                className="bg-versiory-coral hover:bg-[#ff8368] disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
+              >
+                ➕ Adicionar Banner
+              </button>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+                {bannerConfig.banners.length === 0 && (
+                  <p className="text-slate-400 text-sm col-span-full">Nenhum banner cadastrado.</p>
+                )}
+                {bannerConfig.banners.map(b => (
+                  <div key={b.id} className="relative rounded-2xl overflow-hidden border border-white/20">
+                    <img src={b.image} alt="Banner" className="w-full h-32 object-cover" />
+                    <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded">
+                      {b.linkCategory ? categories.find(c => c.id === b.linkCategory)?.name || 'Categoria' : 'Sem link'}
+                    </div>
+                    <button
+                      onClick={() => handleBannerDelete(b.id)}
+                      className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white w-7 h-7 rounded-full font-black flex items-center justify-center"
+                      title="Excluir"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -6063,12 +6200,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       )}
                     </>
                   ) : (
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-                      <p className="text-xs text-white/60">Serviço sem variação de tamanho/cor.</p>
-                      {pdvProductModal.product.serviceAttributes?.caracteristicas && (
-                        <p className="text-xs text-white/80 mt-2 font-medium">{pdvProductModal.product.serviceAttributes.caracteristicas}</p>
+                    // REFCOM213: Exibir campos configurados para serviços (Tamanho/Tipo Serviço e Cor/Hora)
+                    <>
+                      {pdvProductModal.product.sizes && (
+                        <div>
+                          <label className="block text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Tipo de Serviço</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {pdvProductModal.product.sizes.split(',').map(size => {
+                              const trimmedSize = size.trim();
+                              const isSelected = pdvModalSelection.size === trimmedSize;
+                              return (
+                                <button
+                                  key={trimmedSize}
+                                  onClick={() => setPdvModalSelection({ ...pdvModalSelection, size: trimmedSize })}
+                                  className={`py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${isSelected ? 'bg-versiory-coral text-white scale-105' : 'bg-white/10 text-white'}`}
+                                >
+                                  {trimmedSize}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       )}
-                    </div>
+
+                      {pdvProductModal.product.colors && (
+                        <div>
+                          <label className="block text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Horário</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {pdvProductModal.product.colors.split(',').map(color => {
+                              const trimmedColor = color.trim();
+                              const isSelected = pdvModalSelection.color === trimmedColor;
+                              return (
+                                <button
+                                  key={trimmedColor}
+                                  onClick={() => setPdvModalSelection({ ...pdvModalSelection, color: trimmedColor })}
+                                  className={`py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${isSelected ? 'bg-versiory-coral text-white scale-105' : 'bg-white/10 text-white'}`}
+                                >
+                                  {trimmedColor}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {pdvProductModal.product.serviceAttributes?.caracteristicas && (
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
+                          <p className="text-xs text-white/60">Características do Serviço</p>
+                          <p className="text-xs text-white/80 mt-2 font-medium">{pdvProductModal.product.serviceAttributes.caracteristicas}</p>
+                        </div>
+                      )}
+
+                      {!pdvProductModal.product.sizes && !pdvProductModal.product.colors && !pdvProductModal.product.serviceAttributes?.caracteristicas && (
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
+                          <p className="text-xs text-white/60">Serviço sem variação configurada.</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
