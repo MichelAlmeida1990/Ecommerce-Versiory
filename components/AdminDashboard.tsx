@@ -1598,6 +1598,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (sizeArray.length > 0) {
         if (colorArray.length > 0) {
           // Tem Tamanho e Cor -> Usar stockBySizeColor
+          // REFCOM215: Manter valores existentes ao editar tamanhos
           if (!productForm.stockBySizeColor || Object.keys(productForm.stockBySizeColor).length === 0) {
             const combinations: string[] = [];
             sizeArray.forEach(s => colorArray.forEach(c => combinations.push(`${s}-${c}`)));
@@ -1610,19 +1611,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               stockBySizeColor[key] = stockPerComb + (index < remainder ? 1 : 0);
             });
           } else {
-            // BUGFIX #2: Se já existem, garantir que o stock total seja a soma das variações
-            // Ou se o usuário editou o total manualmente, avisar ou redistribuir.
-            // Aqui vamos assumir que a soma das variações manda se elas já existirem.
-            const totalFromVariants = Object.values(productForm.stockBySizeColor).reduce((s, q) => s + (Number(q) || 0), 0);
-            if (totalFromVariants !== productForm.stock) {
-              // Se o usuário mudou o total manualmente no campo principal, limpamos para forçar redistribuição
-              // OU matemos a soma. Vamos manter a soma para evitar perda de dados acidental.
-              productForm.stock = totalFromVariants;
-            }
+            // REFCOM215: Preservar valores existentes para combinações que continuam existindo
+            const existingStockBySizeColor = { ...productForm.stockBySizeColor };
+            stockBySizeColor = {};
+
+            const combinations: string[] = [];
+            sizeArray.forEach(s => colorArray.forEach(c => combinations.push(`${s}-${c}`)));
+
+            combinations.forEach(key => {
+              // Se a combinação já existia, manter o valor
+              if (existingStockBySizeColor[key] !== undefined) {
+                stockBySizeColor[key] = existingStockBySizeColor[key];
+              } else {
+                // Nova combinação, atribuir estoque padrão
+                stockBySizeColor[key] = 0;
+              }
+            });
+
+            // Atualizar stock total para refletir a soma das variações
+            const totalFromVariants = Object.values(stockBySizeColor).reduce((s, q) => s + (Number(q) || 0), 0);
+            productForm.stock = totalFromVariants;
           }
           stockBySize = {}; // Limpar stockBySize simples se tem cores
         } else {
           // Apenas Tamanho -> Usar stockBySize
+          // REFCOM215: Manter valores existentes ao editar tamanhos
           if (!productForm.stockBySize || Object.keys(productForm.stockBySize).length === 0) {
             const stockPerSize = Math.floor((productForm.stock || 0) / sizeArray.length);
             const remainder = (productForm.stock || 0) % sizeArray.length;
@@ -1632,10 +1645,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               stockBySize[size] = stockPerSize + (index < remainder ? 1 : 0);
             });
           } else {
-            const totalFromVariants = Object.values(productForm.stockBySize).reduce((s, q) => s + (Number(q) || 0), 0);
-            if (totalFromVariants !== productForm.stock) {
-              productForm.stock = totalFromVariants;
-            }
+            // REFCOM215: Preservar valores existentes para tamanhos que continuam existindo
+            const existingStockBySize = { ...productForm.stockBySize };
+            stockBySize = {};
+
+            sizeArray.forEach(size => {
+              // Se o tamanho já existia, manter o valor
+              if (existingStockBySize[size] !== undefined) {
+                stockBySize[size] = existingStockBySize[size];
+              } else {
+                // Novo tamanho, atribuir estoque padrão
+                stockBySize[size] = 0;
+              }
+            });
+
+            // Atualizar stock total para refletir a soma das variações
+            const totalFromVariants = Object.values(stockBySize).reduce((s, q) => s + (Number(q) || 0), 0);
+            productForm.stock = totalFromVariants;
           }
           stockBySizeColor = {}; // Limpar stockBySizeColor se não tem cores
         }
