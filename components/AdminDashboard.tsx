@@ -3182,7 +3182,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Top Cards — ERRCOM122: Cards Vendas Online e PDV Loja adicionados */}
-            {/* REFCOM217: Card Devoluções adicionado */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
                 <div className="text-3xl font-bold text-white mb-2">{stats.totalProducts}</div>
@@ -3221,23 +3220,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {stats.pdvRevenue > 0 || dashboardChannelFilter !== 'online' ? formatCurrency(stats.pdvRevenue) : formatCurrency(0)}
                 </div>
                 <div className="text-slate-400 font-medium text-sm">🏪 Vendas PDV — detalhes</div>
-              </button>
-              {/* REFCOM217: Card Devoluções */}
-              <button
-                onClick={() => {
-                  const returnOrders = orders.filter(o => o.status === 'returned');
-                  if (returnOrders.length === 0) {
-                    alert('Nenhuma devolução no momento.');
-                    return;
-                  }
-                  setOrderFilter('returned');
-                }}
-                className="bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border border-orange-500/30 shadow-lg text-left transition-all"
-              >
-                <div className="text-3xl font-bold text-orange-400 mb-2">
-                  {orders.filter(o => o.status === 'returned').length}
-                </div>
-                <div className="text-slate-400 font-medium text-sm">↩️ Devoluções</div>
               </button>
             </div>
 
@@ -3950,23 +3932,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         >
                           🗑️
               </button>
-              {/* REFCOM208: Card Devoluções */}
-              <button
-                onClick={() => {
-                  const returnOrders = orders.filter(o => o.status === 'returned');
-                  if (returnOrders.length === 0) {
-                    alert('Nenhuma devolução no momento.');
-                    return;
-                  }
-                  setOrderFilter('returned');
-                }}
-                className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-purple-500/30 shadow-lg text-left transition-all hover:bg-white/20"
-              >
-                <div className="text-xl font-black text-purple-400">
-                  {orders.filter(o => o.status === 'returned').length}
-                </div>
-                <div className="text-slate-300 text-xs font-medium mt-1">Devoluções</div>
-              </button>
             </div>
                     )}
                     {userRole === 'seller' && (
@@ -4149,6 +4114,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="cancelled">Cancelado</option>
                 </select>
               </div>
+              {/* REFCOM217: Card Devoluções */}
+              <button
+                onClick={() => {
+                  const returnOrders = orders.filter(o => o.status === 'returned');
+                  if (returnOrders.length === 0) {
+                    alert('Nenhuma devolução no momento.');
+                    return;
+                  }
+                  setOrderFilter('returned');
+                }}
+                className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-orange-500/30 shadow-lg text-left transition-all hover:bg-white/20"
+              >
+                <div className="text-xl font-black text-orange-400">
+                  {orders.filter(o => o.status === 'returned').length}
+                </div>
+                <div className="text-slate-300 text-xs font-medium mt-1">Devoluções</div>
+              </button>
             </div>
 
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20">
@@ -7722,7 +7704,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onClick={() => { setIsSupportOpen(true); setShowSupportTooltip(false); }}
             onMouseEnter={() => setShowSupportTooltip(true)}
             onMouseLeave={() => setShowSupportTooltip(false)}
-            className="bg-white hover:bg-slate-100 text-slate-900 w-14 h-14 rounded-full shadow-2xl border border-white/20 flex items-center justify-center text-2xl transition-all"
+            className="bg-white hover:bg-slate-100 text-blue-600 w-14 h-14 rounded-full shadow-2xl border border-white/20 flex items-center justify-center text-2xl transition-all"
             title="Suporte"
           >
             💬
