@@ -210,6 +210,39 @@ export interface ManualRevenue { // ERRCOM136: Registro de receitas avulsas
   paymentMethod?: string; // REFCOM220: Forma de pagamento (dinheiro, pix, debito, credito)
 }
 
+// REFCOM222: Contas a Receber e Contas a Pagar
+export type ReceivableStatus = 'open' | 'paid' | 'overdue';
+export type PayableStatus = 'open' | 'paid' | 'overdue';
+
+export interface AccountReceivable {
+  id: string;
+  description: string;
+  amount: number;
+  dueDate: string;
+  paidAt?: string;
+  status: ReceivableStatus;
+  orderId?: string;
+  customerName?: string;
+  customerCpfCnpj?: string;
+  paymentMethod?: string;
+  channel?: 'online' | 'physical' | 'whatsapp';
+  notes?: string;
+}
+
+export interface AccountPayable {
+  id: string;
+  description: string;
+  amount: number;
+  dueDate: string;
+  paidAt?: string;
+  status: PayableStatus;
+  expenseId?: number;
+  supplier?: string;
+  supplierCpfCnpj?: string;
+  paymentMethod?: string;
+  notes?: string;
+}
+
 export interface NfeSettings {
   cnpj: string;
   razaoSocial: string;

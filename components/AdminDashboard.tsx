@@ -27,6 +27,7 @@ import ProductMediaShowcase from './ProductMediaShowcase';
 import CashRegisterReport from './CashRegisterReport';
 import { saveProduct, STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import { getBillingConfig, getBillingStatus, getBillingDueAmount } from '../services/billingConfig';
+import { getAccountsReceivable, saveAccountsReceivable, addAccountReceivable, updateAccountReceivable, deleteAccountReceivable, getAccountsPayable, saveAccountsPayable, addAccountPayable, updateAccountPayable, deleteAccountPayable } from '../services/accountsPayableReceivable';
 import CouponManagement from './CouponManagement';
 import MarketplaceFields from './MarketplaceFields'; // Importar o novo componente
 import MarketplaceSettings from './MarketplaceSettings'; // Importar o novo componente de configurações
@@ -168,6 +169,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // REFCOM198: Aplicar restrições de faturamento
   const billingStatus = getBillingStatus(getBillingConfig());
   const isBillingRestricted = billingStatus.blockAdmin || billingStatus.restricted;
+
+  // REFCOM222: Contas a Receber e Contas a Pagar
+  const [accountsReceivable, setAccountsReceivable] = useState<AccountReceivable[]>([]);
+  const [accountsPayable, setAccountsPayable] = useState<AccountPayable[]>([]);
+  const [receivableDateFrom, setReceivableDateFrom] = useState('');
+  const [receivableDateTo, setReceivableDateTo] = useState('');
+  const [payableDateFrom, setPayableDateFrom] = useState('');
+  const [payableDateTo, setPayableDateTo] = useState('');
+  const [selectedReceivables, setSelectedReceivables] = useState<string[]>([]);
+  const [selectedPayables, setSelectedPayables] = useState<string[]>([]);
+  const [isReceivableModalOpen, setIsReceivableModalOpen] = useState(false);
+  const [isPayableModalOpen, setIsPayableModalOpen] = useState(false);
+  const [editingReceivable, setEditingReceivable] = useState<AccountReceivable | null>(null);
+  const [editingPayable, setEditingPayable] = useState<AccountPayable | null>(null);
+  const [receivableForm, setReceivableForm] = useState<Partial<AccountReceivable>>({ description: '', amount: 0, dueDate: '', status: 'open' });
+  const [payableForm, setPayableForm] = useState<Partial<AccountPayable>>({ description: '', amount: 0, dueDate: '', status: 'open' });
+
   const [orderFilter, setOrderFilter] = useState<string>('all');
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
   const [productSearch, setProductSearch] = useState('');
@@ -981,6 +999,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     loadManualRevenues();
   }, []);
 
+  // REFCOM222: Carregar contas a receber e contas a pagar
+  useEffect(() => {
+    setAccountsReceivable(getAccountsReceivable());
+    setAccountsPayable(getAccountsPayable());
+  }, []);
+
   useEffect(() => {
     // Carregar configurações SMTP salvas
     const savedSmtp = localStorage.getItem('versiory_smtp');
@@ -1068,6 +1092,112 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       alert('Erro ao lançar receita. Tente novamente.');
     }
   };
+
+  // REFCOM222: Contas a Receber
+  const handleReceivableSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!receivableForm.description?.trim() || !receivableForm.amount || !receivableForm.dueDate) {
+      alert('Preencha todos os campos obrigatórios.');
+      return;
+    }
+    if (editingReceivable) {
+      updateAccountReceivable(editingReceivable.id, receivableForm);
+      setAccountsReceivable(prev => prev.map(item => item.id === editingReceivable.id ? { ...item, ...receivableForm } as AccountReceivable : item));
+    } else {
+      const newItem: AccountReceivable = {
+        id: `AR-${Date.now()}`,
+        description: receivableForm.description,
+        amount: receivableForm.amount,
+        dueDate: receivableForm.dueDate,
+        status: 'open',
+        orderId: receivableForm.orderId,
+        customerName: receivableForm.customerName,
+        customerCpfCnpj: receivableForm.customerCpfCnpj,
+        paymentMethod: receivableForm.paymentMethod,
+        channel: receivableForm.channel,
+        notes: receivableForm.notes,
+      };
+      addAccountReceivable(newItem);
+      setAccountsReceivable(prev => [...prev, newItem]);
+    }
+    setIsReceivableModalOpen(false);
+    setEditingReceivable(null);
+    setReceivableForm({ description: '', amount: 0, dueDate: '', status: 'open' });
+  };
+
+  const handlePayableSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payableForm.description?.trim() || !payableForm.amount || !payableForm.dueDate) {
+      alert('Preencha todos os campos obrigatórios.');
+      return;
+    }
+    if (editingPayable) {
+      updateAccountPayable(editingPayable.id, payableForm);
+      setAccountsPayable(prev => prev.map(item => item.id === editingPayable.id ? { ...item, ...payableForm } as AccountPayable : item));
+    } else {
+      const newItem: AccountPayable = {
+        id: `AP-${Date.now()}`,
+        description: payableForm.description,
+        amount: payableForm.amount,
+        dueDate: payableForm.dueDate,
+        status: 'open',
+        expenseId: payableForm.expenseId,
+        supplier: payableForm.supplier,
+        supplierCpfCnpj: payableForm.supplierCpfCnpj,
+        paymentMethod: payableForm.paymentMethod,
+        notes: payableForm.notes,
+      };
+      addAccountPayable(newItem);
+      setAccountsPayable(prev => [...prev, newItem]);
+    }
+    setIsPayableModalOpen(false);
+    setEditingPayable(null);
+    setPayableForm({ description: '', amount: 0, dueDate: '', status: 'open' });
+  };
+
+  const handleBatchReceivablePay = () => {
+    if (selectedReceivables.length === 0) {
+      alert('Selecione pelo menos um item para dar baixa.');
+      return;
+    }
+    const now = new Date().toISOString();
+    selectedReceivables.forEach(id => {
+      updateAccountReceivable(id, { status: 'paid', paidAt: now });
+    });
+    setAccountsReceivable(prev => prev.map(item => selectedReceivables.includes(item.id) ? { ...item, status: 'paid', paidAt: now } : item));
+    setSelectedReceivables([]);
+    alert('Baixa realizada com sucesso!');
+  };
+
+  const handleBatchPayablePay = () => {
+    if (selectedPayables.length === 0) {
+      alert('Selecione pelo menos um item para dar baixa.');
+      return;
+    }
+    const now = new Date().toISOString();
+    selectedPayables.forEach(id => {
+      updateAccountPayable(id, { status: 'paid', paidAt: now });
+    });
+    setAccountsPayable(prev => prev.map(item => selectedPayables.includes(item.id) ? { ...item, status: 'paid', paidAt: now } : item));
+    setSelectedPayables([]);
+    alert('Baixa realizada com sucesso!');
+  };
+
+  const filteredAccountsReceivable = useMemo(() => {
+    return accountsReceivable.filter(item => {
+      if (receivableDateFrom && item.dueDate < receivableDateFrom) return false;
+      if (receivableDateTo && item.dueDate > receivableDateTo) return false;
+      return true;
+    });
+  }, [accountsReceivable, receivableDateFrom, receivableDateTo]);
+
+  const filteredAccountsPayable = useMemo(() => {
+    return accountsPayable.filter(item => {
+      if (payableDateFrom && item.dueDate < payableDateFrom) return false;
+      if (payableDateTo && item.dueDate > payableDateTo) return false;
+      return true;
+    });
+  }, [accountsPayable, payableDateFrom, payableDateTo]);
 
   const categoryOptions = useMemo(() => {
     const productCategories = products.map(product => product.category).filter(Boolean);
@@ -4988,6 +5118,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-2xl font-bold text-slate-100">{financialStats.profitMargin.toFixed(1)}%</div>
                 <div className="text-slate-100 font-medium text-sm">Margem de Lucro — clique para detalhes</div>
               </button>
+              {/* REFCOM222: Cards Contas a Receber e Contas a Pagar */}
+              <button
+                onClick={() => setIsReceivableModalOpen(true)}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-emerald-500/30 hover:bg-white/20 transition-all text-left"
+              >
+                <div className="text-2xl font-bold text-emerald-400">
+                  {formatCurrency(filteredAccountsReceivable.filter(i => i.status !== 'paid').reduce((s, i) => s + i.amount, 0))}
+                </div>
+                <div className="text-slate-100 font-medium text-sm">Contas a Receber — clique para detalhes</div>
+              </button>
+              <button
+                onClick={() => setIsPayableModalOpen(true)}
+                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-red-500/30 hover:bg-white/20 transition-all text-left"
+              >
+                <div className="text-2xl font-bold text-red-400">
+                  {formatCurrency(filteredAccountsPayable.filter(i => i.status !== 'paid').reduce((s, i) => s + i.amount, 0))}
+                </div>
+                <div className="text-slate-100 font-medium text-sm">Contas a Pagar — clique para detalhes</div>
+              </button>
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center gap-4">
@@ -5160,9 +5309,100 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
             </div>
+
+            {/* REFCOM222: Contas a Receber */}
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h3 className="text-lg font-bold text-white">Contas a Receber</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input type="date" value={receivableDateFrom} onChange={e => setReceivableDateFrom(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
+                  <input type="date" value={receivableDateTo} onChange={e => setReceivableDateTo(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
+                  <button onClick={handleBatchReceivablePay} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-lg font-black">Baixar Selecionados</button>
+                  <button onClick={() => { setEditingReceivable(null); setReceivableForm({ description: '', amount: 0, dueDate: '', status: 'open' }); setIsReceivableModalOpen(true); }} className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-2 rounded-lg font-black border border-white/20">+ Nova</button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-white/20 text-slate-300">
+                      <th className="py-2 px-2"><input type="checkbox" onChange={e => { if (e.target.checked) setSelectedReceivables(filteredAccountsReceivable.filter(i => i.status !== 'paid').map(i => i.id)); else setSelectedReceivables([]); }} /></th>
+                      <th className="py-2 px-2">Descricao</th>
+                      <th className="py-2 px-2 text-right">Valor</th>
+                      <th className="py-2 px-2 text-right">Vencimento</th>
+                      <th className="py-2 px-2 text-center">Status</th>
+                      <th className="py-2 px-2 text-center">Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAccountsReceivable.map(item => (
+                      <tr key={item.id} className="border-b border-white/10 hover:bg-white/5">
+                        <td className="py-2 px-2"><input type="checkbox" checked={selectedReceivables.includes(item.id)} onChange={e => setSelectedReceivables(prev => e.target.checked ? [...prev, item.id] : prev.filter(id => id !== item.id))} disabled={item.status === 'paid'} /></td>
+                        <td className="py-2 px-2 text-white">{item.description}</td>
+                        <td className="py-2 px-2 text-right text-white">{formatCurrency(item.amount)}</td>
+                        <td className="py-2 px-2 text-right text-white">{item.dueDate}</td>
+                        <td className="py-2 px-2 text-center">
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${item.status === 'paid' ? 'bg-green-500/30 text-green-200' : item.status === 'overdue' ? 'bg-red-500/30 text-red-200' : 'bg-amber-500/30 text-amber-200'}`}>{item.status === 'paid' ? 'Pago' : item.status === 'overdue' ? 'Vencido' : 'Aberto'}</span>
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {item.status !== 'paid' && (
+                            <button onClick={() => { updateAccountReceivable(item.id, { status: 'paid', paidAt: new Date().toISOString() }); setAccountsReceivable(prev => prev.map(i => i.id === item.id ? { ...i, status: 'paid', paidAt: new Date().toISOString() } : i)); }} className="text-emerald-300 hover:text-emerald-200 text-xs font-black">Dar Baixa</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredAccountsReceivable.length === 0 && (<tr><td colSpan={6} className="py-4 text-center text-slate-400">Nenhuma conta a receber.</td></tr>)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* REFCOM222: Contas a Pagar */}
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h3 className="text-lg font-bold text-white">Contas a Pagar</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input type="date" value={payableDateFrom} onChange={e => setPayableDateFrom(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
+                  <input type="date" value={payableDateTo} onChange={e => setPayableDateTo(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
+                  <button onClick={handleBatchPayablePay} className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-2 rounded-lg font-black">Baixar Selecionados</button>
+                  <button onClick={() => { setEditingPayable(null); setPayableForm({ description: '', amount: 0, dueDate: '', status: 'open' }); setIsPayableModalOpen(true); }} className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-2 rounded-lg font-black border border-white/20">+ Nova</button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-white/20 text-slate-300">
+                      <th className="py-2 px-2"><input type="checkbox" onChange={e => { if (e.target.checked) setSelectedPayables(filteredAccountsPayable.filter(i => i.status !== 'paid').map(i => i.id)); else setSelectedPayables([]); }} /></th>
+                      <th className="py-2 px-2">Descricao</th>
+                      <th className="py-2 px-2 text-right">Valor</th>
+                      <th className="py-2 px-2 text-right">Vencimento</th>
+                      <th className="py-2 px-2 text-center">Status</th>
+                      <th className="py-2 px-2 text-center">Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAccountsPayable.map(item => (
+                      <tr key={item.id} className="border-b border-white/10 hover:bg-white/5">
+                        <td className="py-2 px-2"><input type="checkbox" checked={selectedPayables.includes(item.id)} onChange={e => setSelectedPayables(prev => e.target.checked ? [...prev, item.id] : prev.filter(id => id !== item.id))} disabled={item.status === 'paid'} /></td>
+                        <td className="py-2 px-2 text-white">{item.description}</td>
+                        <td className="py-2 px-2 text-right text-white">{formatCurrency(item.amount)}</td>
+                        <td className="py-2 px-2 text-right text-white">{item.dueDate}</td>
+                        <td className="py-2 px-2 text-center">
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${item.status === 'paid' ? 'bg-green-500/30 text-green-200' : item.status === 'overdue' ? 'bg-red-500/30 text-red-200' : 'bg-amber-500/30 text-amber-200'}`}>{item.status === 'paid' ? 'Pago' : item.status === 'overdue' ? 'Vencido' : 'Aberto'}</span>
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {item.status !== 'paid' && (
+                            <button onClick={() => { updateAccountPayable(item.id, { status: 'paid', paidAt: new Date().toISOString() }); setAccountsPayable(prev => prev.map(i => i.id === item.id ? { ...i, status: 'paid', paidAt: new Date().toISOString() } : i)); }} className="text-emerald-300 hover:text-emerald-200 text-xs font-black">Dar Baixa</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredAccountsPayable.length === 0 && (<tr><td colSpan={6} className="py-4 text-center text-slate-400">Nenhuma conta a pagar.</td></tr>)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
-
         {activeTab === 'abc' && (
           <div className="space-y-6">
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
@@ -6385,6 +6625,76 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button onClick={() => setIsManualRevenueModalOpen(false)} className="flex-1 bg-gray-200 text-gray-800 font-black py-3 rounded-xl transition-all">Cancelar</button>
               </div>
             </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REFCOM222: Modal Contas a Receber */}
+      {isReceivableModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="p-6">
+              <h3 className="text-xl font-black text-gray-900 mb-4">{editingReceivable ? 'Editar Conta a Receber' : 'Nova Conta a Receber'}</h3>
+              <form onSubmit={handleReceivableSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Descricao</label>
+                  <input type="text" value={receivableForm.description} onChange={e => setReceivableForm({ ...receivableForm, description: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
+                    <input type="number" step="0.01" value={receivableForm.amount} onChange={e => setReceivableForm({ ...receivableForm, amount: parseFloat(e.target.value) })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Vencimento</label>
+                    <input type="date" value={receivableForm.dueDate} onChange={e => setReceivableForm({ ...receivableForm, dueDate: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Cliente</label>
+                  <input type="text" value={receivableForm.customerName || ''} onChange={e => setReceivableForm({ ...receivableForm, customerName: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button type="submit" className="flex-1 bg-emerald-600 text-white font-black py-3 rounded-xl transition-all">Salvar</button>
+                  <button type="button" onClick={() => { setIsReceivableModalOpen(false); setEditingReceivable(null); }} className="flex-1 bg-gray-200 text-gray-800 font-black py-3 rounded-xl transition-all">Cancelar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REFCOM222: Modal Contas a Pagar */}
+      {isPayableModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="p-6">
+              <h3 className="text-xl font-black text-gray-900 mb-4">{editingPayable ? 'Editar Conta a Pagar' : 'Nova Conta a Pagar'}</h3>
+              <form onSubmit={handlePayableSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Descricao</label>
+                  <input type="text" value={payableForm.description} onChange={e => setPayableForm({ ...payableForm, description: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
+                    <input type="number" step="0.01" value={payableForm.amount} onChange={e => setPayableForm({ ...payableForm, amount: parseFloat(e.target.value) })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Vencimento</label>
+                    <input type="date" value={payableForm.dueDate} onChange={e => setPayableForm({ ...payableForm, dueDate: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Fornecedor</label>
+                  <input type="text" value={payableForm.supplier || ''} onChange={e => setPayableForm({ ...payableForm, supplier: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button type="submit" className="flex-1 bg-red-600 text-white font-black py-3 rounded-xl transition-all">Salvar</button>
+                  <button type="button" onClick={() => { setIsPayableModalOpen(false); setEditingPayable(null); }} className="flex-1 bg-gray-200 text-gray-800 font-black py-3 rounded-xl transition-all">Cancelar</button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
