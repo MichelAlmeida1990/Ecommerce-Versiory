@@ -156,7 +156,7 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
           <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-xl p-4">
             <h3 className="text-white font-bold mb-2">Pareto - Faturamento Total</h3>
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={paretoData} margin={{ top: 10, right: 10, left: 0, bottom: 60 }}>
+              <BarChart data={paretoData} margin={{ top: 10, right: 10, left: 0, bottom: 80 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                 <XAxis
                   dataKey="name"
@@ -170,7 +170,6 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
                   formatter={(value: number) => formatCurrency(value)}
                   contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }}
                 />
-                <Legend wrapperStyle={{ color: '#e2e8f0' }} />
                 <Bar dataKey="faturamento" name="Faturamento" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 <Line type="monotone" dataKey="acumulada" name="% Acumulada" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
               </BarChart>
