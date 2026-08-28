@@ -5,6 +5,7 @@ const BANNER_CONFIG_KEY = 'versiory_banner_config';
 const MAX_BANNERS = 5;
 
 export const BANNER_MAX = MAX_BANNERS;
+export const BANNER_UPDATE_EVENT = 'bannerConfigUpdated';
 
 export const getBannerConfig = (): BannerConfig | null => {
   const stored = localStorage.getItem(BANNER_CONFIG_KEY);
@@ -18,6 +19,7 @@ export const getBannerConfig = (): BannerConfig | null => {
 
 export const saveBannerConfig = (config: BannerConfig): void => {
   localStorage.setItem(BANNER_CONFIG_KEY, JSON.stringify(config));
+  window.dispatchEvent(new Event(BANNER_UPDATE_EVENT));
 };
 
 export const getDefaultBannerConfig = (): BannerConfig => ({

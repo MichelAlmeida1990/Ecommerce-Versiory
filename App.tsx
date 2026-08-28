@@ -12,7 +12,7 @@ import LoginRegister from './components/LoginRegister';
 import Tracking from './components/Tracking';
 import ProductDetail from './components/ProductDetail';
 import { getProducts, getCategories, subscribeToProducts } from './services/firebase';
-import { getBannerConfig, getDefaultBannerConfig } from './services/bannerConfig';
+import { getBannerConfig, getDefaultBannerConfig, BANNER_UPDATE_EVENT } from './services/bannerConfig';
 
 
 const PrivateRoute: React.FC<{ children: React.ReactNode; isAuthenticated: boolean; isLoading: boolean }> = ({ children, isAuthenticated, isLoading }) => {
@@ -53,6 +53,15 @@ const App: React.FC = () => {
   // REFCOM210: Banners do e-commerce
   const [bannerConfig, setBannerConfig] = useState(() => getBannerConfig() || getDefaultBannerConfig());
   const [bannerIndex, setBannerIndex] = useState(0);
+
+  useEffect(() => {
+    const handler = () => {
+      setBannerConfig(getBannerConfig() || getDefaultBannerConfig());
+      setBannerIndex(0);
+    };
+    window.addEventListener(BANNER_UPDATE_EVENT, handler);
+    return () => window.removeEventListener(BANNER_UPDATE_EVENT, handler);
+  }, []);
 
   useEffect(() => {
     if (bannerConfig.mode !== 'autoplay' || bannerConfig.banners.length <= 1) return;

@@ -5195,7 +5195,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   >
                     <option value="" className="text-black">Nenhum (sem link)</option>
                     {categories.map(c => (
-                      <option key={c.id} value={c.id} className="text-black">{c.name}</option>
+                      <option key={c.id} value={c.name} className="text-black">{c.name}</option>
                     ))}
                   </select>
                 </div>
