@@ -26,6 +26,8 @@ import {
   getTracking,
   saveCategory
 } from './services/firebase';
+import { getBillingStatus, getBillingConfig } from './services/billingConfig';
+import { STORE_WHATSAPP_NUMBER } from './utils/constants';
 
 const ADMIN_PASSWORD = 'versiory2024';
 const SELLER_PASSWORD = 'vendedor2024';
@@ -175,6 +177,12 @@ const AdminApp: React.FC = () => {
   }, [isAuthenticated]);
 
   const handleLogin = async (password: string, role: 'admin' | 'seller') => {
+    const billing = getBillingStatus(getBillingConfig());
+    if (billing.blocked) {
+      setError('🔒 Acesso bloqueado por inadimplência. Regularize o pagamento para continuar.');
+      return;
+    }
+
     const isValidPassword =
       (role === 'admin' && password === ADMIN_PASSWORD) ||
       (role === 'seller' && password === SELLER_PASSWORD);

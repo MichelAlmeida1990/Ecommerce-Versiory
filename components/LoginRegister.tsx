@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Customer, Address } from '../types';
 import { fetchAddressByCep } from '../services/cep';
 import { hashPassword, verifyPassword } from '../utils/crypto';
+import { getBillingConfig, getBillingStatus, getBillingDueAmount } from '../services/billingConfig';
+import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
 
 interface LoginRegisterProps {
   onClose?: () => void;
@@ -570,11 +572,78 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
             {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">{error}</div>}
 
             {(() => {
-              const subscription = getSubscriptionStatus();
+              const subscription = getBillingStatus(getBillingConfig());
+              if (subscription.blocked) {
+                return (
+                  <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm space-y-2">
+                    <div>🔒 <strong>Acesso bloqueado por inadimplência.</strong></div>
+                    <div>{subscription.message}</div>
+                    <div className="text-xs">{subscription.detail}</div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso regularizar minha fatura e gerar o boleto/PIX.`, '_blank')}
+                        className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded-lg font-black"
+                      >
+                        💬 WhatsApp
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => alert(`Para gerar o boleto/PIX, entre em contato com o suporte pelo WhatsApp.\n\nValor da fatura: R$ ${getBillingDueAmount(getBillingConfig()).toFixed(2)}`)}
+                        className="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-2 rounded-lg font-black"
+                      >
+                        📄 Gerar Boleto/PIX
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              if (subscription.phase === 'restricted' || subscription.phase === 'grace') {
+                return (
+                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm space-y-2">
+                    <div>⚠️ <strong>Acesso restrito.</strong></div>
+                    <div>{subscription.message}</div>
+                    <div className="text-xs">{subscription.detail}</div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso regularizar minha fatura.`, '_blank')}
+                        className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded-lg font-black"
+                      >
+                        💬 WhatsApp
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => alert(`Valor da fatura: R$ ${getBillingDueAmount(getBillingConfig()).toFixed(2)}`)}
+                        className="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-2 rounded-lg font-black"
+                      >
+                        📄 Gerar Boleto/PIX
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
               if (!subscription.blocked && subscription.daysRemaining <= 5) {
                 return (
-                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm">
-                    ⚠️ Sua fatura vence em <strong>{subscription.daysRemaining}</strong> dia(s). Clique aqui para regularizar.
+                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm space-y-2">
+                    <div>⚠️ Sua fatura vence em <strong>{subscription.daysRemaining}</strong> dia(s). Clique para regularizar.</div>
+                    <div className="text-xs">{subscription.detail}</div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso regularizar minha fatura.`, '_blank')}
+                        className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded-lg font-black"
+                      >
+                        💬 WhatsApp
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => alert(`Valor da fatura: R$ ${getBillingDueAmount(getBillingConfig()).toFixed(2)}`)}
+                        className="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-2 rounded-lg font-black"
+                      >
+                        📄 Gerar Boleto/PIX
+                      </button>
+                    </div>
                   </div>
                 );
               }

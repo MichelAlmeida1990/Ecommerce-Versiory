@@ -26,6 +26,7 @@ import { sanitizeData } from '../services/utils';
 import ProductMediaShowcase from './ProductMediaShowcase';
 import CashRegisterReport from './CashRegisterReport';
 import { saveProduct, STORE_WHATSAPP_NUMBER } from '../services/firebase';
+import { getBillingConfig, getBillingStatus, getBillingDueAmount } from '../services/billingConfig';
 import CouponManagement from './CouponManagement';
 import MarketplaceFields from './MarketplaceFields'; // Importar o novo componente
 import MarketplaceSettings from './MarketplaceSettings'; // Importar o novo componente de configurações
@@ -163,6 +164,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateExpenses
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>(userRole === 'seller' ? 'pdv' : 'dashboard');
+
+  // REFCOM198: Aplicar restrições de faturamento
+  const billingStatus = getBillingStatus(getBillingConfig());
+  const isBillingRestricted = billingStatus.blockAdmin || billingStatus.restricted;
   const [orderFilter, setOrderFilter] = useState<string>('all');
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
   const [productSearch, setProductSearch] = useState('');
@@ -3165,7 +3170,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl sm:text-2xl font-black truncate max-w-[200px] sm:max-w-none">{userRole === 'admin' ? 'Painel Administrativo' : 'Painel do Vendedor'}</h1>
+                <h1 className="text-xl sm:text-2xl font-black truncate max-w-[200px] sm:max-w-none">{userRole === 'admin' && !isBillingRestricted ? 'Painel Administrativo' : 'Painel do Vendedor'}</h1>
                 <p className="text-gray-400 text-sm">Versiory Store</p>
               </div>
             </div>
@@ -3186,31 +3191,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* REFCOM_mobile: no mobile a barra vira uma única linha com rolagem horizontal (em vez de empilhar e cobrir a tela) */}
           <div className="flex flex-nowrap lg:flex-wrap gap-1 p-2 overflow-x-auto lg:overflow-visible [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {(
-              userRole === 'admin'
+              userRole === 'admin' && !billingStatus.blockAdmin
                 ? [
-                  ['dashboard', 'Dashboard'],
-                  ['pdv', 'PDV Loja'],
-                  ['products', 'Produtos'],
-                  ['categories', 'Categorias'],
-                  ['orders', 'Pedidos'],
-                  ['customers', 'Clientes'],
-                  ['tracking', 'Rastreamento'],
-                  ['inventory', 'Estoque'],
-                  ['financial', 'Financeiro'],
-                  ['abc', 'Curva ABC'],
-                  ['fiscal', 'Fiscal/NF-e'],
-                  ['marketplaces', 'Marketplaces'],
-                  ['payment', 'Pagamento'],
-                  ['coupons', 'Cupom Desconto'],
-                  ['settings', 'Configuração']
-                ]
+                    ['dashboard', 'Dashboard'],
+                    ['pdv', 'PDV Loja'],
+                    ['products', 'Produtos'],
+                    ['categories', 'Categorias'],
+                    ['orders', 'Pedidos'],
+                    ['customers', 'Clientes'],
+                    ['tracking', 'Rastreamento'],
+                    ['inventory', 'Estoque'],
+                    ['financial', 'Financeiro'],
+                    ['abc', 'Curva ABC'],
+                    ['fiscal', 'Fiscal/NF-e'],
+                    ['marketplaces', 'Marketplaces'],
+                    ['payment', 'Pagamento'],
+                    ['coupons', 'Cupom Desconto'],
+                    ['settings', 'Configuração']
+                  ]
                 : [
-                  ['pdv', 'PDV Loja'],
-                  ['products', 'Produtos'],
-                  ['customers', 'Clientes'],
-                  ['orders', 'Pedidos'],
-                  ['fiscal', 'Fiscal/NF-e']
-                ]
+                    ['pdv', 'PDV Loja'],
+                    ['products', 'Produtos'],
+                    ['customers', 'Clientes'],
+                    ['orders', 'Pedidos'],
+                    ['fiscal', 'Fiscal/NF-e']
+                  ]
             ).map(([key, label]) => (
               <button
                 key={key}
@@ -3228,6 +3233,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            {(() => {
+              const status = getBillingStatus(getBillingConfig());
+              if (status.blocked) {
+                return (
+                  <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">
+                    🔒 <strong>Acesso bloqueado por inadimplência.</strong> {status.message} {status.detail}
+                  </div>
+                );
+              }
+              if (status.phase === 'warning' || status.phase === 'restricted' || status.phase === 'grace') {
+                return (
+                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm">
+                    ⚠️ <strong>{status.message}</strong> {status.detail}
+                  </div>
+                );
+              }
+              if (status.daysRemaining <= 10 && status.daysRemaining > 0) {
+                return (
+                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm">
+                    ⚠️ <strong>{status.message}</strong> {status.detail}
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             <div className="flex flex-wrap gap-3 items-center">
               <span className="text-slate-300 text-sm font-bold">Período:</span>
               <select
@@ -3805,7 +3836,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </button>
                   )}
                 </div>
-                {userRole === 'admin' && (
+                {userRole === 'admin' && !isBillingRestricted && (
                   <button
                     onClick={() => openProductModal()}
                     className="flex-1 sm:flex-none bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg text-sm"
@@ -3995,7 +4026,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <span className="text-xs text-slate-400">({product.reviews} avaliações)</span>
                     </div>
 
-                    {userRole === 'admin' && (
+                    {userRole === 'admin' && !isBillingRestricted && (
                       <div className="flex gap-2">
                         <button
                           onClick={() => openProductModal(product)}
@@ -4046,7 +4077,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-6xl mb-4">📦</div>
                 <h3 className="text-xl font-bold text-white mb-2">Nenhum produto cadastrado</h3>
                 <p className="text-slate-300 mb-6">Comece adicionando seu primeiro produto</p>
-                {userRole === 'admin' && (
+                {userRole === 'admin' && !isBillingRestricted && (
                   <button
                     onClick={() => openProductModal()}
                     className="bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
@@ -4077,24 +4108,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="flex justify-between items-start mb-4">
                     <h3 className="text-lg font-bold text-white">{category.name}</h3>
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => openCategoryModal(category)}
-                        className="text-blue-400 hover:text-blue-300 transition-colors"
-                        title="Editar Categoria"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleCategoryDelete(category.id)}
-                        className="text-red-400 hover:text-red-300 transition-colors"
-                        title="Excluir Categoria"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                        </svg>
-                      </button>
+                      {!isBillingRestricted && (
+                        <button
+                          onClick={() => openCategoryModal(category)}
+                          className="text-blue-400 hover:text-blue-300 transition-colors"
+                          title="Editar Categoria"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                          </svg>
+                        </button>
+                      )}
+                      {!isBillingRestricted && (
+                        <button
+                          onClick={() => handleCategoryDelete(category.id)}
+                          className="text-red-400 hover:text-red-300 transition-colors"
+                          title="Excluir Categoria"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   </div>
                   <p className="text-slate-300 text-sm mb-4">{category.description}</p>
@@ -4278,8 +4313,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium flex gap-2">
                           <button
-                            onClick={() => openOrderStatusModal(order)}
-                            className="bg-versiory-coral hover:bg-[#ff8368] text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]"
+                            onClick={() => {
+                              if (billingStatus.restricted) {
+                                alert('Acesso restrito: alteração de status indisponível.');
+                                return;
+                              }
+                              openOrderStatusModal(order);
+                            }}
+                            disabled={billingStatus.restricted}
+                            className={`${billingStatus.restricted ? 'bg-slate-500 cursor-not-allowed' : 'bg-versiory-coral hover:bg-[#ff8368]'} text-white px-4 py-2 rounded-xl font-medium transition-all min-h-[44px]`}
                           >
                             Atualizar Status
                           </button>
@@ -4563,23 +4605,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="text-versiory-coral font-black">{formatCurrency(customer.totalSpent)}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-100">
-                          <button
-                            onClick={() => {
-                              setEditingCustomer(customer);
-                              setCustomerForm({
-                                name: customer.name,
-                                email: customer.email,
-                                phone: customer.phone,
-                                cpfCnpj: customer.cpfCnpj,
-                                birthDate: customer.birthDate,
-                                addresses: customer.addresses
-                              });
-                              setIsCustomerModalOpen(true);
-                            }}
-                            className="text-blue-400 hover:text-blue-300 font-bold text-xs"
-                          >
-                            Editar
-                          </button>
+                          {isBillingRestricted ? (
+                            <span className="text-slate-500 text-xs">Somente consulta</span>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingCustomer(customer);
+                                setCustomerForm({
+                                  name: customer.name,
+                                  email: customer.email,
+                                  phone: customer.phone,
+                                  cpfCnpj: customer.cpfCnpj,
+                                  birthDate: customer.birthDate,
+                                  addresses: customer.addresses
+                                });
+                                setIsCustomerModalOpen(true);
+                              }}
+                              className="text-blue-400 hover:text-blue-300 font-bold text-xs"
+                            >
+                              Editar
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -5082,24 +5128,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                       {transaction.type === 'expense' && 'expenseId' in transaction && (
                         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => openExpenseModal(expenses.find(e => e.id === transaction.expenseId))}
-                            className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-all"
-                            title="Editar"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleExpenseDelete(transaction.expenseId!)}
-                            className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-all"
-                            title="Excluir"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                          {!isBillingRestricted && (
+                            <button
+                              onClick={() => openExpenseModal(expenses.find(e => e.id === transaction.expenseId))}
+                              className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-all"
+                              title="Editar"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                          {!isBillingRestricted && (
+                            <button
+                              onClick={() => handleExpenseDelete(transaction.expenseId!)}
+                              className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-all"
+                              title="Excluir"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -5349,7 +5399,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-black text-white">Configurações Fiscais e NF-e</h2>
-              {userRole === 'admin' && (
+              {userRole === 'admin' && !isBillingRestricted && (
                 <button
                   onClick={() => setIsFiscalConfigOpen(true)}
                   className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all"
@@ -7746,7 +7796,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onClick={() => { setIsSupportOpen(true); setShowSupportTooltip(false); }}
             onMouseEnter={() => setShowSupportTooltip(true)}
             onMouseLeave={() => setShowSupportTooltip(false)}
-            className="bg-white hover:bg-slate-100 text-blue-600 w-14 h-14 rounded-full shadow-2xl border border-white/20 flex items-center justify-center text-2xl transition-all"
+            className="bg-blue-600 hover:bg-blue-700 text-white w-14 h-14 rounded-full shadow-2xl border border-white/20 flex items-center justify-center text-2xl transition-all"
             title="Suporte"
           >
             💬
