@@ -207,6 +207,7 @@ export interface ManualRevenue { // ERRCOM136: Registro de receitas avulsas
   date: string;
   notes?: string;
   user: string;
+  paymentMethod?: string; // REFCOM220: Forma de pagamento (dinheiro, pix, debito, credito)
 }
 
 export interface NfeSettings {
@@ -345,4 +346,39 @@ export interface PaymentConfig {
     getnet?: { enabled: boolean; rates?: { [key: string]: number } };
     stone?: { enabled: boolean; rates?: { [key: string]: number } };
   };
+}
+
+// REFCOM210: Banner do e-commerce
+export type BannerMode = 'autoplay' | 'manual' | 'static';
+
+export interface Banner {
+  id: string;
+  image: string; // data URL (base64) ou URL externa
+  linkCategory?: string; // filtro de categoria ao clicar
+  createdAt: string;
+}
+
+export interface BannerConfig {
+  mode: BannerMode;
+  banners: Banner[];
+  updatedAt: string;
+}
+
+// REFCOM198: Configuração de faturamento/assinatura
+export type BillingPhase =
+  | 'normal'        // dia 1..14 do mês (acesso livre, aviso a partir do dia 5)
+  | 'warning'       // dia 15..19 (vencido, aviso de vencimento)
+  | 'restricted'    // dia 20..fim do mês (ADM bloqueado, vendedor restrito)
+  | 'grace'         // dia 1..5 do mês seguinte (acesso restrito vendedor)
+  | 'blocked';      // após dia 5 do mês seguinte (bloqueio total)
+
+export interface BillingConfig {
+  dueDay: number;          // dia de vencimento (padrão 15)
+  value: number;           // valor da fatura mensal
+  lastPaidMonth?: string;  // AAAAMM da última fatura quitada
+  whatsapp?: string;       // número do suporte (opcional, fallback STORE_WHATSAPP_NUMBER)
+  pixKey?: string;         // chave PIX para pagamento
+  bankDetails?: string;   // dados bancários/boleto
+  paymentConfirmed?: boolean; // pagamento confirmado aguardando liberação (24h)
+  paymentConfirmedAt?: string; // timestamp da confirmação
 }

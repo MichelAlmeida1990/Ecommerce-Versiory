@@ -29,6 +29,7 @@ import { saveProduct, STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import CouponManagement from './CouponManagement';
 import MarketplaceFields from './MarketplaceFields'; // Importar o novo componente
 import MarketplaceSettings from './MarketplaceSettings'; // Importar o novo componente de configurações
+import CurvaAbcAnalysis from './CurvaAbcAnalysis'; // REFCOM221
 
 interface AdminDashboardProps {
   products: Product[];
@@ -58,8 +59,9 @@ type TabKey =
   | 'customers'
   | 'tracking'
   | 'inventory'
-  | 'financial'
-  | 'fiscal'
+   | 'financial'
+   | 'abc'
+   | 'fiscal'
   | 'settings'
   | 'marketplaces'
   | 'payment'
@@ -591,7 +593,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     category: 'fixed' as Expense['category'],
     amount: 0,
     date: new Date().toISOString().split('T')[0],
-    notes: ''
+    notes: '',
+    paymentMethod: 'dinheiro' as 'dinheiro' | 'pix' | 'debito' | 'credito'
   });
 
   // ERRCOM027: Filtro de data dos lançamentos financeiros
@@ -605,7 +608,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [manualRevenues, setManualRevenues] = useState<ManualRevenue[]>([]); // ERRCOM136
   const [isManualRevenueModalOpen, setIsManualRevenueModalOpen] = useState(false);
   const [manualRevenueForm, setManualRevenueForm] = useState<Partial<ManualRevenue>>({
-    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], notes: ''
+    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], notes: '', paymentMethod: 'pix'
   });
 
   const [orderSearch, setOrderSearch] = useState('');
@@ -811,9 +814,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!order || !order.installmentDetails) return;
 
     const now = new Date();
+    // REFCOM220: Usar a forma de pagamento real do pedido na baixa parcial
+    const originalInst = order.installmentDetails.find(i => i.id === installmentId);
+    const paymentMethod = originalInst?.paymentMethod || order.paymentMethod || 'credito';
     const updatedInstallments = order.installmentDetails.map(inst =>
       inst.id === installmentId
-        ? { ...inst, status: 'paid' as const, paidAt: now.toISOString() }
+        ? { ...inst, status: 'paid' as const, paidAt: now.toISOString(), paymentMethod }
         : inst
     );
 
@@ -828,14 +834,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const dateStr = now.toLocaleDateString('pt-BR');
     const timeStr = now.toLocaleTimeString('pt-BR');
     const channel = order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online';
+    // REFCOM220: Mapear paymentMethod para category (formato capitalizado) e definir paymentMethod
+    const categoryMap: Record<string, string> = {
+      dinheiro: 'Dinheiro', pix: 'PIX', debito: 'Debito', credito: 'Credito', deposito: 'Deposito'
+    };
+    const pmLower = paymentMethod.toLowerCase();
     const revenue: ManualRevenue = {
       id: Date.now(),
       description: `Baixa Parcial - Pedido #${order.id} ${inst?.number || ''}`,
-      category: 'Credito',
+      category: (categoryMap[pmLower] || 'Credito') as any,
       amount: inst?.amount || 0,
       date: now.toISOString(),
       notes: `${dateStr} - ${timeStr} - ${channel} ${order.customerName} - ${order.customerCpfCnpj || 'S/C'}`,
-      user: 'Sistema'
+      user: 'Sistema',
+      paymentMethod: pmLower // REFCOM220
     };
 
     await saveManualRevenue(revenue);
@@ -911,6 +923,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
+    // REFCOM220: Validar forma de pagamento obrigatória
+    if (!manualRevenueForm.paymentMethod) {
+      alert('Selecione a forma de pagamento.');
+      return;
+    }
+
     try {
       const { saveManualRevenue } = await import('../services/firebase');
       const revenue: ManualRevenue = {
@@ -920,7 +938,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         amount: manualRevenueForm.amount,
         date: manualRevenueForm.date || new Date().toISOString().split('T')[0],
         notes: manualRevenueForm.notes,
-        user: 'Admin'
+        user: 'Admin',
+        paymentMethod: manualRevenueForm.paymentMethod // REFCOM220
       };
       await saveManualRevenue(revenue);
       setManualRevenues(prev => [...prev, revenue]); // Atualiza o gráfico e cards imediatamente
@@ -932,7 +951,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         category: 'PIX',
         amount: 0,
         date: new Date().toISOString().split('T')[0],
-        notes: ''
+        notes: '',
+        paymentMethod: 'pix'
       });
     } catch (error) {
       console.error('Erro ao lançar receita:', error);
@@ -1316,6 +1336,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         type: 'revenue' as const,
         date: order.date,
         category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
+        paymentMethod: order.paymentMethod || 'dinheiro', // REFCOM220
         notes: order.notes || ''
       }));
 
@@ -1326,6 +1347,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       type: 'revenue' as const,
       date: rev.date,
       category: `Receita: ${rev.category}`,
+      paymentMethod: rev.paymentMethod || rev.category.toLowerCase(), // REFCOM220: normaliza categoria legada (PIX -> pix)
       notes: rev.notes || ''
     }));
 
@@ -1336,6 +1358,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       type: 'expense' as const,
       date: expense.date,
       category: expense.category,
+      paymentMethod: expense.paymentMethod || '', // REFCOM220
       expenseId: expense.id,
       notes: expense.notes || ''
     }));
@@ -1371,8 +1394,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           if (order && order.paymentMethod) {
             return order.paymentMethod.toLowerCase() === financialPaymentFilter;
           }
+          return false;
         }
-        return true;
+        // REFCOM220: Verificar forma de pagamento em receitas avulsas e despesas
+        if (t.paymentMethod) {
+          return t.paymentMethod.toLowerCase() === financialPaymentFilter;
+        }
+        return false;
       });
     }
 
@@ -2774,7 +2802,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         category: expense.category,
         amount: expense.amount,
         date: expense.date,
-        notes: expense.notes || ''
+        notes: expense.notes || '',
+        paymentMethod: (expense.paymentMethod as any) || 'dinheiro'
       });
       setEditingExpenseId(expense.id);
     } else {
@@ -2783,7 +2812,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         category: 'fixed',
         amount: 0,
         date: new Date().toISOString().split('T')[0],
-        notes: ''
+        notes: '',
+        paymentMethod: 'dinheiro'
       });
       setEditingExpenseId(null);
     }
@@ -2797,6 +2827,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
+    // REFCOM220: Validar forma de pagamento obrigatória
+    if (!expenseForm.paymentMethod) {
+      window.alert('Selecione a forma de pagamento.');
+      return;
+    }
+
     try {
       const { saveExpense } = await import('../services/firebase');
 
@@ -2807,7 +2843,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         amount: expenseForm.amount,
         date: expenseForm.date,
         notes: expenseForm.notes,
-        user: 'Admin'
+        user: 'Admin',
+        paymentMethod: expenseForm.paymentMethod // REFCOM220
       };
 
       await saveExpense(expense);
@@ -2961,14 +2998,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         CpfCnpj: order.customerCpfCnpj || '',
         Observacoes: order.notes || ''
       })));
+
+      // REFCOM220: Incluir receitas avulsas no relatório CSV com filtro de forma de pagamento
+      const filteredManualRevenues = manualRevenues.filter(rev => {
+        if (!filterByDate(rev.date)) return false;
+        if (financialPaymentFilter !== 'all') {
+          const method = rev.paymentMethod || rev.category.toLowerCase();
+          if (method.toLowerCase() !== financialPaymentFilter) return false;
+        }
+        return true;
+      });
+
+      report.push(...filteredManualRevenues.map(rev => ({
+        Tipo: 'Receita',
+        Descricao: rev.description,
+        Categoria: `Receita: ${rev.category}`,
+        Valor: rev.amount,
+        Data: formatDate(rev.date),
+        FormaPagamento: rev.paymentMethod || rev.category.toLowerCase(),
+        DocumentoRef: String(rev.id),
+        FornecedorCliente: '',
+        CpfCnpj: '',
+        Observacoes: rev.notes || ''
+      })));
     }
 
     // REFCOM160: Aplicar filtro de tipo (revenue/expense)
     if (financialTypeFilter === 'all' || financialTypeFilter === 'expense') {
       const filteredExpenses = expenses.filter(expense => {
         if (!filterByDate(expense.date)) return false;
-        // REFCOM192/196: Não aplicar filtro de forma de pagamento para despesas,
-        // pois o modelo atual não armazena paymentMethod nas despesas.
+        // REFCOM220: Aplicar filtro de forma de pagamento nas despesas
+        if (financialPaymentFilter !== 'all' && (expense.paymentMethod || '').toLowerCase() !== financialPaymentFilter) return false;
         return true;
       });
 
@@ -3040,6 +3100,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ['tracking', 'Rastreamento'],
                   ['inventory', 'Estoque'],
                   ['financial', 'Financeiro'],
+                  ['abc', 'Curva ABC'],
                   ['fiscal', 'Fiscal/NF-e'],
                   ['marketplaces', 'Marketplaces'],
                   ['payment', 'Pagamento'],
@@ -4814,7 +4875,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 onClick={() => {
                   setManualRevenueForm({
-                    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], notes: ''
+                    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], notes: '', paymentMethod: 'pix'
                   });
                   setIsManualRevenueModalOpen(true);
                 }}
@@ -4917,9 +4978,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   >
                     <div className="flex-1">
                       <div className="font-medium text-slate-100">{transaction.description}</div>
-                      <div className="text-sm text-slate-200">
-                        {formatDate(transaction.date)} - {transaction.category}
-                      </div>
+                       <div className="text-sm text-slate-200">
+                         {formatDate(transaction.date)} - {transaction.category}
+                       </div>
+                       {/* REFCOM220: Exibir forma de pagamento na lista de transações */}
+                       {'paymentMethod' in transaction && transaction.paymentMethod && (
+                         <div className="text-xs text-slate-300 mt-0.5">
+                           Forma: {transaction.paymentMethod.charAt(0).toUpperCase() + transaction.paymentMethod.slice(1)}
+                         </div>
+                       )}
                       {/* Novo: Observações */}
                       {'notes' in transaction && transaction.notes && (
                         <div className="text-xs text-slate-400 mt-1 italic">{transaction.notes as string}</div>
@@ -4964,6 +5031,61 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'abc' && (
+          <div className="space-y-6">
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">De</label>
+                  <input
+                    type="date"
+                    value={dashboardDateFrom}
+                    onChange={e => setDashboardDateFrom(e.target.value)}
+                    className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Até</label>
+                  <input
+                    type="date"
+                    value={dashboardDateTo}
+                    onChange={e => setDashboardDateTo(e.target.value)}
+                    className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+                  />
+                </div>
+                {(dashboardDateFrom || dashboardDateTo) && (
+                  <button
+                    onClick={() => { setDashboardDateFrom(''); setDashboardDateTo(''); }}
+                    className="text-slate-400 hover:text-white text-sm underline"
+                  >
+                    Limpar intervalo
+                  </button>
+                )}
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Canal</label>
+                  <select
+                    value={dashboardChannelFilter}
+                    onChange={e => setDashboardChannelFilter(e.target.value as any)}
+                    className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+                  >
+                    <option value="all">Todos</option>
+                    <option value="online">Online</option>
+                    <option value="physical">PDV Loja</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <CurvaAbcAnalysis
+              products={products}
+              orders={orders}
+              dateFrom={dashboardDateFrom}
+              dateTo={dashboardDateTo}
+              channelFilter={dashboardChannelFilter}
+            />
           </div>
         )}
 
@@ -6011,6 +6133,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </select>
                 </div>
                 <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Forma de Pagamento *</label>
+                  <select
+                    value={expenseForm.paymentMethod}
+                    onChange={event => setExpenseForm(prev => ({ ...prev, paymentMethod: event.target.value }))}
+                    className="w-full px-4 py-3 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    required
+                  >
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="pix">PIX</option>
+                    <option value="debito">Débito</option>
+                    <option value="credito">Crédito</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
                   <input
                     type="number"
@@ -6072,22 +6208,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <label className="block text-sm font-black text-gray-700 mb-2">Descrição</label>
                 <input type="text" value={manualRevenueForm.description} onChange={e => setManualRevenueForm({ ...manualRevenueForm, description: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-black text-gray-700 mb-2">Categoria</label>
-                  <select value={manualRevenueForm.category} onChange={e => setManualRevenueForm({ ...manualRevenueForm, category: e.target.value as any })} className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none">
-                    <option value="PIX">PIX</option>
-                    <option value="Dinheiro">Dinheiro</option>
-                    <option value="Credito">Crédito</option>
-                    <option value="Debito">Débito</option>
-                    <option value="Deposito">Depósito Bancário</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
-                  <input type="number" step="0.01" value={manualRevenueForm.amount} onChange={e => setManualRevenueForm({ ...manualRevenueForm, amount: parseFloat(e.target.value) })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
-                </div>
-              </div>
+               <div className="grid grid-cols-2 gap-4">
+                 <div>
+                   <label className="block text-sm font-black text-gray-700 mb-2">Forma de Pagamento *</label>
+                   <select value={manualRevenueForm.category} onChange={e => setManualRevenueForm({ ...manualRevenueForm, category: e.target.value as any, paymentMethod: e.target.value.toLowerCase() })} className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none" required>
+                     <option value="PIX">PIX</option>
+                     <option value="Dinheiro">Dinheiro</option>
+                     <option value="Credito">Crédito</option>
+                     <option value="Debito">Débito</option>
+                     <option value="Deposito">Depósito Bancário</option>
+                   </select>
+                 </div>
+                 <div>
+                   <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
+                   <input type="number" step="0.01" value={manualRevenueForm.amount} onChange={e => setManualRevenueForm({ ...manualRevenueForm, amount: parseFloat(e.target.value) })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                 </div>
+               </div>
               <div className="flex gap-4 pt-4">
                 <button onClick={handleManualRevenueSubmit} className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl transition-all">Lançar Receita</button>
                 <button onClick={() => setIsManualRevenueModalOpen(false)} className="flex-1 bg-gray-200 text-gray-800 font-black py-3 rounded-xl transition-all">Cancelar</button>
