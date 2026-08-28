@@ -679,6 +679,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // REFCOM_support: Estado para modal de Suporte
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [showSupportTooltip, setShowSupportTooltip] = useState(false);
+  const [supportMessages, setSupportMessages] = useState<Array<{ from: 'user' | 'bot'; text: string }>>([
+    { from: 'bot', text: 'Olá! Sou o assistente virtual da Versiory Store. Como posso ajudar você hoje?' },
+    { from: 'bot', text: 'Você pode perguntar sobre vendas, estoque, financeiro, clientes, e-commerce, Curva ABC, fiscal, marketplaces ou configurações.' },
+  ]);
+  const [supportInput, setSupportInput] = useState('');
 
   // REFCOM149: Lazy init — carrega SMTP do localStorage imediatamente, sem depender de useEffect
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>(() => {
@@ -758,6 +763,98 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const next = { ...bannerConfig, mode, updatedAt: new Date().toISOString() };
     setBannerConfig(next);
     saveBannerConfig(next);
+  };
+
+  // REFCOM_support: Robô de atendimento
+  const getBotReply = (message: string): string => {
+    const text = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    if (/\b(pdv|caixa|venda loja|venda fisica|forma de pagamento|dinheiro|cartao|pix|credito|debito)\b/.test(text)) {
+      return 'Para vendas no PDV: abra o módulo PDV Loja, busque o produto, adicione ao carrinho e clique em Finalizar Venda. Você pode escolher entre Dinheiro, Cartão de Crédito/Débito ou PIX.';
+    }
+    if (/\b(entrega normal|retira loja|frete|entrega|pickup)\b/.test(text)) {
+      return 'Entrega Normal: o produto é enviado para o endereço do cliente. Retira na Loja: o cliente retira diretamente na loja, e o preço usado é o Preço PDV Loja quando configurado.';
+    }
+    if (/\b(desconto|cupom|codigo|promocao|cupom desconto)\b/.test(text)) {
+      return 'Para aplicar desconto, use o campo de cupom no checkout. Você também pode configurar regras de desconto no módulo Cupom Desconto.';
+    }
+    if (/\b(cancelar|devolucao|cancelamento|estorno|devolver)\b/.test(text)) {
+      return 'Para cancelar ou devolver um pedido: vá até o módulo Pedidos, abra o pedido desejado e altere o status para Cancelado ou Devolução. O estoque será estornado automaticamente.';
+    }
+    if (/\b(nf-e|nfc-e|nota fiscal|danfe|xml|sefaz|rejeicao)\b/.test(text)) {
+      return 'Para emitir NF-e/NFC-e: acesse o pedido no módulo Pedidos ou Fiscal/NF-e, preencha os dados fiscais e clique em Emitir. Se houver rejeição da SEFAZ, verifique o erro exibido e ajuste os campos conforme necessário.';
+    }
+    if (/\b(reservado|reserva|estoque reservado)\b/.test(text)) {
+      return 'Pedido Reservado significa que o estoque foi bloqueado para garantir a venda, mas o pagamento ainda não foi confirmado. Você pode acompanhar esses pedidos no card Estoque Reservado no módulo Pedidos.';
+    }
+    if (/\b(cadastrar produto|produto|estoque|preco|variacao|tamanho|cor|importar|exportar|estoque minimo|ruptura)\b/.test(text)) {
+      return 'Para cadastrar um produto: vá em Produtos > Adicionar Produto. Você pode configurar variações de tamanho e cor, preços diferentes para loja física e e-commerce, e estoque mínimo. O alerta de ruptura aparece quando o estoque fica abaixo do mínimo.';
+    }
+    if (/\b(receita|despesa|financeiro|fluxo de caixa|relatorio financeiro|csv|taxa|credito|debito|pix|antecipacao)\b/.test(text)) {
+      return 'No módulo Financeiro você pode lançar receitas e despesas manuais, configurar taxas de débito, crédito, PIX e antecipação, além de gerar relatórios em CSV.';
+    }
+    if (/\b(cliente|crm|historico|email|exportar cliente|recuperar carrinho)\b/.test(text)) {
+      return 'No módulo Clientes você pode cadastrar, editar e consultar o histórico de compras. O envio de e-mail pode ser configurado no módulo Configuração de E-mail (SMTP).';
+    }
+    if (/\b(banner|carrossel|autoplay|manual|static|link categoria)\b/.test(text)) {
+      return 'Para configurar banners: acesse Configurações > Upload de Banner. Você pode escolher entre Autoplay, Navegação manual ou Banner estático, enviar até 5 banners e definir o link de categoria de cada um.';
+    }
+    if (/\b(checkout|retira|entrega normal|preco loja|preco ecommerce|cupom|whatsapp|pagamento|meios de pagamento)\b/.test(text)) {
+      return 'No checkout online, o sistema aplica automaticamente o Preço E-commerce para Entrega Normal e o Preço PDV Loja para Retira na Loja. Você pode configurar os meios de pagamento no módulo Configuração de Pagamento.';
+    }
+    if (/\b(curva abc|pareto|alerta|cobertura|estoque saudavel|excesso|ruptura|reabastecer|compra)\b/.test(text)) {
+      return 'A Curva ABC classifica produtos por faturamento e mostra alertas de estoque: vermelho para ruptura iminente, laranja para atenção, verde para saudável e azul para excesso. A sugestão de compra é calculada automaticamente.';
+    }
+    if (/\b(fiscal|nfe|nfce|serie|natureza|cfop|cst|icms|ipi|danfe|rejeicao)\b/.test(text)) {
+      return 'No módulo Fiscal/NF-e você pode configurar Série, Natureza de Operação, CFOP, CST e emitir NF-e/NFC-e. O DANFE pode ser pré-visualizado antes da emissão.';
+    }
+    if (/\b(marketplace|mercado livre|ml|sincronizar|produto marketplace|pedido marketplace|comissao)\b/.test(text)) {
+      return 'No módulo Marketplaces você pode integrar com o Mercado Livre, sincronizar produtos e pedidos, e configurar taxas de comissão.';
+    }
+    if (/\b(configuracao|loja|endereco|email smtp|senha|permissao|backup|restaurar|privacidade|termos)\b/.test(text)) {
+      return 'No módulo Configuração você pode alterar dados da loja, endereço, e-mail SMTP, senhas e permissões. Também é possível fazer backup ou restaurar dados.';
+    }
+    if (/\b(acesso|login|senha|nao consigo entrar|erro login|painel)\b/.test(text)) {
+      return 'Se não conseguir acessar o painel, verifique se está usando o e-mail e senha corretos. Se o problema persistir, contate o suporte técnico pelo WhatsApp.';
+    }
+    if (/\b(banner nao atualiza|ecommerce nao atualiza|site nao atualiza)\b/.test(text)) {
+      return 'Se o e-commerce não atualizar após alterar o banner, limpe o cache do navegador ou aguarde alguns instantes. Se persistir, verifique se o banner foi salvo corretamente em Configurações > Upload de Banner.';
+    }
+    if (/\b(pedido nao aparece|pedido sumiu|nao vejo pedido)\b/.test(text)) {
+      return 'Se um pedido não aparecer, verifique se o filtro de status está correto no módulo Pedidos. Pedidos com status "Reservado" ou "Aguardando Pagamento" podem não aparecer em algumas visualizações.';
+    }
+    if (/\b(produto indisponivel|produto nao aparece|site nao mostra produto)\b/.test(text)) {
+      return 'Se o produto aparecer como indisponível, verifique se há estoque cadastrado e se o status do produto está ativo. Também confira se a categoria está correta.';
+    }
+    if (/\b(email|nao recebo email|email nao chega|smtp)\b/.test(text)) {
+      return 'Se não receber e-mails da loja, verifique as configurações SMTP no módulo Configuração de E-mail. Teste a conexão e confira se as credenciais estão corretas.';
+    }
+    if (/\b(checkout travando|preco errado|checkout lento|erro checkout|valor errado)\b/.test(text)) {
+      return 'Se o checkout travar ou mostrar preço errado, verifique se o produto tem preço de e-commerce configurado e se o método de entrega está correto. Para Retira na Loja, o sistema usa o Preço PDV Loja.';
+    }
+    if (/\b(ajuda|help|suporte|como|o que|onde|quando|por que)\b/.test(text)) {
+      return 'Posso ajudar com: vendas/PDV, produtos/estoque, financeiro, clientes, e-commerce/checkout, Curva ABC, fiscal, marketplaces e configurações. Diga qual área você precisa de ajuda.';
+    }
+    if (/\b(obrigado|obrigada|valeu|thanks|thank you)\b/.test(text)) {
+      return 'De nada! Se precisar de mais ajuda, é só perguntar ou clicar no botão do WhatsApp para falar com um atendente.';
+    }
+    if (/\b(tchau|bye|adeus|falou|encerrar)\b/.test(text)) {
+      return 'Até logo! Se precisar de mais ajuda, estarei aqui. Você também pode usar o botão do WhatsApp para atendimento humano.';
+    }
+
+    return 'Desculpe, não entendi exatamente o que você precisa. Se quiser, posso tentar ajudar de outra forma ou você pode clicar no botão do WhatsApp para falar diretamente com um atendente humano.';
+  };
+
+  const handleSupportSend = () => {
+    if (!supportInput.trim()) return;
+    const userMessage = supportInput.trim();
+    setSupportMessages(prev => [...prev, { from: 'user', text: userMessage }]);
+    setSupportInput('');
+
+    setTimeout(() => {
+      const botReply = getBotReply(userMessage);
+      setSupportMessages(prev => [...prev, { from: 'bot', text: botReply }]);
+    }, 600);
   };
 
   // REFCOM149: Função para testar conexão SMTP
@@ -7569,124 +7666,69 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* REFCOM_support: Modal de Suporte */}
+      {/* REFCOM_support: Modal de Suporte - Chat Bot */}
       {isSupportOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsSupportOpen(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="text-xl font-black text-slate-900">Central de Suporte — Versiory Store</h2>
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-black text-sm">AI</div>
+                <div>
+                  <h2 className="text-base font-black text-slate-900">Assistente Versiory</h2>
+                  <p className="text-[11px] text-slate-500">Online • Respostas automáticas</p>
+                </div>
+              </div>
               <button onClick={() => setIsSupportOpen(false)} className="text-slate-500 hover:text-slate-900 text-xl font-bold">✕</button>
             </div>
-            <div className="p-6 overflow-y-auto space-y-6 text-sm text-slate-700">
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">Vendas e PDV</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Como realizar uma venda no PDV e selecionar forma de pagamento?</li>
-                  <li>Qual a diferença entre Entrega Normal e Retira na Loja?</li>
-                  <li>Como aplicar desconto ou cupom em um pedido?</li>
-                  <li>Como cancelar ou devolver um pedido?</li>
-                  <li>Como emitir NF-e/NFC-e para uma venda?</li>
-                  <li>Pedido ficou como reservado, o que significa?</li>
-                </ul>
-              </section>
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">Produtos e Estoque</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Como cadastrar um produto com variações de tamanho e cor?</li>
-                  <li>Como configurar preço diferente para loja física e e-commerce?</li>
-                  <li>Como dar baixa manual no estoque?</li>
-                  <li>O que é o estoque mínimo e como configurar?</li>
-                  <li>Como funciona o alerta de ruptura de estoque?</li>
-                  <li>Como importar ou exportar produtos?</li>
-                </ul>
-              </section>
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">Financeiro</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Como lançar uma receita ou despesa manual?</li>
-                  <li>Como configurar taxa de débito, crédito e PIX?</li>
-                  <li>Como funciona a antecipação de recebíveis?</li>
-                  <li>Como gerar relatórios financeiros em CSV?</li>
-                  <li>O que é o fluxo de caixa diário?</li>
-                  <li>Como configurar o Dashboard de Faturamento?</li>
-                </ul>
-              </section>
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">Clientes e CRM</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Como cadastrar e editar clientes?</li>
-                  <li>Como consultar histórico de compras de um cliente?</li>
-                  <li>Como funciona o envio de e-mail para clientes?</li>
-                  <li>Como exportar lista de clientes?</li>
-                  <li>Como recuperar carrinho abandonado?</li>
-                </ul>
-              </section>
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">E-commerce e Checkout</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Como configurar banners e carrossel?</li>
-                  <li>Como funciona o checkout com Retira na Loja?</li>
-                  <li>Como configurar meios de pagamento?</li>
-                  <li>Como criar cupons de desconto?</li>
-                  <li>Como integrar WhatsApp para pedidos?</li>
-                  <li>Como funciona o rastreamento de pedidos?</li>
-                </ul>
-              </section>
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">Curva ABC e Análises</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Como interpretar a Curva ABC?</li>
-                  <li>O que significam os alertas vermelho, laranja, verde e azul?</li>
-                  <li>Como usar a sugestão de compra automática?</li>
-                  <li>Como filtrar análise por período e canal?</li>
-                  <li>Como gerar gráfico de Pareto?</li>
-                </ul>
-              </section>
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">Fiscal e Documentos</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Como emitir NF-e/NFC-e?</li>
-                  <li>Qual a diferença entre NF-e e NFC-e?</li>
-                  <li>Como configurar Série, Natureza de Operação e CFOP?</li>
-                  <li>Como funciona o DANFE e pré-visualização?</li>
-                  <li>Como resolver rejeição da SEFAZ?</li>
-                </ul>
-              </section>
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">Marketplaces</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Como integrar Mercado Livre?</li>
-                  <li>Como sincronizar produtos e pedidos?</li>
-                  <li>Como funciona a nota fiscal marketplace?</li>
-                  <li>O que é taxa de comissão e como configurar?</li>
-                </ul>
-              </section>
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">Configurações Gerais</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Como alterar dados da loja e endereço?</li>
-                  <li>Como configurar e-mail SMTP?</li>
-                  <li>Como alterar senha ou permissões de usuário?</li>
-                  <li>Como fazer backup ou restaurar dados?</li>
-                  <li>Qual a política de privacidade e termos de uso?</li>
-                </ul>
-              </section>
-              <section>
-                <h3 className="font-bold text-slate-900 mb-2">Problemas Comuns</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Não consigo acessar o painel, o que fazer?</li>
-                  <li>O e-commerce não atualiza após alterar banner, o que fazer?</li>
-                  <li>Pedido não aparece no painel, como resolver?</li>
-                  <li>Produto aparece como indisponível, como corrigir?</li>
-                  <li>Não recebo e-mails da loja, como resolver?</li>
-                  <li>Checkout travando ou preço errado, o que verificar?</li>
-                </ul>
-              </section>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+              {supportMessages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                    msg.from === 'user'
+                      ? 'bg-blue-600 text-white rounded-br-md'
+                      : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md'
+                  }`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="p-4 border-t border-slate-200 flex justify-end gap-3">
-              <button onClick={() => setIsSupportOpen(false)} className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-900 font-bold text-sm">Fechar</button>
-              <button onClick={() => { setIsSupportOpen(false); window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte no painel Versiory Store.`, '_blank'); }} className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm flex items-center gap-2">💬 Abrir WhatsApp</button>
+
+            <div className="p-4 border-t border-slate-200 bg-white">
+              <div className="flex gap-2">
+                <input
+                  value={supportInput}
+                  onChange={e => setSupportInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSupportSend()}
+                  placeholder="Digite sua dúvida..."
+                  className="flex-1 bg-slate-100 border border-slate-200 text-slate-900 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={handleSupportSend}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all"
+                >
+                  Enviar
+                </button>
+                <button
+                  onClick={() => { setIsSupportOpen(false); window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte no painel Versiory Store.`, '_blank'); }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all"
+                >
+                  WhatsApp
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {['Como emitir NF-e?', 'Checkout com preço errado', 'Produto indisponível', 'Não recebo e-mails', 'Falar com atendente'].map(suggestion => (
+                  <button
+                    key={suggestion}
+                    onClick={() => { setSupportInput(suggestion); }}
+                    className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 transition-all"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
