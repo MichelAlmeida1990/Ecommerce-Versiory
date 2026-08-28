@@ -62,6 +62,7 @@ type TabKey =
    | 'financial'
    | 'abc'
    | 'fiscal'
+  | 'support'
   | 'settings'
   | 'marketplaces'
   | 'payment'
@@ -674,6 +675,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ERRCOM135: Estado para modal de Baixa Parcial
   const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
   const [selectedOrderForInstallments, setSelectedOrderForInstallments] = useState<Order | null>(null);
+
+  // REFCOM_support: Estado para modal de Suporte
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [showSupportTooltip, setShowSupportTooltip] = useState(false);
 
   // REFCOM149: Lazy init — carrega SMTP do localStorage imediatamente, sem depender de useEffect
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>(() => {
@@ -3068,13 +3073,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-              {/* ERRCOM038: Botão Suporte WhatsApp */}
-              <button
-                onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte no painel Versiory Store.`, '_blank')}
-                className="bg-green-600 hover:bg-green-700 px-3 sm:px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2 text-sm sm:text-base order-2 sm:order-1"
-              >
-                <span>💬</span> <span className="hidden sm:inline">Suporte</span>
-              </button>
               <button
                 onClick={onLogout}
                 className="bg-red-500 hover:bg-red-600 px-4 sm:px-6 py-2 rounded-xl font-medium transition-all text-sm sm:text-base order-1 sm:order-2"
@@ -7588,6 +7586,156 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* REFCOM_support: Modal de Suporte */}
+      {isSupportOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsSupportOpen(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-xl font-black text-slate-900">Central de Suporte — Versiory Store</h2>
+              <button onClick={() => setIsSupportOpen(false)} className="text-slate-500 hover:text-slate-900 text-xl font-bold">✕</button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-6 text-sm text-slate-700">
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">Vendas e PDV</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Como realizar uma venda no PDV e selecionar forma de pagamento?</li>
+                  <li>Qual a diferença entre Entrega Normal e Retira na Loja?</li>
+                  <li>Como aplicar desconto ou cupom em um pedido?</li>
+                  <li>Como cancelar ou devolver um pedido?</li>
+                  <li>Como emitir NF-e/NFC-e para uma venda?</li>
+                  <li>Pedido ficou como reservado, o que significa?</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">Produtos e Estoque</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Como cadastrar um produto com variações de tamanho e cor?</li>
+                  <li>Como configurar preço diferente para loja física e e-commerce?</li>
+                  <li>Como dar baixa manual no estoque?</li>
+                  <li>O que é o estoque mínimo e como configurar?</li>
+                  <li>Como funciona o alerta de ruptura de estoque?</li>
+                  <li>Como importar ou exportar produtos?</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">Financeiro</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Como lançar uma receita ou despesa manual?</li>
+                  <li>Como configurar taxa de débito, crédito e PIX?</li>
+                  <li>Como funciona a antecipação de recebíveis?</li>
+                  <li>Como gerar relatórios financeiros em CSV?</li>
+                  <li>O que é o fluxo de caixa diário?</li>
+                  <li>Como configurar o Dashboard de Faturamento?</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">Clientes e CRM</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Como cadastrar e editar clientes?</li>
+                  <li>Como consultar histórico de compras de um cliente?</li>
+                  <li>Como funciona o envio de e-mail para clientes?</li>
+                  <li>Como exportar lista de clientes?</li>
+                  <li>Como recuperar carrinho abandonado?</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">E-commerce e Checkout</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Como configurar banners e carrossel?</li>
+                  <li>Como funciona o checkout com Retira na Loja?</li>
+                  <li>Como configurar meios de pagamento?</li>
+                  <li>Como criar cupons de desconto?</li>
+                  <li>Como integrar WhatsApp para pedidos?</li>
+                  <li>Como funciona o rastreamento de pedidos?</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">Curva ABC e Análises</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Como interpretar a Curva ABC?</li>
+                  <li>O que significam os alertas vermelho, laranja, verde e azul?</li>
+                  <li>Como usar a sugestão de compra automática?</li>
+                  <li>Como filtrar análise por período e canal?</li>
+                  <li>Como gerar gráfico de Pareto?</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">Fiscal e Documentos</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Como emitir NF-e/NFC-e?</li>
+                  <li>Qual a diferença entre NF-e e NFC-e?</li>
+                  <li>Como configurar Série, Natureza de Operação e CFOP?</li>
+                  <li>Como funciona o DANFE e pré-visualização?</li>
+                  <li>Como resolver rejeição da SEFAZ?</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">Marketplaces</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Como integrar Mercado Livre?</li>
+                  <li>Como sincronizar produtos e pedidos?</li>
+                  <li>Como funciona a nota fiscal marketplace?</li>
+                  <li>O que é taxa de comissão e como configurar?</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">Configurações Gerais</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Como alterar dados da loja e endereço?</li>
+                  <li>Como configurar e-mail SMTP?</li>
+                  <li>Como alterar senha ou permissões de usuário?</li>
+                  <li>Como fazer backup ou restaurar dados?</li>
+                  <li>Qual a política de privacidade e termos de uso?</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="font-bold text-slate-900 mb-2">Problemas Comuns</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Não consigo acessar o painel, o que fazer?</li>
+                  <li>O e-commerce não atualiza após alterar banner, o que fazer?</li>
+                  <li>Pedido não aparece no painel, como resolver?</li>
+                  <li>Produto aparece como indisponível, como corrigir?</li>
+                  <li>Não recebo e-mails da loja, como resolver?</li>
+                  <li>Checkout travando ou preço errado, o que verificar?</li>
+                </ul>
+              </section>
+            </div>
+            <div className="p-4 border-t border-slate-200 flex justify-end gap-3">
+              <button onClick={() => setIsSupportOpen(false)} className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-900 font-bold text-sm">Fechar</button>
+              <button onClick={() => { setIsSupportOpen(false); window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte no painel Versiory Store.`, '_blank'); }} className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm flex items-center gap-2">💬 Abrir WhatsApp</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REFCOM_support: Botões flutuantes de suporte */}
+      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-3 items-end">
+        <div className="relative">
+          {showSupportTooltip && (
+            <div className="absolute bottom-16 right-0 bg-white text-slate-900 px-3 py-2 rounded-xl shadow-xl border border-slate-200 text-xs font-medium whitespace-nowrap">
+              Central de Suporte
+            </div>
+          )}
+          <button
+            onClick={() => { setIsSupportOpen(true); setShowSupportTooltip(false); }}
+            onMouseEnter={() => setShowSupportTooltip(true)}
+            onMouseLeave={() => setShowSupportTooltip(false)}
+            className="bg-white hover:bg-slate-100 text-slate-900 w-14 h-14 rounded-full shadow-2xl border border-white/20 flex items-center justify-center text-2xl transition-all"
+            title="Suporte"
+          >
+            💬
+          </button>
+        </div>
+        <button
+          onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte no painel Versiory Store.`, '_blank')}
+          className="bg-green-600 hover:bg-green-700 text-white w-14 h-14 rounded-full shadow-2xl border border-white/20 flex items-center justify-center text-2xl transition-all"
+          title="WhatsApp"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        </button>
+      </div>
 
       {/* Footer */}
       <footer className="bg-gradient-to-r from-versiory-ink to-slate-900 text-white py-8 mt-12 border-t border-white/10 text-center">
