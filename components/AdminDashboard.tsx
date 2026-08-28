@@ -171,6 +171,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [dashboardDateFrom, setDashboardDateFrom] = useState('');
   const [dashboardDateTo, setDashboardDateTo] = useState('');
   const [dashboardChannelFilter, setDashboardChannelFilter] = useState<'all' | 'physical' | 'online'>('all');
+  const [abcClassFilter, setAbcClassFilter] = useState<'all' | 'A' | 'B' | 'C'>('all');
+  const [abcCalculationPeriod, setAbcCalculationPeriod] = useState<number>(30);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   // ERRCOM106: Ferramenta de Resgate Total (Movida para Produtos)
@@ -5076,6 +5078,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value="physical">PDV Loja</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Classe</label>
+                  <select
+                    value={abcClassFilter}
+                    onChange={e => setAbcClassFilter(e.target.value as any)}
+                    className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+                  >
+                    <option value="all">Tudo</option>
+                    <option value="A">Curva A</option>
+                    <option value="B">Curva B</option>
+                    <option value="C">Curva C</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Período cálculo (dias)</label>
+                  <select
+                    value={abcCalculationPeriod}
+                    onChange={e => setAbcCalculationPeriod(parseInt(e.target.value))}
+                    className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
+                  >
+                    <option value="7">7 dias</option>
+                    <option value="15">15 dias</option>
+                    <option value="30">30 dias</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -5085,6 +5112,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               dateFrom={dashboardDateFrom}
               dateTo={dashboardDateTo}
               channelFilter={dashboardChannelFilter}
+              classFilter={abcClassFilter}
+              calculationPeriod={abcCalculationPeriod}
             />
           </div>
         )}

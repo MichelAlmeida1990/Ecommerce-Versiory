@@ -22,6 +22,8 @@ interface CurvaAbcAnalysisProps {
   dateFrom?: string;
   dateTo?: string;
   channelFilter?: 'all' | 'physical' | 'online';
+  classFilter?: 'all' | 'A' | 'B' | 'C';
+  calculationPeriod?: number;
 }
 
 interface ProductRevenue {
@@ -29,6 +31,18 @@ interface ProductRevenue {
   name: string;
   revenue: number;
   quantity: number;
+}
+
+interface ProductAnalysis extends ProductRevenue {
+  classification: 'A' | 'B' | 'C';
+  percentage: number;
+  accumulatedPercentage: number;
+  currentStock: number;
+  minStock: number;
+  cmd: number;
+  coverageDays: number;
+  suggestedPurchase: number;
+  alertLevel: 'green' | 'orange' | 'red';
 }
 
 const COLORS = ['#10b981', '#f59e0b', '#ef4444'];
@@ -39,6 +53,8 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
   dateFrom,
   dateTo,
   channelFilter = 'all',
+  classFilter = 'all',
+  calculationPeriod = 30,
 }) => {
   const productMap = useMemo(() => {
     const map = new Map<number, Product>();
@@ -89,9 +105,32 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
       let classification: 'A' | 'B' | 'C' = 'C';
       if (accumulatedPercentage <= 80) classification = 'A';
       else if (accumulatedPercentage <= 95) classification = 'B';
-      return { ...item, percentage, accumulatedPercentage, classification };
+
+      const product = productMap.get(item.id);
+      const currentStock = product?.stock || 0;
+      const minStock = product?.minStock || 0;
+      const cmd = calculationPeriod > 0 ? item.quantity / calculationPeriod : 0;
+      const coverageDays = cmd > 0 ? currentStock / cmd : (currentStock > 0 ? 999 : 0);
+      const suggestedPurchase = Math.max(0, Math.round((cmd * 15) - currentStock));
+
+      let alertLevel: 'green' | 'orange' | 'red' = 'green';
+      if (coverageDays < 7) alertLevel = 'red';
+      else if (coverageDays < 10) alertLevel = 'orange';
+
+      return {
+        ...item,
+        classification,
+        percentage,
+        accumulatedPercentage,
+        currentStock,
+        minStock,
+        cmd,
+        coverageDays,
+        suggestedPurchase,
+        alertLevel,
+      } as ProductAnalysis;
     });
-  }, [revenueByProduct, totalRevenue]);
+  }, [revenueByProduct, totalRevenue, productMap, calculationPeriod]);
 
   const stats = useMemo(() => {
     const a = classified.filter(i => i.classification === 'A');
@@ -123,6 +162,26 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
   const formatCurrency = (value: number) =>
     value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+  const filteredClassified = useMemo(() => {
+    if (classFilter === 'all') return classified;
+    return classified.filter(item => item.classification === classFilter);
+  }, [classified, classFilter]);
+
+  const alertIcon = (level: 'green' | 'orange' | 'red') => {
+    if (level === 'red') return '🔴';
+    if (level === 'orange') return '🟠';
+    return '⚪';
+  };
+
+  const alertLabel = (level: 'green' | 'orange' | 'red') => {
+    if (level === 'red') return 'Ruptura iminente';
+    if (level === 'orange') return 'Atenção';
+    return 'Normal';
+  };
+
+  const formatNumber = (value: number) =>
+    value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
   return (
     <div className="space-y-6">
       <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
@@ -130,6 +189,27 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
         <p className="text-slate-300 text-sm mb-6">
           Classificação baseada no faturamento dos produtos vendidos em pedidos.
         </p>
+
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+          <label className="text-xs font-black text-slate-400 uppercase">Filtro classe:</label>
+          {(['all', 'A', 'B', 'C'] as const).map(option => (
+            <button
+              key={option}
+              onClick={() => {}}
+              className={`px-4 py-2 rounded-xl font-black text-sm transition-all ${
+                classFilter === option
+                  ? 'bg-versiory-coral text-white'
+                  : 'bg-white/5 text-slate-300 border border-white/20 hover:bg-white/10'
+              }`}
+            >
+              {option === 'all' ? 'Tudo' : `Curva ${option}`}
+            </button>
+          ))}
+          <div className="ml-auto flex items-center gap-2">
+            <label className="text-xs font-black text-slate-400 uppercase">Período cálculo:</label>
+            <span className="text-white text-sm font-bold">{calculationPeriod} dias</span>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4">
@@ -229,10 +309,14 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
                 <th className="py-2 px-2 text-right">% do Total</th>
                 <th className="py-2 px-2 text-right">% Acumulada</th>
                 <th className="py-2 px-2 text-center">Classe</th>
+                <th className="py-2 px-2 text-right">Cobertura (dias)</th>
+                <th className="py-2 px-2 text-right">Estoque Atual</th>
+                <th className="py-2 px-2 text-right">Sugestão de Compra</th>
+                <th className="py-2 px-2 text-center">AL</th>
               </tr>
             </thead>
             <tbody>
-              {classified.map((item, idx) => (
+              {filteredClassified.map((item, idx) => (
                 <tr key={item.id} className="border-b border-white/10 hover:bg-white/5">
                   <td className="py-2 px-2 text-slate-300">{idx + 1}</td>
                   <td className="py-2 px-2 text-white font-medium">{item.name}</td>
@@ -253,11 +337,17 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
                       {item.classification}
                     </span>
                   </td>
+                  <td className="py-2 px-2 text-right text-slate-200">{formatNumber(item.coverageDays)}</td>
+                  <td className="py-2 px-2 text-right text-slate-200">{formatNumber(item.currentStock)}</td>
+                  <td className="py-2 px-2 text-right text-slate-200">{formatNumber(item.suggestedPurchase)}</td>
+                  <td className="py-2 px-2 text-center" title={alertLabel(item.alertLevel)}>
+                    <span className="text-base leading-none">{alertIcon(item.alertLevel)}</span>
+                  </td>
                 </tr>
               ))}
-              {classified.length === 0 && (
+              {filteredClassified.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-slate-400">
+                  <td colSpan={11} className="py-6 text-center text-slate-400">
                     Nenhum dado de venda disponível para análise.
                   </td>
                 </tr>
