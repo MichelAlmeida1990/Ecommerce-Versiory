@@ -42,7 +42,7 @@ interface ProductAnalysis extends ProductRevenue {
   cmd: number;
   coverageDays: number;
   suggestedPurchase: number;
-  alertLevel: 'green' | 'orange' | 'red';
+  alertLevel: 'red' | 'orange' | 'green' | 'blue';
 }
 
 const COLORS = ['#10b981', '#f59e0b', '#ef4444'];
@@ -113,9 +113,11 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
       const coverageDays = cmd > 0 ? currentStock / cmd : (currentStock > 0 ? 999 : 0);
       const suggestedPurchase = Math.max(0, Math.round((cmd * 15) - currentStock));
 
-      let alertLevel: 'green' | 'orange' | 'red' = 'green';
-      if (coverageDays < 7) alertLevel = 'red';
-      else if (coverageDays < 10) alertLevel = 'orange';
+      let alertLevel: 'red' | 'orange' | 'green' | 'blue' = 'green';
+      if (coverageDays <= 2) alertLevel = 'red';
+      else if (coverageDays <= 10) alertLevel = 'orange';
+      else if (coverageDays <= 60) alertLevel = 'green';
+      else alertLevel = 'blue';
 
       return {
         ...item,
@@ -167,16 +169,25 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
     return classified.filter(item => item.classification === classFilter);
   }, [classified, classFilter]);
 
-  const alertIcon = (level: 'green' | 'orange' | 'red') => {
+  const alertIcon = (level: 'red' | 'orange' | 'green' | 'blue') => {
     if (level === 'red') return '🔴';
     if (level === 'orange') return '🟠';
-    return '⚪';
+    if (level === 'blue') return '🔵';
+    return '🟢';
   };
 
-  const alertLabel = (level: 'green' | 'orange' | 'red') => {
+  const alertLabel = (level: 'red' | 'orange' | 'green' | 'blue') => {
     if (level === 'red') return 'Ruptura iminente';
-    if (level === 'orange') return 'Atenção';
-    return 'Normal';
+    if (level === 'orange') return 'Atenção / risco próximo';
+    if (level === 'blue') return 'Excesso de estoque';
+    return 'Estoque saudável';
+  };
+
+  const alertAction = (level: 'red' | 'orange' | 'green' | 'blue') => {
+    if (level === 'red') return 'Comprar imediatamente';
+    if (level === 'orange') return 'Planejar compra em breve';
+    if (level === 'blue') return 'Evitar compras, criar promoção para girar estoque';
+    return 'Nenhuma ação necessária';
   };
 
   const formatNumber = (value: number) =>
@@ -299,6 +310,12 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
         </div>
 
         <div className="overflow-x-auto">
+            <div className="flex flex-wrap gap-3 mb-4 text-xs">
+            <span className="inline-flex items-center gap-1 bg-red-500/20 text-red-200 px-2 py-1 rounded-lg border border-red-500/30">🔴 menor/igual 2 dias — Ruptura iminente — Comprar imediatamente</span>
+            <span className="inline-flex items-center gap-1 bg-orange-500/20 text-orange-200 px-2 py-1 rounded-lg border border-orange-500/30">🟠 menor/igual 10 dias — Atencao — Planejar compra em breve</span>
+            <span className="inline-flex items-center gap-1 bg-green-500/20 text-green-200 px-2 py-1 rounded-lg border border-green-500/30">🟢 11 a 60 dias — Estoque saudavel — Nenhuma acao</span>
+            <span className="inline-flex items-center gap-1 bg-blue-500/20 text-blue-200 px-2 py-1 rounded-lg border border-blue-500/30">🔵 maior 60 dias — Excesso — Evitar compras / criar promocao</span>
+          </div>
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-white/20 text-slate-300">
@@ -340,14 +357,23 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
                   <td className="py-2 px-2 text-right text-slate-200">{formatNumber(item.coverageDays)}</td>
                   <td className="py-2 px-2 text-right text-slate-200">{formatNumber(item.currentStock)}</td>
                   <td className="py-2 px-2 text-right text-slate-200">{formatNumber(item.suggestedPurchase)}</td>
-                  <td className="py-2 px-2 text-center" title={alertLabel(item.alertLevel)}>
+                  <td className="py-2 px-2 text-center" title={`${alertLabel(item.alertLevel)} - ${alertAction(item.alertLevel)}`}>
                     <span className="text-base leading-none">{alertIcon(item.alertLevel)}</span>
+                    <div className="text-[10px] text-slate-300 leading-tight mt-0.5">{alertLabel(item.alertLevel)}</div>
+                    {(item.alertLevel === 'red' || item.alertLevel === 'orange') && (
+                      <button
+                        onClick={() => alert(`Reabastecer ${item.name}\nSugestão: ${formatNumber(item.suggestedPurchase)} unidades`)}
+                        className="mt-1 text-[10px] font-black uppercase bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded-lg border border-white/20 transition-all"
+                      >
+                        Reabastecer
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
               {filteredClassified.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-6 text-center text-slate-400">
+                  <td colSpan={10} className="py-6 text-center text-slate-400">
                     Nenhum dado de venda disponível para análise.
                   </td>
                 </tr>
