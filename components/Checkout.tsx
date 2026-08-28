@@ -97,9 +97,12 @@ const Checkout: React.FC<CheckoutProps> = ({
     } catch { }
     return { effectiveEmail: email, effectiveAddress: address };
   }, [customerEmail, customerAddress]);
-
   const hasService = items.some(item => item.category === 'Serviços');
+
   const effectiveIsStorePickup = isStorePickup;
+
+  const getItemPrice = (item: any, pickup: boolean) =>
+    pickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price);
 
   // Carregar dados do cliente ao abrir
   React.useEffect(() => {
@@ -144,18 +147,7 @@ const Checkout: React.FC<CheckoutProps> = ({
   // REFCOM169: Se for Retire na Loja, usar pricePOS
   // REFCOM211: Para serviços, aplicar preço baseado no método de entrega (Retira Loja = pricePOS, Entrega Normal = priceEcommerce)
   const subtotal = items.reduce((sum, item) => {
-    let activePrice: number;
-    
-    if (item.category === 'Serviços') {
-      // REFCOM211: Serviços usam preço baseado no método de entrega
-      activePrice = effectiveIsStorePickup
-        ? (item.pricePOS || item.price)
-        : (item.priceEcommerce || item.price);
-    } else {
-      // Produtos regulares sempre usam priceEcommerce no checkout online
-      activePrice = item.priceEcommerce || item.price;
-    }
-    
+    const activePrice = getItemPrice(item, effectiveIsStorePickup);
     return sum + activePrice * item.quantity;
   }, 0);
   const total = Math.max(0, subtotal - discount);
@@ -283,11 +275,8 @@ const Checkout: React.FC<CheckoutProps> = ({
         address: effectiveIsStorePickup ? `Retirada na Loja - ${storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}` : finalAddress,
         estimatedDelivery: effectiveIsStorePickup ? 'Retirada imediata (Seg-Sex: 09h às 18h)' : '5 a 10 dias úteis', // REFCOM169
         items: items.map(item => {
-          // REFCOM211: Para serviços, aplicar preço baseado no método de entrega
-          const itemPrice = item.category === 'Serviços'
-            ? (effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price))
-            : (item.priceEcommerce || item.price);
-          
+          const itemPrice = getItemPrice(item, effectiveIsStorePickup);
+
           const orderItem: any = {
             productId: item.id,
             name: item.name,
@@ -496,10 +485,7 @@ const Checkout: React.FC<CheckoutProps> = ({
         if (item.selectedSize) details.push(`Tamanho: ${item.selectedSize}`);
         if (item.selectedColor) details.push(`Cor: ${item.selectedColor}`);
         const detailsStr = details.length > 0 ? ` (${details.join(', ')})` : '';
-        // REFCOM211: Para serviços, aplicar preço baseado no método de entrega
-        const unitPrice = item.category === 'Serviços'
-          ? (effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price))
-          : (item.priceEcommerce || item.price);
+        const unitPrice = getItemPrice(item, effectiveIsStorePickup);
         return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${(unitPrice * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       }),
       '',
@@ -545,10 +531,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       notes: orderNotes,
       storePolicies: fiscalConfig?.storePolicies,
       items: items.map(item => {
-        // REFCOM211: Para serviços, aplicar preço baseado no método de entrega
-        const itemPrice = item.category === 'Serviços'
-          ? (effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price))
-          : (item.priceEcommerce || item.price);
+        const itemPrice = getItemPrice(item, effectiveIsStorePickup);
         return { ...item, productId: item.id, price: itemPrice, installments: paymentMethod === 'credito' ? installments : 1 };
       }), 
       total: total,
@@ -632,10 +615,7 @@ const Checkout: React.FC<CheckoutProps> = ({
                     </div>
                   </div>
                   <p className="font-bold text-slate-900 whitespace-nowrap">
-                    {/* REFCOM211: Para serviços, aplicar preço baseado no método de entrega */}
-                    R$ {((item.category === 'Serviços'
-                      ? (effectiveIsStorePickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price))
-                      : (item.priceEcommerce || item.price)) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {(getItemPrice(item, effectiveIsStorePickup) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
               ))}
