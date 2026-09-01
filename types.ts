@@ -128,6 +128,12 @@ export interface Order {
   stockDecremented?: boolean; // Se a baixa de estoque já foi realizada para este pedido
   installments?: number; // Número de parcelas (para crédito)
   installmentDetails?: InstallmentStatus[]; // ERRCOM135: Gestão de parcelas
+  installmentDeletionLogs?: { // REFCOM223: log de exclusão de parcelas
+    installmentNumber: string;
+    user: string;
+    date: string;
+    reason: string;
+  }[];
   marketplaceOrderId?: string; // ID original do pedido no marketplace
   marketplaceStatus?: string; // Status original no marketplace para debug
 }
@@ -190,6 +196,8 @@ export interface Expense {
   category: 'fixed' | 'variable' | 'investment' | 'emergency';
   amount: number;
   date: string;
+  dueDate?: string;
+  reference?: string;
   notes?: string;
   user: string;
   // REFCOM180: Campos adicionais para exportação CSV para contabilidade
@@ -205,6 +213,8 @@ export interface ManualRevenue { // ERRCOM136: Registro de receitas avulsas
   category: 'PIX' | 'Dinheiro' | 'Credito' | 'Debito' | 'Deposito';
   amount: number;
   date: string;
+  dueDate?: string;
+  reference?: string;
   notes?: string;
   user: string;
   paymentMethod?: string; // REFCOM220: Forma de pagamento (dinheiro, pix, debito, credito)
@@ -218,15 +228,24 @@ export interface AccountReceivable {
   id: string;
   description: string;
   amount: number;
+  originalAmount?: number; // REFCOM223: valor original da parcela (antes de acréscimos/deduções)
+  addition?: number; // REFCOM223: acréscimo somado ao valor
+  deduction?: number; // REFCOM223: dedução subtraída do valor
+  receivedDate?: string; // REFCOM223: data de recebimento (preenchida na baixa)
   dueDate: string;
   paidAt?: string;
   status: ReceivableStatus;
   orderId?: string;
   customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
   customerCpfCnpj?: string;
-  paymentMethod?: string;
+  paymentMethod?: string; // REFCOM223: Dinheiro, PIX, Débito, Crédito
   channel?: 'online' | 'physical' | 'whatsapp';
   notes?: string;
+  deletedAt?: string; // REFCOM223: data de exclusão (para log)
+  deletedBy?: string; // REFCOM223: usuário que excluiu
+  deleteReason?: string; // REFCOM223: observações obrigatórias no momento da exclusão
 }
 
 export interface AccountPayable {

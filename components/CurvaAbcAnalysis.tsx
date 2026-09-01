@@ -81,10 +81,15 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
   const revenueByProduct = useMemo(() => {
     const map = new Map<number, ProductRevenue>();
     filteredOrders.forEach(order => {
+      const orderGross = order.items?.reduce((s, it) => s + it.price * it.quantity, 0) || 0;
+      const discount = order.discountAmount ?? 0;
+      const factor = orderGross > 0 ? Math.max(0, (orderGross - discount) / orderGross) : 1;
+
       order.items?.forEach(item => {
         const productId = item.productId;
         const existing = map.get(productId) || { id: productId, name: '', revenue: 0, quantity: 0 };
-        existing.revenue += item.price * item.quantity;
+        const lineGross = item.price * item.quantity;
+        existing.revenue += lineGross * factor;
         existing.quantity += item.quantity;
         existing.name = productMap.get(productId)?.name || `Produto #${productId}`;
         map.set(productId, existing);
@@ -92,6 +97,12 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
     });
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
   }, [filteredOrders, productMap]);
+
+  const ignoredSales = useMemo(() => {
+    return filteredOrders
+      .filter(order => order.status === 'cancelled' || order.status === 'returned')
+      .reduce((sum, order) => sum + (order.total || 0), 0);
+  }, [filteredOrders]);
 
   const totalRevenue = revenueByProduct.reduce((sum, item) => sum + item.revenue, 0);
   const totalQuantity = revenueByProduct.reduce((sum, item) => sum + item.quantity, 0);
@@ -298,12 +309,8 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
                 <span className="text-white font-bold">{formatCurrency(totalRevenue)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-red-300">Vendas ignoradas (Classe C)</span>
-                <span className="text-white font-bold">{formatCurrency(stats.c.revenue)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-300">Valor descartado</span>
-                <span className="text-white font-bold">{formatCurrency(stats.c.revenue)}</span>
+                <span className="text-red-300">Vendas ignoradas (Cancelados/Devolvidos)</span>
+                <span className="text-white font-bold">{formatCurrency(ignoredSales)}</span>
               </div>
             </div>
           </div>

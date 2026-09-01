@@ -28,6 +28,7 @@ import CashRegisterReport from './CashRegisterReport';
 import { saveProduct, STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import { getBillingConfig, getBillingStatus, getBillingDueAmount } from '../services/billingConfig';
 import { getAccountsReceivable, saveAccountsReceivable, addAccountReceivable, updateAccountReceivable, deleteAccountReceivable, getAccountsPayable, saveAccountsPayable, addAccountPayable, updateAccountPayable, deleteAccountPayable } from '../services/accountsPayableReceivable';
+import { getBannerConfig, getDefaultBannerConfig, saveBannerConfig, fileToDataUrl, BANNER_MAX, BANNER_UPDATE_EVENT } from '../services/bannerConfig';
 import CouponManagement from './CouponManagement';
 import MarketplaceFields from './MarketplaceFields'; // Importar o novo componente
 import MarketplaceSettings from './MarketplaceSettings'; // Importar o novo componente de configurações
@@ -175,6 +176,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [accountsPayable, setAccountsPayable] = useState<AccountPayable[]>([]);
   const [receivableDateFrom, setReceivableDateFrom] = useState('');
   const [receivableDateTo, setReceivableDateTo] = useState('');
+  // REFCOM226: Campo de pesquisa em Contas a Pagar e Receber
+  const [receivableSearch, setReceivableSearch] = useState('');
+  const [payableSearch, setPayableSearch] = useState('');
   const [payableDateFrom, setPayableDateFrom] = useState('');
   const [payableDateTo, setPayableDateTo] = useState('');
   const [selectedReceivables, setSelectedReceivables] = useState<string[]>([]);
@@ -619,6 +623,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     category: 'fixed' as Expense['category'],
     amount: 0,
     date: new Date().toISOString().split('T')[0],
+    dueDate: new Date().toISOString().split('T')[0],
+    reference: '',
     notes: '',
     paymentMethod: 'dinheiro' as 'dinheiro' | 'pix' | 'debito' | 'credito'
   });
@@ -634,7 +640,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [manualRevenues, setManualRevenues] = useState<ManualRevenue[]>([]); // ERRCOM136
   const [isManualRevenueModalOpen, setIsManualRevenueModalOpen] = useState(false);
   const [manualRevenueForm, setManualRevenueForm] = useState<Partial<ManualRevenue>>({
-    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], notes: '', paymentMethod: 'pix'
+    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0], reference: '', notes: '', paymentMethod: 'pix'
   });
 
   const [orderSearch, setOrderSearch] = useState('');
@@ -737,12 +743,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
   const [isTestingSmtp, setIsTestingSmtp] = useState(false);
 
-  // REFCOM210: Banner do e-commerce (lazy init do localStorage)
+  // REFCOM210: Banner do e-commerce (init do localStorage via import estático)
   const [bannerConfig, setBannerConfig] = useState<BannerConfig>(() => {
     try {
-      const { getBannerConfig, getDefaultBannerConfig } = require('../services/bannerConfig');
-      const saved = getBannerConfig();
-      return saved || getDefaultBannerConfig();
+      return getBannerConfig() || getDefaultBannerConfig();
     } catch {
       return { mode: 'autoplay' as const, banners: [], updatedAt: new Date().toISOString() };
     }
@@ -752,9 +756,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleBannerUpload = async () => {
     if (!bannerFile) { alert('Selecione uma imagem para o banner.'); return; }
-    if (bannerConfig.banners.length >= 5) { alert('Limite de 5 banners atingido.'); return; }
+    if (bannerConfig.banners.length >= BANNER_MAX) { alert(`Limite de ${BANNER_MAX} banners atingido.`); return; }
     try {
-      const { fileToDataUrl, saveBannerConfig } = require('../services/bannerConfig');
       const dataUrl = await fileToDataUrl(bannerFile);
       const newBanner = {
         id: `BN-${Date.now()}`,
@@ -767,7 +770,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       saveBannerConfig(next);
       setBannerFile(null);
       setBannerLinkCategory('');
-      alert('✅ Banner adicionado!');
+      alert('✅ Banner adicionado! O e-commerce será atualizado automaticamente.');
     } catch (e) {
       console.error(e);
       alert('Erro ao fazer upload do banner.');
@@ -775,14 +778,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleBannerDelete = (id: string) => {
-    const { saveBannerConfig } = require('../services/bannerConfig');
+    if (!window.confirm('Excluir este banner?')) return;
     const next = { ...bannerConfig, banners: bannerConfig.banners.filter(b => b.id !== id), updatedAt: new Date().toISOString() };
     setBannerConfig(next);
     saveBannerConfig(next);
   };
 
   const handleBannerModeChange = (mode: 'autoplay' | 'manual' | 'static') => {
-    const { saveBannerConfig } = require('../services/bannerConfig');
     const next = { ...bannerConfig, mode, updatedAt: new Date().toISOString() };
     setBannerConfig(next);
     saveBannerConfig(next);
@@ -1047,7 +1049,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
   }, []);
 
-  // ERRCOM136: Lançamento de Receita Manual
+  // ERRCOM136/REFCOM228: Lançamento de Receita Manual
   const handleManualRevenueSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // REFCOM136: Corrigido — 0 é falsy, então validação era !0 = true sempre bloqueava
@@ -1070,6 +1072,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         category: (manualRevenueForm.category || 'PIX') as any,
         amount: manualRevenueForm.amount,
         date: manualRevenueForm.date || new Date().toISOString().split('T')[0],
+        dueDate: manualRevenueForm.dueDate,
+        reference: manualRevenueForm.reference,
         notes: manualRevenueForm.notes,
         user: 'Admin',
         paymentMethod: manualRevenueForm.paymentMethod // REFCOM220
@@ -1084,6 +1088,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         category: 'PIX',
         amount: 0,
         date: new Date().toISOString().split('T')[0],
+        dueDate: new Date().toISOString().split('T')[0],
+        reference: '',
         notes: '',
         paymentMethod: 'pix'
       });
@@ -1169,6 +1175,132 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     alert('Baixa realizada com sucesso!');
   };
 
+  // REFCOM223: Detalhes e edição do Contas a Receber
+  const [receivableDetail, setReceivableDetail] = useState<AccountReceivable | null>(null);
+  const [receivableEdit, setReceivableEdit] = useState<{
+    paymentMethod: string;
+    originalAmount: number;
+    addition: number;
+    deduction: number;
+    receivedDate: string;
+    notes: string;
+  }>({ paymentMethod: 'Dinheiro', originalAmount: 0, addition: 0, deduction: 0, receivedDate: new Date().toISOString().slice(0, 10), notes: '' });
+
+  const openReceivableDetail = (item: AccountReceivable) => {
+    setReceivableDetail(item);
+    setReceivableEdit({
+      paymentMethod: item.paymentMethod || 'Dinheiro',
+      originalAmount: item.originalAmount ?? item.amount,
+      addition: item.addition ?? 0,
+      deduction: item.deduction ?? 0,
+      receivedDate: item.receivedDate || new Date().toISOString().slice(0, 10),
+      notes: item.notes || ''
+    });
+  };
+
+  const handleReceivablePay = async (id: string) => {
+    const item = accountsReceivable.find(i => i.id === id);
+    if (!item) return;
+    // REFCOM224/REFCOM225: Exige forma de pagamento válida para dar baixa
+    const validMethods = ['Dinheiro', 'PIX', 'Débito', 'Crédito'];
+    if (!item.paymentMethod || !validMethods.includes(item.paymentMethod)) {
+      window.alert('⚠️ Necessário informar uma Forma de Pagamento válida. Use o botão ALTERAR para selecionar entre Dinheiro, PIX, Débito ou Crédito antes de dar baixa.');
+      openReceivableDetail(item);
+      return;
+    }
+    if (!window.confirm(`Confirmar baixa (recebimento) de ${item.description}?`)) return;
+    const now = new Date().toISOString();
+    const updates: Partial<AccountReceivable> = {
+      status: 'paid',
+      paidAt: now,
+      receivedDate: new Date().toISOString().slice(0, 10)
+    };
+    updateAccountReceivable(id, updates);
+    setAccountsReceivable(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
+    // REFCOM223/REFCOM225: Migrar para Receita Bruta Total (manualRevenue)
+    const pmNormalized = (item.paymentMethod || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const revenue: ManualRevenue = {
+      id: Date.now(),
+      description: `${item.description} - Recebimento`,
+      category: (pmNormalized as any) || 'PIX',
+      amount: item.amount,
+      date: now,
+      notes: `Recebimento de parcela do pedido ${item.orderId || ''}`,
+      user: userRole === 'admin' ? 'Admin' : 'Vendedor',
+      paymentMethod: pmNormalized.toLowerCase()
+    };
+    try {
+      // REFCOM225: Persistir no Firebase para aparecer em Transações Recentes e Receita Bruta Total
+      const { saveManualRevenue } = await import('../services/firebase');
+      await saveManualRevenue(revenue);
+      setManualRevenues(prev => [...prev, revenue]);
+      // Sincronizar com localStorage (compatibilidade com outros módulos)
+      const stored = localStorage.getItem('versiory_manual_revenues');
+      const list: ManualRevenue[] = stored ? JSON.parse(stored) : [];
+      list.push(revenue);
+      localStorage.setItem('versiory_manual_revenues', JSON.stringify(list));
+      window.dispatchEvent(new Event('manualRevenueUpdated'));
+    } catch (e) { console.error(e); }
+  };
+
+  const handleReceivableDelete = async (id: string) => {
+    const item = accountsReceivable.find(i => i.id === id);
+    if (!item) return;
+    if (!window.confirm('⚠️ Atenção: Não é possível reabrir este lançamento, ele será definitivamente excluído. Deseja excluir?')) return;
+    const reason = window.prompt('Para confirmar a exclusão, informe as Observações (obrigatórias):');
+    if (!reason || !reason.trim()) {
+      alert('Exclusão cancelada. As observações são obrigatórias.');
+      return;
+    }
+
+    // Log no pedido original
+    if (item.orderId) {
+      const order = orders.find(o => o.id === item.orderId);
+      if (order) {
+        const installmentNumber = item.description.match(/\d+\/\d+/)?.[0] || item.id;
+        const updatedOrder: Order = {
+          ...order,
+          installmentDeletionLogs: [
+            ...(order.installmentDeletionLogs || []),
+            {
+              installmentNumber,
+              user: userRole === 'admin' ? 'Admin' : 'Vendedor',
+              date: new Date().toISOString(),
+              reason: reason.trim()
+            }
+          ]
+        };
+        try {
+          const { saveOrder } = await import('../services/firebase');
+          await saveOrder(updatedOrder);
+          onUpdateOrders(orders.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+        } catch (e) { console.error('Erro ao salvar log no pedido:', e); }
+      }
+    }
+
+    deleteAccountReceivable(id);
+    setAccountsReceivable(prev => prev.filter(i => i.id !== id));
+    alert('✅ Lançamento excluído definitivamente. Log registrado no pedido original.\n\n⚠️ Atenção: Não é possível reabrir este lançamento, pois ele foi definitivamente excluído.\nPara registrar novamente, é necessário criar um novo lançamento manual no módulo Financeiro em [+ Lançar Receita].');
+  };
+
+  const saveReceivableEdit = () => {
+    if (!receivableDetail) return;
+    const finalAmount = +(receivableEdit.originalAmount + receivableEdit.addition - receivableEdit.deduction).toFixed(2);
+    const updates: Partial<AccountReceivable> = {
+      paymentMethod: receivableEdit.paymentMethod,
+      originalAmount: receivableEdit.originalAmount,
+      addition: receivableEdit.addition,
+      deduction: receivableEdit.deduction,
+      receivedDate: receivableEdit.receivedDate,
+      amount: finalAmount,
+      notes: receivableEdit.notes
+    };
+    updateAccountReceivable(receivableDetail.id, updates);
+    setAccountsReceivable(prev => prev.map(i => i.id === receivableDetail.id ? { ...i, ...updates } : i));
+    setReceivableDetail(null);
+    alert('✅ Alterações salvas com sucesso!');
+  };
+
   const handleBatchPayablePay = () => {
     if (selectedPayables.length === 0) {
       alert('Selecione pelo menos um item para dar baixa.');
@@ -1183,21 +1315,102 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     alert('Baixa realizada com sucesso!');
   };
 
+  // REFCOM228: Detalhes e edição do Contas a Pagar
+  const [payableDetail, setPayableDetail] = useState<AccountPayable | null>(null);
+  const [payableEdit, setPayableEdit] = useState<{
+    paymentMethod: string;
+    amount: number;
+    notes: string;
+    dueDate: string;
+  }>({ paymentMethod: 'Dinheiro', amount: 0, notes: '', dueDate: new Date().toISOString().slice(0, 10) });
+
+  const openPayableDetail = (item: AccountPayable) => {
+    setPayableDetail(item);
+    setPayableEdit({
+      paymentMethod: item.paymentMethod || 'Dinheiro',
+      amount: item.amount,
+      notes: item.notes || '',
+      dueDate: item.dueDate || new Date().toISOString().slice(0, 10)
+    });
+  };
+
+  const savePayableEdit = () => {
+    if (!payableDetail) return;
+    const updates: Partial<AccountPayable> = {
+      paymentMethod: payableEdit.paymentMethod,
+      amount: payableEdit.amount,
+      dueDate: payableEdit.dueDate,
+      notes: payableEdit.notes
+    };
+    updateAccountPayable(payableDetail.id, updates);
+    setAccountsPayable(prev => prev.map(i => i.id === payableDetail.id ? { ...i, ...updates } : i));
+    setPayableDetail(null);
+    alert('✅ Alterações salvas com sucesso!');
+  };
+
+  const handlePayableDelete = async (id: string) => {
+    const item = accountsPayable.find(i => i.id === id);
+    if (!item) return;
+    if (!window.confirm('⚠️ Atenção: Não é possível reabrir este lançamento, ele será definitivamente excluído. Deseja excluir?')) return;
+    const reason = window.prompt('Para confirmar a exclusão, informe as Observações (obrigatórias):');
+    if (!reason || !reason.trim()) {
+      alert('Exclusão cancelada. As observações são obrigatórias.');
+      return;
+    }
+
+    // Log na despesa original
+    if (item.expenseId) {
+      const expense = expenses.find(e => e.id === item.expenseId);
+      if (expense) {
+        const updatedExpense: Expense = {
+          ...expense,
+          notes: (expense.notes || '') + `\n[EXCLUSÃO ${new Date().toISOString().slice(0, 10)}] Lançamento ${item.description} excluído. Motivo: ${reason.trim()}`
+        };
+        try {
+          const { saveExpense } = await import('../services/firebase');
+          await saveExpense(updatedExpense);
+          onUpdateExpenses(expenses.map(e => e.id === updatedExpense.id ? updatedExpense : e));
+        } catch (e) { console.error('Erro ao salvar log na despesa:', e); }
+      }
+    }
+
+    deleteAccountPayable(id);
+    setAccountsPayable(prev => prev.filter(i => i.id !== id));
+    alert('✅ Lançamento excluído definitivamente. Log registrado na despesa original.\n\n⚠️ Atenção: Não é possível reabrir este lançamento, pois ele foi definitivamente excluído.\nPara registrar novamente, é necessário criar um novo lançamento manual no módulo Financeiro em [+ Lançar Despesa].');
+  };
+
   const filteredAccountsReceivable = useMemo(() => {
+    const q = receivableSearch.trim().toLowerCase();
     return accountsReceivable.filter(item => {
       if (receivableDateFrom && item.dueDate < receivableDateFrom) return false;
       if (receivableDateTo && item.dueDate > receivableDateTo) return false;
+      // REFCOM226: Filtro por nº pedido, cliente, CPF/CNPJ ou descrição
+      if (q) {
+        const orderId = (item.orderId || '').toLowerCase();
+        const customer = (item.customerName || '').toLowerCase();
+        const cpf = (item.customerCpfCnpj || '').toLowerCase();
+        const desc = (item.description || '').toLowerCase();
+        if (!orderId.includes(q) && !customer.includes(q) && !cpf.includes(q) && !desc.includes(q)) return false;
+      }
       return true;
     });
-  }, [accountsReceivable, receivableDateFrom, receivableDateTo]);
+  }, [accountsReceivable, receivableDateFrom, receivableDateTo, receivableSearch]);
 
   const filteredAccountsPayable = useMemo(() => {
+    const q = payableSearch.trim().toLowerCase();
     return accountsPayable.filter(item => {
       if (payableDateFrom && item.dueDate < payableDateFrom) return false;
       if (payableDateTo && item.dueDate > payableDateTo) return false;
+      // REFCOM226: Filtro por descrição, fornecedor, CPF/CNPJ
+      if (q) {
+        const desc = (item.description || '').toLowerCase();
+        const supplier = (item.supplier || '').toLowerCase();
+        const cpf = (item.supplierCpfCnpj || '').toLowerCase();
+        if (!desc.includes(q) && !supplier.includes(q) && !cpf.includes(q)) return false;
+      }
       return true;
     });
-  }, [accountsPayable, payableDateFrom, payableDateTo]);
+  }, [accountsPayable, payableDateFrom, payableDateTo, payableSearch]);
 
   const categoryOptions = useMemo(() => {
     const productCategories = products.map(product => product.category).filter(Boolean);
@@ -1647,27 +1860,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [allTransactions, orders, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
 
   const financialStats = useMemo(() => {
-    // REFCOM160: Os cards consomem exatamente o mesmo conjunto filtrado de "Transações Recentes".
+    // REFCOM231: Cards utilizam a mesma base de cálculo do Dashboard e módulo de Pedidos
+    // (pedidos com status paid/processing/shipped/delivered), sem filtros de data/tipo/pagamento
+    const validStatuses = ['paid', 'processing', 'shipped', 'delivered'];
+    const validOrders = orders.filter(o => validStatuses.includes(o.status));
+
     let totalRevenue = 0;
     let pdvRevenue = 0;
     let onlineRevenue = 0;
-    let totalExpenses = 0;
 
-    filteredTransactions.forEach(t => {
-      if (t.type === 'revenue') {
-        totalRevenue += t.amount;
-        if (t.category.includes('PDV')) pdvRevenue += t.amount;
-        else if (t.category.includes('Online')) onlineRevenue += t.amount;
-      } else {
-        totalExpenses += Math.abs(t.amount);
-      }
+    validOrders.forEach(o => {
+      totalRevenue += o.total;
+      if (o.salesChannel === 'physical') pdvRevenue += o.total;
+      else onlineRevenue += o.total;
+    });
+
+    // Despesas continuam usando o filtro de data
+    let totalExpenses = 0;
+    expenses.forEach(e => {
+      if (financialDateFilter.from && e.date < financialDateFilter.from) return;
+      if (financialDateFilter.to && e.date > financialDateFilter.to) return;
+      totalExpenses += e.amount;
     });
 
     const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
-  }, [filteredTransactions]);
+  }, [orders, expenses, financialDateFilter]);
 
   // ERRCOM114: Validação de sincronização de estoque (diagnóstico)
   const validateStockConsistency = (product: Product): boolean => {
@@ -2230,6 +2450,77 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           updatedOrder.stockDecremented = false;
         }
       }
+
+      // REFCOM223/REFCOM224/REFCOM225: Geração automática de Contas a Receber ao mudar para status de faturamento
+      // Regras:
+      //  - Crédito parcelado (installments > 1) → gera 1 lançamento por parcela
+      //  - WhatsApp (REFCOM224) → gera 1 único lançamento (parcelado se installments > 1)
+      //  - PDV Loja + Crédito (REFCOM225) → gera 1 lançamento por parcela
+      // REFCOM225: PDV Loja é finalizado como 'delivered' (não 'paid'), então incluímos 'delivered' no check
+      const accountingStatuses = ['paid', 'delivered', 'processing', 'shipped'];
+      const isAccountingStatus = accountingStatuses.includes(updatedOrder.status);
+      const isCreditInstallment = isAccountingStatus && (updatedOrder.installments ?? 0) > 1 && !orderToUpdate.installmentDetails;
+      const isWhatsAppSale = isAccountingStatus && (
+        updatedOrder.salesChannel === 'online' || updatedOrder.salesChannel === 'whatsapp' ||
+        (updatedOrder.paymentMethod || '').toLowerCase() === 'whatsapp' ||
+        ((updatedOrder.notes || '').toLowerCase().includes('whatsapp') || (updatedOrder.notes || '').toLowerCase().includes('finaliza'))
+      ) && !orderToUpdate.installmentDetails;
+      const isPdvCredit = isAccountingStatus && updatedOrder.salesChannel === 'physical' &&
+        (updatedOrder.paymentMethod || '').toLowerCase() === 'credito' && !orderToUpdate.installmentDetails;
+
+      if (isCreditInstallment || isWhatsAppSale || isPdvCredit) {
+        const totalInstallments = updatedOrder.installments && updatedOrder.installments > 1 ? updatedOrder.installments! : 1;
+        const totalAmount = updatedOrder.total;
+        const baseAmount = Math.floor((totalAmount / totalInstallments) * 100) / 100;
+        const remainder = +(totalAmount - baseAmount * (totalInstallments - 1)).toFixed(2);
+        const newDetails: InstallmentStatus[] = [];
+        // WhatsApp com 1 parcela (à vista) gera um único lançamento
+        const effectiveInstallments = (isWhatsAppSale && totalInstallments === 1) ? 1 : totalInstallments;
+
+        for (let i = 1; i <= effectiveInstallments; i++) {
+          const amount = i === effectiveInstallments ? remainder : baseAmount;
+          const due = new Date();
+          due.setMonth(due.getMonth() + (i - 1));
+          newDetails.push({
+            id: `${updatedOrder.id}-${i}/${effectiveInstallments}`,
+            number: `${i}/${effectiveInstallments}`,
+            amount,
+            status: 'pending',
+            paymentMethod: updatedOrder.paymentMethod
+          });
+          const arId = `${updatedOrder.id}-AR-${i}-${Date.now()}`;
+          const description = effectiveInstallments > 1
+            ? `Pedido ${updatedOrder.id} - Parcela ${i}/${effectiveInstallments}`
+            : (isPdvCredit ? `Pedido ${updatedOrder.id} - PDV Loja` : `Pedido ${updatedOrder.id} - WhatsApp`);
+          const receivable: AccountReceivable = {
+            id: arId,
+            description,
+            amount,
+            originalAmount: amount,
+            addition: 0,
+            deduction: 0,
+            dueDate: due.toISOString().slice(0, 10),
+            status: 'open',
+            orderId: updatedOrder.id,
+            customerName: updatedOrder.customerName,
+            customerEmail: updatedOrder.customerEmail,
+            customerPhone: updatedOrder.customerPhone,
+            customerCpfCnpj: updatedOrder.customerCpfCnpj,
+            paymentMethod: (isWhatsAppSale || isPdvCredit) ? 'WhatsApp' : updatedOrder.paymentMethod,
+            channel: updatedOrder.salesChannel === 'physical' ? 'physical' : 'online',
+            notes: isPdvCredit
+              ? `PDV Loja - Crédito - ${updatedOrder.customerEmail || ''}`
+              : `Parcela ${i}/${effectiveInstallments} - ${updatedOrder.customerEmail || ''}`
+          };
+          addAccountReceivable(receivable);
+          setAccountsReceivable(prev => {
+            if (prev.some(p => p.id === arId)) return prev;
+            return [...prev, receivable];
+          });
+        }
+        updatedOrder.installmentDetails = newDetails;
+      }
+
       await saveOrder(updatedOrder);
 
       const updatedOrders = orders.map(order =>
@@ -2784,6 +3075,66 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }));
       }
 
+      // REFCOM225: PDV Loja + CREDITO → disparar dois processos automáticos:
+      //   Processo 1: garantir installmentDetails (parcelas interdependentes) no pedido
+      //   Processo 2: criar lançamentos no Contas a Receber (um por parcela)
+      if (
+        !isBudget &&
+        order.salesChannel === 'physical' &&
+        (order.paymentMethod || '').toLowerCase() === 'credito'
+      ) {
+        // Processo 1: garantir installmentDetails (caso ERRCOM135 não tenha criado — crédito 1x)
+        if (!order.installmentDetails || order.installmentDetails.length === 0) {
+          const totalInstallments = (order.installments && order.installments > 1) ? order.installments : 1;
+          const totalAmount = order.total;
+          const baseAmount = Math.floor((totalAmount / totalInstallments) * 100) / 100;
+          const remainder = +(totalAmount - baseAmount * (totalInstallments - 1)).toFixed(2);
+          order.installmentDetails = [];
+          for (let i = 1; i <= totalInstallments; i++) {
+            order.installmentDetails.push({
+              id: `${order.id}-inst-${i}`,
+              number: `${i}/${totalInstallments}`,
+              amount: i === totalInstallments ? remainder : baseAmount,
+              status: 'pending' as const,
+              paymentMethod: 'Credito'
+            });
+          }
+        }
+
+        // Processo 2: criar lançamentos no Contas a Receber (deduplicado por orderId na lista)
+        const existingArForOrder = accountsReceivable.some(ar => ar.orderId === order.id);
+        if (!existingArForOrder && order.installmentDetails && order.installmentDetails.length > 0) {
+          const today = new Date();
+          order.installmentDetails.forEach((det, i) => {
+            const due = new Date(today);
+            due.setMonth(due.getMonth() + i);
+            const arId = `${order.id}-AR-${i + 1}-${Date.now()}`;
+            const receivable: AccountReceivable = {
+              id: arId,
+              description: order.installmentDetails!.length > 1
+                ? `Pedido ${order.id} - Parcela ${det.number}`
+                : `Pedido ${order.id} - PDV Loja`,
+              amount: det.amount,
+              originalAmount: det.amount,
+              addition: 0,
+              deduction: 0,
+              dueDate: due.toISOString().slice(0, 10),
+              status: 'open',
+              orderId: order.id,
+              customerName: order.customerName,
+              customerEmail: order.customerEmail,
+              customerPhone: order.customerPhone,
+              customerCpfCnpj: order.customerCpfCnpj,
+              paymentMethod: 'WhatsApp', // Força WhatsApp para exigir escolha antes da baixa (REFCOM224)
+              channel: 'physical',
+              notes: `PDV Loja - Crédito - ${order.customerEmail || ''}`
+            };
+            addAccountReceivable(receivable);
+            setAccountsReceivable(prev => prev.some(p => p.id === arId) ? prev : [...prev, receivable]);
+          });
+        }
+      }
+
       // ERRCOM125: Persistir desconto do PDV no pedido
       if (pdvDiscount > 0) {
         order.discountAmount = pdvDiscountType === 'percentual'
@@ -3081,6 +3432,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         category: expenseForm.category,
         amount: expenseForm.amount,
         date: expenseForm.date,
+        dueDate: expenseForm.dueDate,
+        reference: expenseForm.reference,
         notes: expenseForm.notes,
         user: 'Admin',
         paymentMethod: expenseForm.paymentMethod // REFCOM220
@@ -3304,14 +3657,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <p className="text-gray-400 text-sm">Versiory Store</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-              <button
-                onClick={onLogout}
-                className="bg-red-500 hover:bg-red-600 px-4 sm:px-6 py-2 rounded-xl font-medium transition-all text-sm sm:text-base order-1 sm:order-2"
-              >
-                Sair
-              </button>
-            </div>
+            {/* REFCOM198: Suporte e Sair movidos para o rodapé */}
           </div>
         </div>
       </div>
@@ -3363,26 +3709,60 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            {/* REFCOM198: Card superior de aviso de faturamento (Dashboard) */}
             {(() => {
               const status = getBillingStatus(getBillingConfig());
+              const billingConfig = getBillingConfig();
+              const dueAmount = getBillingDueAmount(billingConfig);
+              const handlePayClick = () => {
+                if (billingConfig?.pixKey) {
+                  window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso do PIX/Boleto para pagamento da fatura. Valor: R$ ${dueAmount.toFixed(2)}`, '_blank');
+                } else {
+                  window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso do boleto/PIX para pagamento da fatura.`, '_blank');
+                }
+              };
               if (status.blocked) {
                 return (
-                  <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">
-                    🔒 <strong>Acesso bloqueado por inadimplência.</strong> {status.message} {status.detail}
+                  <div className="bg-gradient-to-r from-red-600/30 to-red-500/20 border-2 border-red-500/60 text-white px-6 py-5 rounded-2xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-red-500/30 flex items-center justify-center text-2xl shrink-0">🔒</div>
+                      <div>
+                        <p className="font-black text-base">{status.message}</p>
+                        <p className="text-red-200 text-xs mt-1">{status.detail}</p>
+                      </div>
+                    </div>
+                    <button onClick={handlePayClick} className="bg-red-500 hover:bg-red-600 text-white px-5 py-2.5 rounded-xl font-black text-sm transition-all shadow-lg whitespace-nowrap">
+                      Regularizar Pagamento
+                    </button>
                   </div>
                 );
               }
-              if (status.phase === 'warning' || status.phase === 'restricted' || status.phase === 'grace') {
+              if (status.phase === 'warning' || status.phase === 'restricted' || status.phase === 'grace' || (status.daysRemaining <= 10 && status.daysRemaining > 0)) {
                 return (
-                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm">
-                    ⚠️ <strong>{status.message}</strong> {status.detail}
+                  <div className="bg-gradient-to-r from-amber-500/25 to-amber-400/10 border-2 border-amber-400/50 text-white px-6 py-5 rounded-2xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-amber-500/30 flex items-center justify-center text-2xl shrink-0">⚠️</div>
+                      <div>
+                        <p className="font-black text-base">{status.message}</p>
+                        {status.detail && <p className="text-amber-100 text-xs mt-1">{status.detail}</p>}
+                      </div>
+                    </div>
+                    <button onClick={handlePayClick} className="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2.5 rounded-xl font-black text-sm transition-all shadow-lg whitespace-nowrap">
+                      Clique para Efetuar o Pagamento
+                    </button>
                   </div>
                 );
               }
-              if (status.daysRemaining <= 10 && status.daysRemaining > 0) {
+              if (status.daysRemaining > 0 && status.daysRemaining <= 14) {
                 return (
-                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm">
-                    ⚠️ <strong>{status.message}</strong> {status.detail}
+                  <div className="bg-gradient-to-r from-blue-500/20 to-blue-400/10 border border-blue-400/40 text-white px-6 py-4 rounded-2xl shadow-lg flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-blue-500/30 flex items-center justify-center text-xl shrink-0">📅</div>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm">{status.message}</p>
+                    </div>
+                    <button onClick={handlePayClick} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-xl font-bold text-xs transition-all">
+                      Pagar Fatura
+                    </button>
                   </div>
                 );
               }
@@ -4322,23 +4702,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div className="text-slate-300 text-xs font-medium mt-1">Orçamentos Pendentes</div>
               </button>
-              {/* REFCOM190: Card exclusivo de Estoque Reservado */}
-              <button
-                onClick={() => {
-                  const reservedOrders = orders.filter(o => o.status === 'reserved');
-                  if (reservedOrders.length === 0) {
-                    alert('Nenhum pedido com estoque reservado no momento.');
-                    return;
-                  }
-                  setIsReservedStockOpen(true);
-                }}
-                className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-teal-500/30 shadow-lg text-left transition-all hover:bg-white/20"
-              >
-                <div className="text-xl font-black text-teal-400">
-                  {orders.filter(o => o.status === 'reserved').reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0)}
-                </div>
-                <div className="text-slate-300 text-xs font-medium mt-1">Itens em Estoque Reservado</div>
-              </button>
+              {/* REFCOM190 + REFCOM217: Estoque Reservado e Devoluções lado a lado */}
+              <div className="col-span-2 md:col-span-4 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  onClick={() => {
+                    const reservedOrders = orders.filter(o => o.status === 'reserved');
+                    if (reservedOrders.length === 0) {
+                      alert('Nenhum pedido com estoque reservado no momento.');
+                      return;
+                    }
+                    setIsReservedStockOpen(true);
+                  }}
+                  className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-teal-500/30 shadow-lg text-left transition-all hover:bg-white/20"
+                >
+                  <div className="text-xl font-black text-teal-400">
+                    {orders.filter(o => o.status === 'reserved').reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0)}
+                  </div>
+                  <div className="text-slate-300 text-xs font-medium mt-1">Itens em Estoque Reservado</div>
+                </button>
+                {/* REFCOM217: Card Devoluções alinhado ao lado de Itens em Estoque Reservado */}
+                <button
+                  onClick={() => {
+                    const returnOrders = orders.filter(o => o.status === 'returned');
+                    if (returnOrders.length === 0) {
+                      alert('Nenhuma devolução no momento.');
+                      return;
+                    }
+                    setOrderFilter('returned');
+                  }}
+                  className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-orange-500/30 shadow-lg text-left transition-all hover:bg-white/20"
+                >
+                  <div className="text-xl font-black text-orange-400">
+                    {orders.filter(o => o.status === 'returned').length}
+                  </div>
+                  <div className="text-slate-300 text-xs font-medium mt-1">Devoluções</div>
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
@@ -4376,23 +4775,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="cancelled">Cancelado</option>
                 </select>
               </div>
-              {/* REFCOM217: Card Devoluções */}
-              <button
-                onClick={() => {
-                  const returnOrders = orders.filter(o => o.status === 'returned');
-                  if (returnOrders.length === 0) {
-                    alert('Nenhuma devolução no momento.');
-                    return;
-                  }
-                  setOrderFilter('returned');
-                }}
-                className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-orange-500/30 shadow-lg text-left transition-all hover:bg-white/20"
-              >
-                <div className="text-xl font-black text-orange-400">
-                  {orders.filter(o => o.status === 'returned').length}
-                </div>
-                <div className="text-slate-300 text-xs font-medium mt-1">Devoluções</div>
-              </button>
             </div>
 
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20">
@@ -5172,24 +5554,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
-            {/* ERRCOM029/030: Cards clicáveis PDV e Online por forma de pagamento */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
-                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 text-left hover:bg-white/20 transition-all"
-              >
-                <div className="text-lg font-black text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
-                <div className="text-slate-300 text-sm">Vendas PDV - clique para ver por forma de pagamento</div>
-              </button>
-              <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
-                className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 text-left hover:bg-white/20 transition-all"
-              >
-                <div className="text-lg font-black text-blue-400">{formatCurrency(financialStats.onlineRevenue)}</div>
-                <div className="text-slate-300 text-sm">Vendas Online — clique para ver por forma de pagamento</div>
-              </button>
-            </div>
-
             {/* ERRCOM027: Filtro de data */}
             <div className="flex flex-wrap gap-3 items-center mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
               <span className="text-slate-300 text-sm font-bold">Filtrar por período:</span>
@@ -5203,9 +5567,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
             </div>
 
-            {/* REFCOM160: Filtros por Tipo e Forma de Pagamento */}
+            {/* REFCOM160/REFCOM229: Filtros por Tipo e Forma de Pagamento */}
             <div className="flex flex-wrap gap-3 items-center mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
-              <span className="text-slate-900 text-sm font-bold">Filtrar por tipo:</span>
+              <span className="text-slate-100 text-sm font-bold">Filtrar por tipo:</span>
               <select
                 value={financialTypeFilter}
                 onChange={e => setFinancialTypeFilter(e.target.value as 'all' | 'revenue' | 'expense')}
@@ -5216,7 +5580,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="expense">Despesas</option>
               </select>
 
-              <span className="text-slate-900 text-sm font-bold ml-4">Forma de pagamento:</span>
+              <span className="text-slate-100 text-sm font-bold ml-4">Forma de pagamento:</span>
               <select
                 value={financialPaymentFilter}
                 onChange={e => setFinancialPaymentFilter(e.target.value as 'all' | 'dinheiro' | 'pix' | 'debito' | 'credito')}
@@ -5230,7 +5594,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </select>
 
               {(financialTypeFilter !== 'all' || financialPaymentFilter !== 'all') && (
-                <button onClick={() => { setFinancialTypeFilter('all'); setFinancialPaymentFilter('all'); }} className="text-slate-900 hover:text-versiory-coral text-sm underline font-medium">Limpar</button>
+                <button onClick={() => { setFinancialTypeFilter('all'); setFinancialPaymentFilter('all'); }} className="text-slate-100 hover:text-versiory-coral text-sm underline font-medium">Limpar</button>
               )}
             </div>
 
@@ -5315,6 +5679,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <h3 className="text-lg font-bold text-white">Contas a Receber</h3>
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* REFCOM226: Campo de pesquisa */}
+                  <input
+                    type="text"
+                    value={receivableSearch}
+                    onChange={e => setReceivableSearch(e.target.value)}
+                    placeholder="🔍 Nº Pedido, Cliente, CPF/CNPJ ou Descrição"
+                    className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 w-72 focus:ring-2 focus:ring-emerald-400 outline-none placeholder:text-slate-400"
+                  />
                   <input type="date" value={receivableDateFrom} onChange={e => setReceivableDateFrom(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
                   <input type="date" value={receivableDateTo} onChange={e => setReceivableDateTo(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
                   <button onClick={handleBatchReceivablePay} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-lg font-black">Baixar Selecionados</button>
@@ -5326,31 +5698,58 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <thead>
                     <tr className="border-b border-white/20 text-slate-300">
                       <th className="py-2 px-2"><input type="checkbox" onChange={e => { if (e.target.checked) setSelectedReceivables(filteredAccountsReceivable.filter(i => i.status !== 'paid').map(i => i.id)); else setSelectedReceivables([]); }} /></th>
-                      <th className="py-2 px-2">Descricao</th>
+                      <th className="py-2 px-2">Pedido / Parcela</th>
+                      <th className="py-2 px-2">Cliente</th>
                       <th className="py-2 px-2 text-right">Valor</th>
                       <th className="py-2 px-2 text-right">Vencimento</th>
                       <th className="py-2 px-2 text-center">Status</th>
-                      <th className="py-2 px-2 text-center">Acoes</th>
+                      <th className="py-2 px-2 text-center">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredAccountsReceivable.map(item => (
                       <tr key={item.id} className="border-b border-white/10 hover:bg-white/5">
                         <td className="py-2 px-2"><input type="checkbox" checked={selectedReceivables.includes(item.id)} onChange={e => setSelectedReceivables(prev => e.target.checked ? [...prev, item.id] : prev.filter(id => id !== item.id))} disabled={item.status === 'paid'} /></td>
-                        <td className="py-2 px-2 text-white">{item.description}</td>
+                        <td className="py-2 px-2 text-white">
+                          <div className="font-bold">{item.orderId || item.description}</div>
+                          {item.description && item.orderId && (
+                            <div className="text-[10px] text-slate-300">{item.description}</div>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-white text-xs">{item.customerName || '-'}</td>
                         <td className="py-2 px-2 text-right text-white">{formatCurrency(item.amount)}</td>
                         <td className="py-2 px-2 text-right text-white">{item.dueDate}</td>
                         <td className="py-2 px-2 text-center">
                           <span className={`px-2 py-1 rounded-full text-xs font-bold ${item.status === 'paid' ? 'bg-green-500/30 text-green-200' : item.status === 'overdue' ? 'bg-red-500/30 text-red-200' : 'bg-amber-500/30 text-amber-200'}`}>{item.status === 'paid' ? 'Pago' : item.status === 'overdue' ? 'Vencido' : 'Aberto'}</span>
                         </td>
                         <td className="py-2 px-2 text-center">
-                          {item.status !== 'paid' && (
-                            <button onClick={() => { updateAccountReceivable(item.id, { status: 'paid', paidAt: new Date().toISOString() }); setAccountsReceivable(prev => prev.map(i => i.id === item.id ? { ...i, status: 'paid', paidAt: new Date().toISOString() } : i)); }} className="text-emerald-300 hover:text-emerald-200 text-xs font-black">Dar Baixa</button>
-                          )}
+                          <div className="flex items-center justify-center gap-1">
+                            {item.status !== 'paid' && (
+                              <button
+                                onClick={() => openReceivableDetail(item)}
+                                className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded-lg text-[10px] font-black"
+                                title="Detalhes / Alterar"
+                              >Alterar</button>
+                            )}
+                            {item.status !== 'paid' && (
+                              <button
+                                onClick={() => handleReceivablePay(item.id)}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white px-2 py-1 rounded-lg text-[10px] font-black"
+                                title="Dar Baixa"
+                              >Baixa</button>
+                            )}
+                            {item.status !== 'paid' && (
+                              <button
+                                onClick={() => handleReceivableDelete(item.id)}
+                                className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg text-[10px] font-black"
+                                title="Excluir"
+                              >Excluir</button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
-                    {filteredAccountsReceivable.length === 0 && (<tr><td colSpan={6} className="py-4 text-center text-slate-400">Nenhuma conta a receber.</td></tr>)}
+                    {filteredAccountsReceivable.length === 0 && (<tr><td colSpan={7} className="py-4 text-center text-slate-400">Nenhuma conta a receber.</td></tr>)}
                   </tbody>
                 </table>
               </div>
@@ -5361,6 +5760,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <h3 className="text-lg font-bold text-white">Contas a Pagar</h3>
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* REFCOM226: Campo de pesquisa */}
+                  <input
+                    type="text"
+                    value={payableSearch}
+                    onChange={e => setPayableSearch(e.target.value)}
+                    placeholder="🔍 Descrição, Fornecedor ou CPF/CNPJ"
+                    className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 w-72 focus:ring-2 focus:ring-red-400 outline-none placeholder:text-slate-400"
+                  />
                   <input type="date" value={payableDateFrom} onChange={e => setPayableDateFrom(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
                   <input type="date" value={payableDateTo} onChange={e => setPayableDateTo(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
                   <button onClick={handleBatchPayablePay} className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-2 rounded-lg font-black">Baixar Selecionados</button>
@@ -5389,11 +5796,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td className="py-2 px-2 text-center">
                           <span className={`px-2 py-1 rounded-full text-xs font-bold ${item.status === 'paid' ? 'bg-green-500/30 text-green-200' : item.status === 'overdue' ? 'bg-red-500/30 text-red-200' : 'bg-amber-500/30 text-amber-200'}`}>{item.status === 'paid' ? 'Pago' : item.status === 'overdue' ? 'Vencido' : 'Aberto'}</span>
                         </td>
-                        <td className="py-2 px-2 text-center">
-                          {item.status !== 'paid' && (
-                            <button onClick={() => { updateAccountPayable(item.id, { status: 'paid', paidAt: new Date().toISOString() }); setAccountsPayable(prev => prev.map(i => i.id === item.id ? { ...i, status: 'paid', paidAt: new Date().toISOString() } : i)); }} className="text-emerald-300 hover:text-emerald-200 text-xs font-black">Dar Baixa</button>
-                          )}
-                        </td>
+                         <td className="py-2 px-2 text-center">
+                           <div className="flex items-center justify-center gap-1">
+                             {item.status !== 'paid' && (
+                               <button
+                                 onClick={() => openPayableDetail(item)}
+                                 className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded-lg text-[10px] font-black"
+                                 title="Detalhes / Alterar"
+                               >Alterar</button>
+                             )}
+                             {item.status !== 'paid' && (
+                               <button
+                                 onClick={() => { updateAccountPayable(item.id, { status: 'paid', paidAt: new Date().toISOString() }); setAccountsPayable(prev => prev.map(i => i.id === item.id ? { ...i, status: 'paid', paidAt: new Date().toISOString() } : i)); }}
+                                 className="bg-emerald-500 hover:bg-emerald-600 text-white px-2 py-1 rounded-lg text-[10px] font-black"
+                                 title="Dar Baixa"
+                               >Baixa</button>
+                             )}
+                             {item.status !== 'paid' && (
+                               <button
+                                 onClick={() => handlePayableDelete(item.id)}
+                                 className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg text-[10px] font-black"
+                                 title="Excluir"
+                               >Excluir</button>
+                             )}
+                           </div>
+                         </td>
                       </tr>
                     ))}
                     {filteredAccountsPayable.length === 0 && (<tr><td colSpan={6} className="py-4 text-center text-slate-400">Nenhuma conta a pagar.</td></tr>)}
@@ -6554,13 +6981,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-black text-gray-700 mb-2">Data</label>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Data Vencimento</label>
                   <input
                     type="date"
-                    value={expenseForm.date}
-                    onChange={event => setExpenseForm(prev => ({ ...prev, date: event.target.value }))}
+                    value={expenseForm.dueDate}
+                    onChange={event => setExpenseForm(prev => ({ ...prev, dueDate: event.target.value }))}
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
                     required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Referencia (opcional)</label>
+                  <input
+                    type="text"
+                    value={expenseForm.reference}
+                    onChange={event => setExpenseForm(prev => ({ ...prev, reference: event.target.value }))}
+                    placeholder="Ex: Nota fiscal, documento..."
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
                   />
                 </div>
                 <div>
@@ -6593,38 +7030,59 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )
       }
 
-      {/* ERRCOM136: Modal de Lançamento de Receita */}
+      {/* ERRCOM136/REFCOM228: Modal de Lançamento de Receita */}
       {isManualRevenueModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="p-6">
               <h3 className="text-xl font-black text-gray-900 mb-4">Lançar Receita Avulsa</h3>
-              <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-black text-gray-700 mb-2">Descrição</label>
-                <input type="text" value={manualRevenueForm.description} onChange={e => setManualRevenueForm({ ...manualRevenueForm, description: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
-              </div>
-               <div className="grid grid-cols-2 gap-4">
-                 <div>
-                   <label className="block text-sm font-black text-gray-700 mb-2">Forma de Pagamento *</label>
-                   <select value={manualRevenueForm.category} onChange={e => setManualRevenueForm({ ...manualRevenueForm, category: e.target.value as any, paymentMethod: e.target.value.toLowerCase() })} className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none" required>
-                     <option value="PIX">PIX</option>
-                     <option value="Dinheiro">Dinheiro</option>
-                     <option value="Credito">Crédito</option>
-                     <option value="Debito">Débito</option>
-                     <option value="Deposito">Depósito Bancário</option>
-                   </select>
-                 </div>
-                 <div>
-                   <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
-                   <input type="number" step="0.01" value={manualRevenueForm.amount} onChange={e => setManualRevenueForm({ ...manualRevenueForm, amount: parseFloat(e.target.value) })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
-                 </div>
-               </div>
-              <div className="flex gap-4 pt-4">
-                <button onClick={handleManualRevenueSubmit} className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl transition-all">Lançar Receita</button>
-                <button onClick={() => setIsManualRevenueModalOpen(false)} className="flex-1 bg-gray-200 text-gray-800 font-black py-3 rounded-xl transition-all">Cancelar</button>
-              </div>
-            </div>
+              <form onSubmit={handleManualRevenueSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Descrição</label>
+                  <input type="text" value={manualRevenueForm.description} onChange={e => setManualRevenueForm({ ...manualRevenueForm, description: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Categoria</label>
+                  <select value={manualRevenueForm.category} onChange={e => setManualRevenueForm({ ...manualRevenueForm, category: e.target.value as any })} className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none" required>
+                    <option value="PIX">PIX</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="Credito">Crédito</option>
+                    <option value="Debito">Débito</option>
+                    <option value="Deposito">Depósito Bancário</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Forma de Pagamento *</label>
+                  <select value={manualRevenueForm.paymentMethod} onChange={e => setManualRevenueForm({ ...manualRevenueForm, paymentMethod: e.target.value })} className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none" required>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="pix">PIX</option>
+                    <option value="debito">Débito</option>
+                    <option value="credito">Crédito</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
+                    <input type="number" step="0.01" value={manualRevenueForm.amount} onChange={e => setManualRevenueForm({ ...manualRevenueForm, amount: parseFloat(e.target.value) })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Data Vencimento</label>
+                    <input type="date" value={manualRevenueForm.dueDate} onChange={e => setManualRevenueForm({ ...manualRevenueForm, dueDate: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Referência (opcional)</label>
+                  <input type="text" value={manualRevenueForm.reference} onChange={e => setManualRevenueForm({ ...manualRevenueForm, reference: e.target.value })} placeholder="Ex: Nota fiscal, documento..." className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Observações</label>
+                  <textarea rows={3} value={manualRevenueForm.notes} onChange={e => setManualRevenueForm({ ...manualRevenueForm, notes: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button type="submit" className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl transition-all">Lançar Receita</button>
+                  <button type="button" onClick={() => setIsManualRevenueModalOpen(false)} className="flex-1 bg-gray-200 text-gray-800 font-black py-3 rounded-xl transition-all">Cancelar</button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
@@ -6665,6 +7123,136 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* REFCOM223: Modal de Detalhes/Edição de Conta a Receber */}
+      {receivableDetail && (() => {
+        const linkedOrder = receivableDetail.orderId ? orders.find(o => o.id === receivableDetail.orderId) : null;
+        const installmentMatch = receivableDetail.description?.match(/(\d+)\/(\d+)/);
+        const installmentLabel = installmentMatch ? installmentMatch[0] : '-';
+        return (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white z-10">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Detalhes do Lançamento</h3>
+                <p className="text-sm text-slate-500">Pedido: {receivableDetail.orderId ? formatOrderId(receivableDetail.orderId) : '-'} • Parcela {installmentLabel}</p>
+              </div>
+              <button onClick={() => setReceivableDetail(null)} className="p-2 hover:bg-slate-100 rounded-full">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* REFCOM223: Layout completo do lançamento */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                <div className="sm:col-span-2"><span className="text-slate-500">Número do Pedido:</span> <span className="font-black text-slate-900">{receivableDetail.orderId ? formatOrderId(receivableDetail.orderId) : '-'}</span></div>
+                <div><span className="text-slate-500">Cliente:</span> <span className="font-bold text-slate-900">{receivableDetail.customerName || '-'}</span></div>
+                <div><span className="text-slate-500">E-mail:</span> <span className="font-bold text-slate-900">{receivableDetail.customerEmail || linkedOrder?.customerEmail || '-'}</span></div>
+                <div><span className="text-slate-500">Telefone:</span> <span className="font-bold text-slate-900">{receivableDetail.customerPhone || linkedOrder?.customerPhone || '-'}</span></div>
+                <div><span className="text-slate-500">CPF/CNPJ:</span> <span className="font-bold text-slate-900">{receivableDetail.customerCpfCnpj || linkedOrder?.customerCpfCnpj || '-'}</span></div>
+                <div><span className="text-slate-500">Data:</span> <span className="font-bold text-slate-900">{receivableDetail.dueDate}</span></div>
+                <div><span className="text-slate-500">Status:</span> <span className="font-bold text-slate-900">{receivableDetail.status === 'paid' ? 'Pago' : 'Aberto'}</span></div>
+                <div><span className="text-slate-500">Canal:</span> <span className="font-bold text-slate-900">{receivableDetail.channel || linkedOrder?.salesChannel || '-'}</span></div>
+                <div><span className="text-slate-500">Forma de Pagamento:</span> <span className="font-bold text-slate-900">{receivableDetail.paymentMethod || linkedOrder?.paymentMethod || '-'}</span></div>
+                <div className="sm:col-span-2"><span className="text-slate-500">Endereço:</span> <span className="font-bold text-slate-900">{linkedOrder?.address || '-'}</span></div>
+                <div className="sm:col-span-2">
+                  <span className="text-slate-500">Itens:</span>
+                  {linkedOrder?.items && linkedOrder.items.length > 0 ? (
+                    <ul className="mt-1 text-xs text-slate-800 list-disc pl-5">
+                      {linkedOrder.items.map((it, idx) => (
+                        <li key={idx}>{it.quantity}x {it.name} — {formatCurrency(it.price)}</li>
+                      ))}
+                    </ul>
+                  ) : <span className="font-bold text-slate-900"> -</span>}
+                </div>
+                <div><span className="text-slate-500">Valor Original do Pedido:</span> <span className="font-black text-slate-900">{linkedOrder ? formatCurrency(linkedOrder.total) : '-'}</span></div>
+                <div><span className="text-slate-500">Parcela:</span> <span className="font-black text-versiory-coral">{installmentLabel}</span></div>
+                <div className="sm:col-span-2"><span className="text-slate-500">Valor da Parcela:</span> <span className="font-black text-emerald-600 text-lg">{formatCurrency(receivableDetail.amount)}</span></div>
+              </div>
+
+              {/* REFCOM223: Logs de exclusão do pedido original */}
+              {linkedOrder?.installmentDeletionLogs && linkedOrder.installmentDeletionLogs.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-3 space-y-2">
+                  <p className="text-xs font-black text-red-700 uppercase">Histórico de Exclusões deste Pedido</p>
+                  {linkedOrder.installmentDeletionLogs.map((log, idx) => (
+                    <div key={idx} className="text-xs text-red-800">
+                      ⚠️ O lançamento #{receivableDetail.orderId}-{log.installmentNumber} foi excluído pelo usuário <b>[{log.user}]</b> em <b>[{formatDate(log.date)} {new Date(log.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}h]</b>.
+                      <br />Observações registradas: {log.reason}
+                      <br />⚠️ Atenção: Não é possível reabrir este lançamento, pois ele foi definitivamente excluído.
+                      <br />Para registrar novamente, é necessário criar um novo lançamento manual no módulo Financeiro em <b>[+ Lançar Receita]</b>.
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Campos editáveis restritos */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Forma de Pagamento</label>
+                  <select value={receivableEdit.paymentMethod} onChange={e => setReceivableEdit({ ...receivableEdit, paymentMethod: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400">
+                    <option>Dinheiro</option>
+                    <option>PIX</option>
+                    <option>Débito</option>
+                    <option>Crédito</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Valor da Parcela Original</label>
+                  <input type="number" step="0.01" value={receivableEdit.originalAmount} onChange={e => setReceivableEdit({ ...receivableEdit, originalAmount: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Acréscimo (R$)</label>
+                  <input type="number" step="0.01" value={receivableEdit.addition} onChange={e => setReceivableEdit({ ...receivableEdit, addition: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Dedução (R$)</label>
+                  <input type="number" step="0.01" value={receivableEdit.deduction} onChange={e => setReceivableEdit({ ...receivableEdit, deduction: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Data Recebimento</label>
+                  <input type="date" value={receivableEdit.receivedDate} onChange={e => setReceivableEdit({ ...receivableEdit, receivedDate: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Valor Final</label>
+                  <div className="px-3 py-2 bg-slate-100 rounded-xl font-black text-slate-900">R$ {(receivableEdit.originalAmount + receivableEdit.addition - receivableEdit.deduction).toFixed(2)}</div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Observações</label>
+                <textarea rows={2} value={receivableEdit.notes} onChange={e => setReceivableEdit({ ...receivableEdit, notes: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                {/* REFCOM223: Botões Notificar Cliente e Imprimir Pedido */}
+                {linkedOrder && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const phone = (linkedOrder.customerPhone || '').replace(/\D/g, '');
+                        if (!phone) { window.alert('Telefone do cliente não disponível.'); return; }
+                        const msg = `Olá ${linkedOrder.customerName}, sua parcela ${installmentLabel} do pedido ${formatOrderId(linkedOrder.id)} no valor de ${formatCurrency(receivableDetail.amount)} vence em ${receivableDetail.dueDate}.`;
+                        window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+                      }}
+                      className="flex-1 min-w-[140px] bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl font-black transition-all flex items-center justify-center gap-2"
+                    >
+                      📱 Notificar Cliente
+                    </button>
+                    <button
+                      onClick={() => setSelectedOrderDetail(linkedOrder)}
+                      className="flex-1 min-w-[140px] bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-black transition-all flex items-center justify-center gap-2"
+                    >
+                      🖨️ Imprimir Pedido
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                <button onClick={saveReceivableEdit} className="flex-1 min-w-[120px] bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl font-black transition-all">💾 Salvar Alterações</button>
+                <button onClick={() => { saveReceivableEdit(); setReceivableDetail(null); void handleReceivablePay(receivableDetail.id); }} className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-black transition-all">✅ Dar Baixa</button>
+                <button onClick={() => { handleReceivableDelete(receivableDetail.id); setReceivableDetail(null); }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-xl font-black transition-all">🗑️ Excluir</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+
       {/* REFCOM222: Modal Contas a Pagar */}
       {isPayableModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -6695,6 +7283,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <button type="button" onClick={() => { setIsPayableModalOpen(false); setEditingPayable(null); }} className="flex-1 bg-gray-200 text-gray-800 font-black py-3 rounded-xl transition-all">Cancelar</button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REFCOM228: Modal de Detalhes/Edição de Conta a Pagar */}
+      {payableDetail && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white z-10">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Detalhes do Lançamento</h3>
+                <p className="text-sm text-slate-500">{payableDetail.description}</p>
+              </div>
+              <button onClick={() => setPayableDetail(null)} className="p-2 hover:bg-slate-100 rounded-full">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                <div className="sm:col-span-2"><span className="text-slate-500">Descrição:</span> <span className="font-black text-slate-900">{payableDetail.description}</span></div>
+                <div><span className="text-slate-500">Fornecedor:</span> <span className="font-bold text-slate-900">{payableDetail.supplier || '-'}</span></div>
+                <div><span className="text-slate-500">CPF/CNPJ:</span> <span className="font-bold text-slate-900">{payableDetail.supplierCpfCnpj || '-'}</span></div>
+                <div><span className="text-slate-500">Vencimento:</span> <span className="font-bold text-slate-900">{payableDetail.dueDate}</span></div>
+                <div><span className="text-slate-500">Status:</span> <span className="font-bold text-slate-900">{payableDetail.status === 'paid' ? 'Pago' : 'Aberto'}</span></div>
+                <div><span className="text-slate-500">Forma de Pagamento:</span> <span className="font-bold text-slate-900">{payableDetail.paymentMethod || '-'}</span></div>
+                <div><span className="text-slate-500">Valor:</span> <span className="font-black text-red-600 text-lg">{formatCurrency(payableDetail.amount)}</span></div>
+              </div>
+
+              {/* Campos editáveis */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Forma de Pagamento</label>
+                  <select value={payableEdit.paymentMethod} onChange={e => setPayableEdit({ ...payableEdit, paymentMethod: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-400">
+                    <option>Dinheiro</option>
+                    <option>PIX</option>
+                    <option>Débito</option>
+                    <option>Crédito</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Valor (R$)</label>
+                  <input type="number" step="0.01" value={payableEdit.amount} onChange={e => setPayableEdit({ ...payableEdit, amount: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Data Vencimento</label>
+                  <input type="date" value={payableEdit.dueDate} onChange={e => setPayableEdit({ ...payableEdit, dueDate: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Observações</label>
+                <textarea rows={2} value={payableEdit.notes} onChange={e => setPayableEdit({ ...payableEdit, notes: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-red-400" />
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                <button onClick={savePayableEdit} className="flex-1 min-w-[120px] bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl font-black transition-all">💾 Salvar Alterações</button>
+                <button onClick={() => { savePayableEdit(); setPayableDetail(null); updateAccountPayable(payableDetail.id, { status: 'paid', paidAt: new Date().toISOString() }); setAccountsPayable(prev => prev.map(i => i.id === payableDetail.id ? { ...i, status: 'paid', paidAt: new Date().toISOString() } : i)); }} className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-black transition-all">✅ Dar Baixa</button>
+                <button onClick={() => { handlePayableDelete(payableDetail.id); setPayableDetail(null); }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-xl font-black transition-all">🗑️ Excluir</button>
+              </div>
             </div>
           </div>
         </div>
@@ -7049,26 +7694,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
               {selectedOrderDetail.notes && <p><span className="font-bold text-white">Observação:</span> {selectedOrderDetail.notes}</p>}
 
-              {/* REFCOM134: Exibir informações de parcelamento */}
-              {selectedOrderDetail.paymentMethod === 'credito' && selectedOrderDetail.installments && selectedOrderDetail.installments > 1 && (
+              {/* REFCOM134/REFCOM225: Exibir informações de parcelamento (PDV Loja + Crédito e Crédito Online) */}
+              {selectedOrderDetail.installmentDetails && selectedOrderDetail.installmentDetails.length > 0 && (
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3 mb-4">
                   <p className="text-blue-400 font-bold text-sm mb-2">💳 Pagamento Parcelado</p>
                   <p className="text-white text-xs">
-                    {selectedOrderDetail.installments}x de {formatCurrency(selectedOrderDetail.total / selectedOrderDetail.installments)} 
+                    {selectedOrderDetail.installments}x de {formatCurrency(selectedOrderDetail.total / selectedOrderDetail.installments)}
                     <span className="text-slate-400 ml-2">(Total: {formatCurrency(selectedOrderDetail.total)})</span>
                   </p>
-                  {selectedOrderDetail.installmentDetails && (
-                    <div className="mt-2 space-y-1">
-                      {selectedOrderDetail.installmentDetails.map((inst, i) => (
-                        <div key={i} className="flex justify-between items-center text-xs">
-                          <span className="text-slate-300">Parcela {inst.number}</span>
-                          <span className={`font-bold ${inst.status === 'paid' ? 'text-green-400' : 'text-yellow-400'}`}>
-                            {formatCurrency(inst.amount)} {inst.status === 'paid' ? '✓' : '⏳'}
-                          </span>
-                        </div>
-                      ))}
+                  <div className="mt-2 space-y-1">
+                    {selectedOrderDetail.installmentDetails.map((inst, i) => (
+                      <div key={i} className="flex justify-between items-center text-xs">
+                        <span className="text-slate-300">Parcela {inst.number}</span>
+                        <span className={`font-bold ${inst.status === 'paid' ? 'text-green-400' : 'text-yellow-400'}`}>
+                          {formatCurrency(inst.amount)} {inst.status === 'paid' ? '✓' : '⏳'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* REFCOM223: Logs de exclusão de parcelas (exibidos no módulo Pedidos) */}
+              {selectedOrderDetail.installmentDeletionLogs && selectedOrderDetail.installmentDeletionLogs.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-3 space-y-2 mb-4">
+                  <p className="text-xs font-black text-red-700 uppercase">Histórico de Exclusões deste Pedido</p>
+                  {selectedOrderDetail.installmentDeletionLogs.map((log, idx) => (
+                    <div key={idx} className="text-xs text-red-800">
+                      ⚠️ O lançamento #{selectedOrderDetail.id}-{log.installmentNumber} foi excluído pelo usuário <b>[{log.user}]</b> em <b>[{formatDate(log.date)} {new Date(log.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}h]</b>.
+                      <br />Observações registradas: {log.reason}
+                      <br />⚠️ Atenção: Não é possível reabrir este lançamento, pois ele foi definitivamente excluído.
+                      <br />Para registrar novamente, é necessário criar um novo lançamento manual no módulo Financeiro em <b>[+ Lançar Receita]</b>.
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
 
@@ -7140,7 +7798,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* ERRCOM135: Botão Baixa Parcial */}
-              {selectedOrderDetail.paymentMethod === 'credito' && selectedOrderDetail.installments && selectedOrderDetail.installments > 1 && (
+              {selectedOrderDetail.installmentDetails && selectedOrderDetail.installmentDetails.length > 0 && (
                 <button
                   onClick={() => { setSelectedOrderForInstallments(selectedOrderDetail); setIsInstallmentModalOpen(true); }}
                   className="w-full mt-4 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-black transition-all shadow-lg flex items-center justify-center gap-2"
@@ -8026,16 +8684,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* REFCOM_support: Modal de Suporte - Chat Bot */}
+      {/* REFCOM224/REFCOM_support: Modal de Suporte - Chat Bot */}
       {isSupportOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsSupportOpen(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-black text-sm">AI</div>
+                <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-versiory-coral to-pink-600">
+                  <img
+                    src="https://drive.google.com/uc?export=download&id=1Vw7xZsP6Ngu-8ydnpDVP8283OOJrTTDp"
+                    alt="Sabor IA"
+                    className="w-8 h-8 object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                      (e.target as HTMLImageElement).parentElement!.innerHTML = '🤖';
+                    }}
+                  />
+                </div>
                 <div>
-                  <h2 className="text-base font-black text-slate-900">Assistente Versiory</h2>
+                  <h2 className="text-base font-black text-slate-900">Sabor IA - Assistente Versiory</h2>
                   <p className="text-[11px] text-slate-500">Online • Respostas automáticas</p>
                 </div>
               </div>
@@ -8094,7 +8762,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* REFCOM_support: Botões flutuantes de suporte */}
+      {/* REFCOM224/REFCOM_support: Botões flutuantes de suporte */}
       <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-3 items-end">
         <div className="relative">
           {showSupportTooltip && (
@@ -8106,10 +8774,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onClick={() => { setIsSupportOpen(true); setShowSupportTooltip(false); }}
             onMouseEnter={() => setShowSupportTooltip(true)}
             onMouseLeave={() => setShowSupportTooltip(false)}
-            className="bg-blue-600 hover:bg-blue-700 text-white w-14 h-14 rounded-full shadow-2xl border border-white/20 flex items-center justify-center text-2xl transition-all"
-            title="Suporte"
+            className="bg-gradient-to-br from-versiory-coral to-pink-600 hover:from-pink-600 hover:to-versiory-coral text-white w-14 h-14 rounded-full shadow-2xl border-2 border-white/30 flex items-center justify-center transition-all overflow-hidden"
+            title="Sabor IA - Assistente Versiory"
           >
-            💬
+            <img
+              src="https://drive.google.com/uc?export=download&id=1Vw7xZsP6Ngu-8ydnpDVP8283OOJrTTDp"
+              alt="Sabor IA - Mascote Versiory"
+              className="w-10 h-10 object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+                (e.target as HTMLImageElement).parentElement!.innerHTML = '🤖';
+              }}
+            />
           </button>
         </div>
         <button
@@ -8122,15 +8798,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Footer */}
-      <footer className="bg-gradient-to-r from-versiory-ink to-slate-900 text-white py-8 mt-12 border-t border-white/10 text-center">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col items-center gap-4">
+      <footer className="bg-gradient-to-r from-versiory-ink to-slate-900 text-white py-8 mt-12 border-t border-white/10">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col items-center gap-4 text-center">
           <p className="text-white/80 text-sm font-medium">Área restrita. Acesso exclusivo para administradores. Todas as ações são monitoradas.</p>
-          <button
-            onClick={onLogout}
-            className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-xl font-medium transition-all mt-2"
-          >
-            Sair
-          </button>
+          {/* REFCOM198: Botões Suporte (WhatsApp) e Sair movidos para o rodapé */}
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte no painel Versiory Store.`, '_blank')}
+              className="bg-green-600 hover:bg-green-700 px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              Suporte (WhatsApp)
+            </button>
+            <button
+              onClick={onLogout}
+              className="bg-red-500 hover:bg-red-600 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg"
+            >
+              Sair
+            </button>
+          </div>
           <p className="text-white/60 text-xs mt-2">© {new Date().getFullYear()} Versiory Store. Todos os direitos reservados. | <span className="font-bold">Versão 2.9.3 (Estável)</span></p>
         </div>
       </footer>

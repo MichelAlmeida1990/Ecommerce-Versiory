@@ -1,6 +1,8 @@
 
 import React, { useState } from 'react';
 import '../versiory-admin-login.css';
+import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
+import { getBillingStatus, getBillingConfig, getBillingDueAmount } from '../services/billingConfig';
 
 interface AdminLoginProps {
   onLogin: (password: string, role: 'admin' | 'seller') => void;
@@ -17,6 +19,22 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onLogin(password, role);
+  };
+
+  const billingConfig = getBillingConfig();
+  const billingStatus = getBillingStatus(billingConfig);
+  const dueAmount = getBillingDueAmount(billingConfig);
+
+  const handleGenerateBoletoPix = () => {
+    if (billingConfig?.pixKey) {
+      window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Gostaria de gerar o boleto/PIX para pagamento da fatura. Valor: R$ ${dueAmount.toFixed(2)}.`, '_blank');
+    } else {
+      window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Gostaria de gerar o boleto/PIX para pagamento da fatura.`, '_blank');
+    }
+  };
+
+  const handleSupportWhatsApp = () => {
+    window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte para acessar o painel Versiory Store.`, '_blank');
   };
 
   return (
@@ -166,6 +184,30 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
           {/* Footer Info */}
           <div className="mt-8 pt-6 border-t border-white/20 text-center">
             <p className="text-white/60 text-xs font-medium">🔒 Acesso seguro e criptografado</p>
+            {/* REFCOM198: Botões para gerar boleto/PIX e suporte WhatsApp */}
+            <div className="flex flex-col sm:flex-row gap-2 mt-4 justify-center">
+              <button
+                type="button"
+                onClick={handleGenerateBoletoPix}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Gerar Boleto/PIX
+              </button>
+              <button
+                type="button"
+                onClick={handleSupportWhatsApp}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>
+                Suporte WhatsApp
+              </button>
+            </div>
+            {billingStatus.phase !== 'normal' && (
+              <p className="text-amber-200 text-[10px] font-bold mt-3">💡 Fatura pendente. Use o botão acima para gerar boleto/PIX ou regularizar.</p>
+            )}
           </div>
         </div>
       </div>

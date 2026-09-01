@@ -535,8 +535,9 @@ const Checkout: React.FC<CheckoutProps> = ({
         return { ...item, productId: item.id, price: itemPrice, installments: paymentMethod === 'credito' ? installments : 1 };
       }), 
       total: total,
-      paymentMethod: paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod, // REFCOM135: Salvar paymentMethod como 'credito' para verificação correta
-      salesChannel: 'online',
+      // REFCOM224: Salvar 'WhatsApp' como forma de pagamento para identificação no Contas a Receber
+      paymentMethod: paymentMethod === 'whatsapp' ? 'WhatsApp' : paymentMethod, // REFCOM135: Salvar paymentMethod como 'credito' para verificação correta
+      salesChannel: paymentMethod === 'whatsapp' ? 'whatsapp' : 'online',
       installments: paymentMethod === 'credito' ? installments : 1,
       discountAmount: discount > 0 ? discount : undefined, // REFCOM151
       discountType: 'fixed', // REFCOM151
