@@ -59,8 +59,14 @@ const App: React.FC = () => {
       setBannerConfig(getBannerConfig() || getDefaultBannerConfig());
       setBannerIndex(0);
     };
+    // Evento customizado (mesma aba)
     window.addEventListener(BANNER_UPDATE_EVENT, handler);
-    return () => window.removeEventListener(BANNER_UPDATE_EVENT, handler);
+    // Evento storage (outras abas)
+    window.addEventListener('storage', handler);
+    return () => {
+      window.removeEventListener(BANNER_UPDATE_EVENT, handler);
+      window.removeEventListener('storage', handler);
+    };
   }, []);
 
   useEffect(() => {
