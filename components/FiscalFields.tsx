@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
 import { getNCMsByCategory, NCMOption } from '../utils/ncmDatabase';
+import { normalizeGtin, isValidEan13 } from '../utils/barcode'; // REFCOM234/235
 
 interface FiscalFieldsProps {
   productForm: Partial<Product>;
@@ -116,8 +117,13 @@ const FiscalFields: React.FC<FiscalFieldsProps> = ({ productForm, onChange }) =>
               maxLength={14}
             />
             <p className="text-[10px] text-slate-400 mt-1">
-              Deixe em branco ou use "SEM GTIN" se o produto não possuir.
+              Deixe em branco ou use "SEM GTIN" se o produto não possuir. Use o botão
+              "Gerar Cód. Barras" para criar o código e imprimir a etiqueta de preço.
             </p>
+            {/* REFCOM235: alerta quando o código digitado não é um EAN-13 válido (consulta no PDV exige 13 dígitos) */}
+            {productForm.gtin && productForm.gtin.trim() !== 'SEM GTIN' && normalizeGtin(productForm.gtin).length > 0 && !isValidEan13(productForm.gtin) && (
+              <p className="text-[10px] text-amber-600 mt-1">⚠️ GTIN/EAN deve ter 13 dígitos numéricos válidos para ser encontrado no PDV.</p>
+            )}
           </div>
         </div>
 

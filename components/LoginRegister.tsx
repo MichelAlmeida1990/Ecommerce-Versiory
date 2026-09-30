@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Customer, Address } from '../types';
 import { fetchAddressByCep } from '../services/cep';
 import { hashPassword, verifyPassword } from '../utils/crypto';
-import { getBillingConfig, getBillingStatus, getBillingDueAmount } from '../services/billingConfig';
-import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
 
 interface LoginRegisterProps {
   onClose?: () => void;
@@ -41,23 +39,9 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
   const MAX_ATTEMPTS = 3;
   const LOCK_TIME = 60000;
 
-  // REFCOM198: Regra simples de vencimento e bloqueio baseada em localStorage
-  const getSubscriptionStatus = () => {
-    try {
-      const raw = localStorage.getItem('versiory_subscription');
-      if (!raw) return { blocked: false, daysRemaining: 30 };
-      const data = JSON.parse(raw);
-      const expiry = data?.expiryDate ? new Date(data.expiryDate) : null;
-      if (!expiry || isNaN(expiry.getTime())) return { blocked: false, daysRemaining: 30 };
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const diff = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      const blocked = today >= expiry || diff <= 0;
-      return { blocked: !!blocked, daysRemaining: Math.max(0, diff) };
-    } catch {
-      return { blocked: false, daysRemaining: 30 };
-    }
-  };
+  // REFCOM232: A regra de faturamento/bloqueio por inadimplência NÃO se aplica ao
+  // e-commerce. Ela é exclusiva do Login do ADM. Aqui o cliente externo só pode
+  // fazer login, recuperar senha ou se cadastrar.
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -142,12 +126,6 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    const subscription = getSubscriptionStatus();
-    if (subscription.blocked) {
-      setError('🔒 Sua fatura venceu e o acesso foi bloqueado. Regularize o pagamento para continuar.');
-      return;
-    }
 
     if (isLocked) {
       setError('🔒 Conta bloqueada. Aguarde 1 minuto antes de tentar novamente.');
@@ -571,84 +549,10 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
             )}
             {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">{error}</div>}
 
-            {(() => {
-              const subscription = getBillingStatus(getBillingConfig());
-              if (subscription.blocked) {
-                return (
-                  <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm space-y-2">
-                    <div>🔒 <strong>Acesso bloqueado por inadimplência.</strong></div>
-                    <div>{subscription.message}</div>
-                    <div className="text-xs">{subscription.detail}</div>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso regularizar minha fatura e gerar o boleto/PIX.`, '_blank')}
-                        className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded-lg font-black"
-                      >
-                        💬 WhatsApp
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => alert(`Para gerar o boleto/PIX, entre em contato com o suporte pelo WhatsApp.\n\nValor da fatura: R$ ${getBillingDueAmount(getBillingConfig()).toFixed(2)}`)}
-                        className="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-2 rounded-lg font-black"
-                      >
-                        📄 Gerar Boleto/PIX
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-              if (subscription.phase === 'restricted' || subscription.phase === 'grace') {
-                return (
-                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm space-y-2">
-                    <div>⚠️ <strong>Acesso restrito.</strong></div>
-                    <div>{subscription.message}</div>
-                    <div className="text-xs">{subscription.detail}</div>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso regularizar minha fatura.`, '_blank')}
-                        className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded-lg font-black"
-                      >
-                        💬 WhatsApp
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => alert(`Valor da fatura: R$ ${getBillingDueAmount(getBillingConfig()).toFixed(2)}`)}
-                        className="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-2 rounded-lg font-black"
-                      >
-                        📄 Gerar Boleto/PIX
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-              if (!subscription.blocked && subscription.daysRemaining <= 5) {
-                return (
-                  <div className="bg-amber-500/10 border border-amber-400/40 text-amber-200 px-4 py-3 rounded-xl text-sm space-y-2">
-                    <div>⚠️ Sua fatura vence em <strong>{subscription.daysRemaining}</strong> dia(s). Clique para regularizar.</div>
-                    <div className="text-xs">{subscription.detail}</div>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso regularizar minha fatura.`, '_blank')}
-                        className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded-lg font-black"
-                      >
-                        💬 WhatsApp
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => alert(`Valor da fatura: R$ ${getBillingDueAmount(getBillingConfig()).toFixed(2)}`)}
-                        className="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-2 rounded-lg font-black"
-                      >
-                        📄 Gerar Boleto/PIX
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-              return null;
-            })()}
+            {/* REFCOM232: O e-commerce NÃO exibe mensagens de fatura nem botões de cobrança.
+                A regra de restrição de acesso e pagamento é exclusiva do Login do ADM.
+                Antes da autenticação do cliente, a tela contém apenas
+                Login/Senha, "Esqueceu sua senha" e "Cadastro do cliente". */}
 
             <button type="submit" className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl active:scale-[0.98]">
               {isRegister ? 'Criar Conta' : 'Entrar'}

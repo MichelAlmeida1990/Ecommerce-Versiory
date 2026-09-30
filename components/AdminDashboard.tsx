@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import {
   Product,
@@ -30,9 +30,19 @@ import { getBillingConfig, getBillingStatus, getBillingDueAmount } from '../serv
 import { getAccountsReceivable, saveAccountsReceivable, addAccountReceivable, updateAccountReceivable, deleteAccountReceivable, getAccountsPayable, saveAccountsPayable, addAccountPayable, updateAccountPayable, deleteAccountPayable } from '../services/accountsPayableReceivable';
 import { getBannerConfig, getDefaultBannerConfig, saveBannerConfig, fileToDataUrl, BANNER_MAX, BANNER_UPDATE_EVENT } from '../services/bannerConfig';
 import CouponManagement from './CouponManagement';
+import LabelGenerator from './LabelGenerator'; // REFCOM234
+import { normalizeGtin, isValidEan13 } from '../utils/barcode'; // REFCOM234/235
 import MarketplaceFields from './MarketplaceFields'; // Importar o novo componente
 import MarketplaceSettings from './MarketplaceSettings'; // Importar o novo componente de configurações
 import CurvaAbcAnalysis from './CurvaAbcAnalysis'; // REFCOM221
+// REFCOM223/224/225/229: helpers compartilhados do fluxo Contas a Receber -> Transações Recentes
+import {
+  FINALIZADORAS,
+  toFinalizadora,
+  channelLabel,
+  formatDateTime,
+  buildInstallmentPlan,
+} from '../utils/receivableHelpers';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -69,7 +79,8 @@ type TabKey =
   | 'settings'
   | 'marketplaces'
   | 'payment'
-  | 'coupons'; // REFCOM204: Módulo Cupom Desconto
+  | 'coupons' // REFCOM204: Módulo Cupom Desconto
+  | 'labels'; // REFCOM234: Geração de código de barras e etiquetas de preço
 
 type StockFilter = 'all' | 'low' | 'out' | 'normal';
 
@@ -480,6 +491,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // PDV State
   const [pdvCart, setPdvCart] = useState<{ product: Product; quantity: number; selectedSize?: string; selectedColor?: string }[]>([]);
   const [pdvSearch, setPdvSearch] = useState('');
+  // REFCOM235: resultado da consulta por GTIN/EAN exibido abaixo do campo de busca
+  const [pdvGtinLookup, setPdvGtinLookup] = useState<{ gtin: string; found: boolean; productName: string } | null>(null);
+  const pdvSearchRef = useRef<HTMLInputElement | null>(null);
   const [isPdvCheckoutModalOpen, setIsPdvCheckoutModalOpen] = useState(false);
   const [selectedSizes, setSelectedSizes] = useState<{ [productId: number]: string }>({});
   const [pdvProductModal, setPdvProductModal] = useState<{ isOpen: boolean; product: Product | null }>({ isOpen: false, product: null });
@@ -645,6 +659,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [orderSearch, setOrderSearch] = useState('');
 
+  // REFCOM234: produto que abriu a tela de Etiquetas a partir do cadastro
+  const [labelProductId, setLabelProductId] = useState<number | null>(null);
+
+  // REFCOM233: Filtros do módulo Pedidos (período, canal e totalizador)
+  const [orderDateFrom, setOrderDateFrom] = useState('');
+  const [orderDateTo, setOrderDateTo] = useState('');
+  const [orderChannelFilter, setOrderChannelFilter] = useState<string>('all');
+
   // ERRCOM035: Busca de cliente por nome
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerBirthDateFilterFrom, setCustomerBirthDateFilterFrom] = useState('');
@@ -699,7 +721,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [pdvDiscountType, setPdvDiscountType] = useState<'fixo' | 'percentual'>('fixo');
 
   // ERRCOM029/030: Modal de vendas por forma de pagamento
-  const [paymentBreakdownModal, setPaymentBreakdownModal] = useState<{ channel: 'pdv' | 'online' | 'all'; orders: Order[] } | null>(null);
+  // REFCOM231: o detalhamento é calculado a partir de `revenueByChannel` (mesma base
+  // dos cards), portanto o modal não carrega mais uma cópia dos pedidos.
+  const [paymentBreakdownModal, setPaymentBreakdownModal] = useState<{ channel: 'pdv' | 'online' | 'all' } | null>(null);
 
   // ERRCOM135: Estado para modal de Baixa Parcial
   const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
@@ -1099,6 +1123,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // REFCOM223/224/225/229: Gerador único de lançamentos interdependentes do Contas a Receber.
+  // Usado tanto na finalização do PDV quanto na mudança de status do e-commerce para
+  // "Pagamento Efetuado", garantindo que TODA venda (crédito parcelado, WhatsApp, Dinheiro,
+  // PIX e Débito) passe pelo Contas a Receber antes de aparecer em Transações Recentes.
+  const generateReceivablesForOrder = (order: Order, existingList: AccountReceivable[]) => {
+    // Idempotência: pedido que já possui lançamentos não é processado novamente.
+    if (existingList.some(ar => ar.orderId === order.id)) return null;
+
+    const { drafts, details } = buildInstallmentPlan(order);
+    const channel = order.salesChannel === 'physical' ? 'physical' : 'online';
+    // REFCOM225: grava a forma de pagamento REALMENTE selecionada (ex.: Crédito),
+    // nunca um valor placeholder como "WhatsApp".
+    const finalizadora = toFinalizadora(order.paymentMethod) || undefined;
+    const created: AccountReceivable[] = drafts.map((draft, i) => ({
+      id: `${order.id}-AR-${i + 1}-${Date.now()}`,
+      description: draft.description,
+      amount: draft.amount,
+      originalAmount: draft.amount,
+      addition: 0,
+      deduction: 0,
+      dueDate: draft.dueDate,
+      status: 'open' as const,
+      orderId: order.id,
+      installmentNumber: draft.installmentNumber,
+      saleDate: order.date, // REFCOM225: data + hora exatas da venda
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerPhone: order.customerPhone,
+      customerCpfCnpj: order.customerCpfCnpj,
+      paymentMethod: finalizadora,
+      channel,
+      notes: [
+        channelLabel(channel),
+        drafts.length > 1 ? `Parcela ${draft.installmentNumber}` : null,
+        order.customerEmail || null,
+      ].filter(Boolean).join(' - '),
+    }));
+
+    created.forEach(item => addAccountReceivable(item));
+    setAccountsReceivable(prev => {
+      const ids = new Set(created.map(c => c.id));
+      return [...prev.filter(p => !ids.has(p.id)), ...created];
+    });
+
+    return details;
+  };
+
   // REFCOM222: Contas a Receber
   const handleReceivableSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1161,18 +1232,69 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setPayableForm({ description: '', amount: 0, dueDate: '', status: 'open' });
   };
 
-  const handleBatchReceivablePay = () => {
+  const handleBatchReceivablePay = async () => {
     if (selectedReceivables.length === 0) {
       alert('Selecione pelo menos um item para dar baixa.');
       return;
     }
+    // REFCOM223/229: baixa em lote gera uma receita por lançamento, na finalizadora
+    // definida em cada um — caso contrário o lote não apareceria em Transações Recentes.
     const now = new Date().toISOString();
-    selectedReceivables.forEach(id => {
-      updateAccountReceivable(id, { status: 'paid', paidAt: now });
-    });
-    setAccountsReceivable(prev => prev.map(item => selectedReceivables.includes(item.id) ? { ...item, status: 'paid', paidAt: now } : item));
+    const today = now.slice(0, 10);
+    const created: ManualRevenue[] = [];
+
+    for (const id of selectedReceivables) {
+      const item = accountsReceivable.find(i => i.id === id);
+      if (!item || item.status === 'paid') continue;
+      if (!item.paymentMethod || !(FINALIZADORAS as readonly string[]).includes(item.paymentMethod)) {
+        alert(`⚠️ "${item.description}" está sem Forma de Pagamento válida (Dinheiro, PIX, Débito ou Crédito). Use ALTERAR antes de baixar em lote.`);
+        continue;
+      }
+      const revenueId = Date.now() + created.length;
+      const revenue: ManualRevenue = {
+        id: revenueId,
+        description: `${item.description} - Recebimento`,
+        category: item.paymentMethod as ManualRevenue['category'],
+        amount: item.amount,
+        date: now,
+        notes: `Recebimento de parcela do pedido ${item.orderId || ''}`,
+        user: userRole === 'admin' ? 'Admin' : 'Vendedor',
+        paymentMethod: item.paymentMethod,
+        sourceReceivableId: item.id,
+        sourceChannel: item.channel,
+      };
+      created.push(revenue);
+      updateAccountReceivable(id, {
+        status: 'paid',
+        paidAt: now,
+        receivedDate: today,
+        revenueId,
+      });
+    }
+
+    if (created.length === 0) {
+      setSelectedReceivables([]);
+      return;
+    }
+
+    setAccountsReceivable(prev => prev.map(item =>
+      selectedReceivables.includes(item.id) && item.status !== 'paid'
+        ? { ...item, status: 'paid' as const, paidAt: now, receivedDate: today }
+        : item
+    ));
+    setManualRevenues(prev => [...prev, ...created]);
     setSelectedReceivables([]);
-    alert('Baixa realizada com sucesso!');
+
+    try {
+      const { saveManualRevenue } = await import('../services/firebase');
+      await Promise.all(created.map(saveManualRevenue));
+      const stored = localStorage.getItem('versiory_manual_revenues');
+      const list: ManualRevenue[] = stored ? JSON.parse(stored) : [];
+      localStorage.setItem('versiory_manual_revenues', JSON.stringify([...list, ...created]));
+      window.dispatchEvent(new Event('manualRevenueUpdated'));
+    } catch (e) { console.error(e); }
+
+    alert(`Baixa realizada com sucesso! ${created.length} lançamento(s) movido(s) para Transações Recentes.`);
   };
 
   // REFCOM223: Detalhes e edição do Contas a Receber
@@ -1184,12 +1306,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     deduction: number;
     receivedDate: string;
     notes: string;
-  }>({ paymentMethod: 'Dinheiro', originalAmount: 0, addition: 0, deduction: 0, receivedDate: new Date().toISOString().slice(0, 10), notes: '' });
+  }>({ paymentMethod: '', originalAmount: 0, addition: 0, deduction: 0, receivedDate: new Date().toISOString().slice(0, 10), notes: '' });
 
   const openReceivableDetail = (item: AccountReceivable) => {
     setReceivableDetail(item);
     setReceivableEdit({
-      paymentMethod: item.paymentMethod || 'Dinheiro',
+      // REFCOM225: lançamentos sem finalizadora definida (ex.: venda "a combinar" via
+      // WhatsApp) abrem vazios, obrigando o usuário a escolher antes de dar baixa.
+      paymentMethod: toFinalizadora(item.paymentMethod) || '',
       originalAmount: item.originalAmount ?? item.amount,
       addition: item.addition ?? 0,
       deduction: item.deduction ?? 0,
@@ -1198,36 +1322,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  const handleReceivablePay = async (id: string) => {
-    const item = accountsReceivable.find(i => i.id === id);
+  const handleReceivablePay = async (id: string, override?: AccountReceivable) => {
+    const item = override || accountsReceivable.find(i => i.id === id);
     if (!item) return;
-    // REFCOM224/REFCOM225: Exige forma de pagamento válida para dar baixa
-    const validMethods = ['Dinheiro', 'PIX', 'Débito', 'Crédito'];
-    if (!item.paymentMethod || !validMethods.includes(item.paymentMethod)) {
+    // REFCOM224/REFCOM225/REFCOM229: Exige forma de pagamento válida para dar baixa
+    if (!item.paymentMethod || !(FINALIZADORAS as readonly string[]).includes(item.paymentMethod)) {
       window.alert('⚠️ Necessário informar uma Forma de Pagamento válida. Use o botão ALTERAR para selecionar entre Dinheiro, PIX, Débito ou Crédito antes de dar baixa.');
       openReceivableDetail(item);
       return;
     }
     if (!window.confirm(`Confirmar baixa (recebimento) de ${item.description}?`)) return;
     const now = new Date().toISOString();
+    // REFCOM223.4 / REFCOM229.2: a receita gerada guarda a origem no Contas a Receber
+    // para permitir o Estorno devolvendo o lançamento ao status Aberto.
+    const revenueId = Date.now();
     const updates: Partial<AccountReceivable> = {
       status: 'paid',
       paidAt: now,
-      receivedDate: new Date().toISOString().slice(0, 10)
+      receivedDate: new Date().toISOString().slice(0, 10),
+      revenueId,
     };
     updateAccountReceivable(id, updates);
     setAccountsReceivable(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
-    // REFCOM223/REFCOM225: Migrar para Receita Bruta Total (manualRevenue)
-    const pmNormalized = (item.paymentMethod || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
     const revenue: ManualRevenue = {
-      id: Date.now(),
+      id: revenueId,
       description: `${item.description} - Recebimento`,
-      category: (pmNormalized as any) || 'PIX',
+      category: item.paymentMethod as ManualRevenue['category'],
       amount: item.amount,
       date: now,
       notes: `Recebimento de parcela do pedido ${item.orderId || ''}`,
       user: userRole === 'admin' ? 'Admin' : 'Vendedor',
-      paymentMethod: pmNormalized.toLowerCase()
+      paymentMethod: item.paymentMethod,
+      sourceReceivableId: item.id,
+      sourceChannel: item.channel,
     };
     try {
       // REFCOM225: Persistir no Firebase para aparecer em Transações Recentes e Receita Bruta Total
@@ -1241,6 +1369,58 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       localStorage.setItem('versiory_manual_revenues', JSON.stringify(list));
       window.dispatchEvent(new Event('manualRevenueUpdated'));
     } catch (e) { console.error(e); }
+  };
+
+  // REFCOM223.5 / REFCOM229.4: Estorno de um lançamento já baixado.
+  // Remove a receita de Transações Recentes (subtraindo dos cards Receita Bruta,
+  // Vendas PDV e Vendas Online) e devolve o lançamento ao Contas a Receber em Aberto,
+  // reabrindo as opções de Alterar, Baixar e Excluir.
+  const handleReceivableRefund = async (receivableId: string) => {
+    const item = accountsReceivable.find(i => i.id === receivableId);
+    if (!item) return;
+    if (!window.confirm(
+      `⚠️ Estornar o recebimento de ${item.description}?\n\n` +
+      'O lançamento sairá de Transações Recentes, os valores serão subtraídos dos cards ' +
+      'de Receita Bruta/Vendas e voltará para Contas a Receber com status Aberto.'
+    )) return;
+
+    const reason = window.prompt('Informe as Observações do estorno (obrigatórias):');
+    if (!reason || !reason.trim()) {
+      alert('Estorno cancelado. As observações são obrigatórias.');
+      return;
+    }
+
+    // 1) Remove a receita gerada na baixa
+    const linkedRevenue = manualRevenues.find(rev => rev.sourceReceivableId === item.id);
+    if (linkedRevenue) {
+      try {
+        const { deleteManualRevenue } = await import('../services/firebase');
+        await deleteManualRevenue(linkedRevenue.id);
+      } catch (e) { console.error(e); }
+      setManualRevenues(prev => prev.filter(rev => rev.id !== linkedRevenue.id));
+      const stored = localStorage.getItem('versiory_manual_revenues');
+      if (stored) {
+        const list: ManualRevenue[] = JSON.parse(stored);
+        localStorage.setItem(
+          'versiory_manual_revenues',
+          JSON.stringify(list.filter(rev => rev.id !== linkedRevenue.id))
+        );
+      }
+      window.dispatchEvent(new Event('manualRevenueUpdated'));
+    }
+
+    // 2) Devolve o lançamento para Aberto
+    const updates: Partial<AccountReceivable> = {
+      status: 'open',
+      paidAt: undefined,
+      receivedDate: undefined,
+      revenueId: undefined,
+      notes: [item.notes || '', `Estorno: ${reason.trim()}`].filter(Boolean).join('\n'),
+    };
+    updateAccountReceivable(item.id, updates);
+    setAccountsReceivable(prev => prev.map(i => i.id === item.id ? { ...i, ...updates } : i));
+
+    alert('✅ Estorno realizado. O lançamento voltou para Contas a Receber com status Aberto.');
   };
 
   const handleReceivableDelete = async (id: string) => {
@@ -1283,11 +1463,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     alert('✅ Lançamento excluído definitivamente. Log registrado no pedido original.\n\n⚠️ Atenção: Não é possível reabrir este lançamento, pois ele foi definitivamente excluído.\nPara registrar novamente, é necessário criar um novo lançamento manual no módulo Financeiro em [+ Lançar Receita].');
   };
 
-  const saveReceivableEdit = () => {
-    if (!receivableDetail) return;
+  // Monta os updates do formulário de edição (campos alteráveis do lançamento).
+  const buildReceivableEdits = (): Partial<AccountReceivable> => {
     const finalAmount = +(receivableEdit.originalAmount + receivableEdit.addition - receivableEdit.deduction).toFixed(2);
-    const updates: Partial<AccountReceivable> = {
-      paymentMethod: receivableEdit.paymentMethod,
+    return {
+      paymentMethod: receivableEdit.paymentMethod || undefined,
       originalAmount: receivableEdit.originalAmount,
       addition: receivableEdit.addition,
       deduction: receivableEdit.deduction,
@@ -1295,10 +1475,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       amount: finalAmount,
       notes: receivableEdit.notes
     };
+  };
+
+  const saveReceivableEdit = () => {
+    if (!receivableDetail) return;
+    const updates = buildReceivableEdits();
     updateAccountReceivable(receivableDetail.id, updates);
     setAccountsReceivable(prev => prev.map(i => i.id === receivableDetail.id ? { ...i, ...updates } : i));
     setReceivableDetail(null);
     alert('✅ Alterações salvas com sucesso!');
+  };
+
+  // Salva as alterações e em seguida dá a baixa já usando os valores recém-editados
+  // (evita o problema de ler um estado antigo ao baixar direto do modal de detalhes).
+  const saveReceivableEditAndPay = async () => {
+    if (!receivableDetail) return;
+    const updates = buildReceivableEdits();
+    if (!updates.paymentMethod || !(FINALIZADORAS as readonly string[]).includes(updates.paymentMethod)) {
+      window.alert('⚠️ Selecione uma Forma de Pagamento válida (Dinheiro, PIX, Débito ou Crédito) antes de dar baixa.');
+      return;
+    }
+    const merged: AccountReceivable = { ...receivableDetail, ...updates } as AccountReceivable;
+    updateAccountReceivable(receivableDetail.id, updates);
+    setAccountsReceivable(prev => prev.map(i => i.id === receivableDetail.id ? { ...i, ...updates } : i));
+    setReceivableDetail(null);
+    await handleReceivablePay(merged.id, merged);
   };
 
   const handleBatchPayablePay = () => {
@@ -1669,17 +1870,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .sort((a, b) => (a.id || 0) - (b.id || 0));
   }, [products, productSearch]);
 
+  // REFCOM233: Base filtrada por período e canal. Serve tanto para a listagem
+  // quanto para os cards de total/status, garantindo que ambos mostrem os mesmos números.
+  const ordersByScope = useMemo(() => {
+    if (!orderDateFrom && !orderDateTo && orderChannelFilter === 'all') return orders;
+
+    const from = orderDateFrom ? new Date(`${orderDateFrom}T00:00:00`) : null;
+    // REFCOM233: "Até" inclui o dia inteiro informado
+    const to = orderDateTo ? new Date(`${orderDateTo}T23:59:59.999`) : null;
+
+    return orders.filter(o => {
+      if (orderDateFrom || orderDateTo) {
+        const d = new Date(o.date);
+        if (isNaN(d.getTime())) return false;
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+      }
+      if (orderChannelFilter !== 'all' && (o.salesChannel || 'online') !== orderChannelFilter) return false;
+      return true;
+    });
+  }, [orders, orderDateFrom, orderDateTo, orderChannelFilter]);
+
   const filteredOrders = useMemo(() => {
-    let filtered = orders;
+    let filtered = ordersByScope;
     if (orderFilter !== 'all') {
       if (orderFilter === 'budget') {
-        filtered = orders.filter(o => o.isBudget);
+        filtered = ordersByScope.filter(o => o.isBudget);
       } else if (orderFilter === 'converted') {
-        filtered = orders.filter(o => !o.isBudget && o.id.startsWith('ORC-'));
+        filtered = ordersByScope.filter(o => !o.isBudget && o.id.startsWith('ORC-'));
       } else if (orderFilter === 'returned') {
-        filtered = orders.filter(o => o.status === 'returned');
+        filtered = ordersByScope.filter(o => o.status === 'returned');
       } else {
-        filtered = orders.filter(o => o.status === orderFilter);
+        filtered = ordersByScope.filter(o => o.status === orderFilter);
       }
     }
     // ERRCOM047: Filtro por número do pedido
@@ -1690,7 +1912,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       );
     }
     return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [orders, orderFilter, orderSearch]);
+  }, [ordersByScope, orderFilter, orderSearch]);
+
+  // REFCOM233: Totalizador do rodapé da listagem de pedidos
+  const ordersTotals = useMemo(() => {
+    return {
+      count: filteredOrders.length,
+      total: filteredOrders.reduce((s, o) => s + (o.total || 0), 0),
+      items: filteredOrders.reduce((s, o) => s + o.items.reduce((acc, i) => acc + i.quantity, 0), 0),
+    };
+  }, [filteredOrders]);
 
   const inventoryStats = useMemo(() => {
     const totalStockValue = products.reduce(
@@ -1767,127 +1998,262 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   }, [products, inventorySearch, stockFilter]);
 
-  // Conjunto completo de transações (sem filtro de exibição), usado tanto pela lista
-  // "Transações Recentes" quanto pelos cards de resumo do Financeiro (REFCOM160).
-  const allTransactions = useMemo(() => {
-      // REFCOM182: Orçamento convertido (paid/processing/shipped/delivered) entra como receita
-      // REFCOM202: Pedidos 'reserved' não contabilizam como venda no financeiro
-      const revenue = orders
-        .filter(order => {
-          // REFCOM209: Vendas a crédito NÃO entram automaticamente no financeiro.
-          // O valor só aparece quando há baixa real (ManualRevenue gerado na Baixa Parcial).
-          if (order.paymentMethod === 'credito') return false;
-          const isPaidBudget = order.isBudget && ['paid', 'processing', 'shipped', 'delivered'].includes(order.status);
-          const isRegularRevenue = !order.isBudget && order.status !== 'cancelled' && order.status !== 'pending' && order.status !== 'reserved';
-          return isPaidBudget || isRegularRevenue;
-        })
-        .map(order => ({
-        id: order.id,
-        description: `Venda ${order.salesChannel === 'physical' ? 'PDV' : 'Online'} - ${order.customerName}${order.isBudget ? ' (Orçamento Finalizado)' : ''}`,
+  // REFCOM223/224/225/229/231: Normaliza TODA origem de receita em uma unica lista.
+  //
+  // Regra central do novo fluxo de faturamento:
+  //   1. Pedido com lancamento no Contas a Receber (aberto OU baixado) NUNCA entra
+  //      direto no financeiro. Ele so aparece apos a baixa, no valor e na finalizadora
+  //      selecionados no momento da baixa.
+  //   2. Pedido sem lancamento (venda a vista de fora do fluxo) entra direto.
+  //   3. Receitas avulsas sem origem no Contas a Receber entram direto.
+  //
+  // Essa lista e a UNICA fonte dos cards de resumo, da lista de Transacoes Recentes
+  // e do modal de detalhamento por forma de pagamento, eliminando a divergencia
+  // entre cards e detalhes (REFCOM231).
+  const revenueEntries = useMemo(() => {
+    const REVENUE_STATUSES = ['paid', 'processing', 'shipped', 'delivered'];
+    const entries: Array<{
+      key: string;
+      refId: string;
+      orderId?: string;
+      description: string;
+      amount: number;
+      date: string;
+      channel: 'physical' | 'online' | 'manual';
+      category: string;
+      paymentMethod: string;
+      source: 'order' | 'receivable' | 'manual';
+      receivableId?: string;
+      notes?: string;
+    }> = [];
+
+    const orderIdsWithReceivable = new Set(
+      accountsReceivable.map(ar => ar.orderId).filter((v): v is string => !!v)
+    );
+
+    // 1) Pedidos faturados SEM lancamento no Contas a Receber
+    orders.forEach(order => {
+      if (!REVENUE_STATUSES.includes(order.status)) return;
+      if (order.status === 'cancelled' || order.status === 'returned') return;
+      if (orderIdsWithReceivable.has(order.id)) return; // entra via baixa
+
+      const isPhysical = order.salesChannel === 'physical';
+      entries.push({
+        key: `order:${order.id}`,
+        refId: order.id,
+        orderId: order.id,
+        description: `Venda ${isPhysical ? 'PDV' : 'Online'} - ${order.customerName}${order.isBudget ? ' (Orçamento Finalizado)' : ''}`,
         amount: order.total,
-        type: 'revenue' as const,
         date: order.date,
-        category: order.salesChannel === 'physical' ? 'Venda PDV' : 'Venda Online',
-        paymentMethod: order.paymentMethod || 'dinheiro', // REFCOM220
-        notes: order.notes || ''
-      }));
+        channel: isPhysical ? 'physical' : 'online',
+        category: isPhysical ? 'Venda PDV' : 'Venda Online',
+        paymentMethod: toFinalizadora(order.paymentMethod) || order.paymentMethod || 'Dinheiro',
+        source: 'order',
+        notes: order.notes || '',
+      });
+    });
 
-    const manualRevenueItems = manualRevenues.map(rev => ({
-      id: String(rev.id),
-      description: rev.description,
-      amount: rev.amount,
-      type: 'revenue' as const,
-      date: rev.date,
-      category: `Receita: ${rev.category}`,
-      paymentMethod: rev.paymentMethod || rev.category.toLowerCase(), // REFCOM220: normaliza categoria legada (PIX -> pix)
-      notes: rev.notes || ''
-    }));
+    // 2) Baixas de lancamentos do Contas a Receber (REFCOM223.4 / REFCOM229.2)
+    accountsReceivable.forEach(ar => {
+      if (ar.status !== 'paid') return;
+      const isPhysical = ar.channel === 'physical';
+      entries.push({
+        key: `receivable:${ar.id}`,
+        refId: ar.id,
+        orderId: ar.orderId,
+        description: `${ar.description} - Recebimento`,
+        amount: ar.amount,
+        date: ar.paidAt || ar.receivedDate || ar.dueDate,
+        channel: isPhysical ? 'physical' : 'online',
+        category: isPhysical ? 'Venda PDV' : 'Venda Online',
+        paymentMethod: toFinalizadora(ar.paymentMethod) || ar.paymentMethod || 'Dinheiro',
+        source: 'receivable',
+        receivableId: ar.id,
+        notes: ar.notes || '',
+      });
+    });
 
-    const expenseItems = expenses.map(expense => ({
-      id: String(expense.id),
-      description: expense.description,
-      amount: -expense.amount,
-      type: 'expense' as const,
-      date: expense.date,
-      category: expense.category,
-      paymentMethod: expense.paymentMethod || '', // REFCOM220
-      expenseId: expense.id,
-      notes: expense.notes || ''
-    }));
+    // 3) Receitas avulsas lancadas manualmente (sem origem em Contas a Receber)
+    manualRevenues.forEach(rev => {
+      if (rev.sourceReceivableId) return; // duplicata da baixa acima
+      entries.push({
+        key: `manual:${rev.id}`,
+        refId: String(rev.id),
+        description: rev.description,
+        amount: rev.amount,
+        date: rev.date,
+        channel: 'manual',
+        category: `Receita: ${rev.category}`,
+        paymentMethod: toFinalizadora(rev.paymentMethod) || rev.paymentMethod || rev.category || 'Dinheiro',
+        source: 'manual',
+        notes: rev.notes || '',
+      });
+    });
 
-    return [...revenue, ...manualRevenueItems, ...expenseItems]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [orders, expenses, manualRevenues]);
+    return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [orders, accountsReceivable, manualRevenues]);
 
-  // REFCOM160: Filtro aplicado (data, tipo e forma de pagamento) compartilhado entre
-  // a lista "Transações Recentes" e os cards de resumo — exatamente o mesmo conjunto.
-  const filteredTransactions = useMemo(() => {
-    let filtered = allTransactions;
+
+  // REFCOM231: conjunto de receitas já filtrado pelo período/tipo/forma de pagamento do
+  // módulo Financeiro. Cards, lista de Transações Recentes e modal de detalhes consomem
+  // TODOS esta mesma lista, garantindo que nunca haja divergência entre eles.
+  const filteredRevenueEntries = useMemo(() => {
+    let list = revenueEntries;
+
+    // Filtro por Tipo: quando o usuário está olhando apenas Despesas, os cards de
+    // receita ficam zerados — coerente com a lista de transações.
+    if (financialTypeFilter === 'expense') return [];
 
     if (financialDateFilter.from || financialDateFilter.to) {
-      filtered = filtered.filter(t => {
-        const tDate = typeof t.date === 'string' ? t.date.split('T')[0] : new Date(t.date).toISOString().split('T')[0];
-        const fromDate = financialDateFilter.from || '1900-01-01';
-        const toDate = financialDateFilter.to || '2099-12-31';
-        if (tDate < fromDate) return false;
-        if (tDate > toDate) return false;
-        return true;
+      const fromDate = financialDateFilter.from || '1900-01-01';
+      const toDate = financialDateFilter.to || '2099-12-31';
+      list = list.filter(entry => {
+        const d = typeof entry.date === 'string' ? entry.date.split('T')[0] : new Date(entry.date).toISOString().split('T')[0];
+        return d >= fromDate && d <= toDate;
       });
-    }
-
-    if (financialTypeFilter !== 'all') {
-      filtered = filtered.filter(t => t.type === financialTypeFilter);
     }
 
     if (financialPaymentFilter !== 'all') {
-      filtered = filtered.filter(t => {
-        if (t.type === 'revenue' && (t.category.includes('PDV') || t.category.includes('Online'))) {
-          const order = orders.find(o => o.id === t.id);
-          if (order && order.paymentMethod) {
-            return order.paymentMethod.toLowerCase() === financialPaymentFilter;
-          }
-          return false;
-        }
-        // REFCOM220: Verificar forma de pagamento em receitas avulsas e despesas
-        if (t.paymentMethod) {
-          return t.paymentMethod.toLowerCase() === financialPaymentFilter;
-        }
-        return false;
+      const target = financialPaymentFilter.toLowerCase();
+      list = list.filter(entry => {
+        const method = (toFinalizadora(entry.paymentMethod) || entry.paymentMethod || '').toLowerCase();
+        return method === target;
       });
     }
 
-    return filtered;
-  }, [allTransactions, orders, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+    return list;
+  }, [revenueEntries, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
 
-  const financialStats = useMemo(() => {
-    // REFCOM231: Cards utilizam a mesma base de cálculo do Dashboard e módulo de Pedidos
-    // (pedidos com status paid/processing/shipped/delivered), sem filtros de data/tipo/pagamento
-    const validStatuses = ['paid', 'processing', 'shipped', 'delivered'];
-    const validOrders = orders.filter(o => validStatuses.includes(o.status));
+  // REFCOM160 / REFCOM231: a lista "Transações Recentes" é montada a partir do MESMO
+  // conjunto já filtrado que alimenta os cards e o modal de detalhes, garantindo que
+  // a soma das transações exibidas nunca divirja dos valores apurados nos cards.
+  const filteredTransactions = useMemo(() => {
+    const revenue = filteredRevenueEntries.map(entry => ({
+      id: entry.refId,
+      description: entry.description,
+      amount: entry.amount,
+      type: 'revenue' as const,
+      date: entry.date,
+      category: entry.category,
+      paymentMethod: entry.paymentMethod,
+      notes: entry.notes || '',
+      source: entry.source,
+      receivableId: entry.receivableId,
+      orderId: entry.orderId,
+    }));
+
+    const expenseItems = financialTypeFilter === 'revenue' ? [] : expenses
+      .filter(e => {
+        if (financialDateFilter.from && e.date < financialDateFilter.from) return false;
+        if (financialDateFilter.to && e.date > financialDateFilter.to) return false;
+        if (financialPaymentFilter !== 'all') {
+          const method = (toFinalizadora(e.paymentMethod) || e.paymentMethod || '').toLowerCase();
+          if (method !== financialPaymentFilter.toLowerCase()) return false;
+        }
+        return true;
+      })
+      .map(expense => ({
+        id: String(expense.id),
+        description: expense.description,
+        amount: -expense.amount,
+        type: 'expense' as const,
+        date: expense.date,
+        category: expense.category,
+        paymentMethod: expense.paymentMethod || '',
+        expenseId: expense.id,
+        notes: expense.notes || '',
+      }));
+
+    return [...revenue, ...expenseItems]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [filteredRevenueEntries, expenses, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+
+  // REFCOM231: Dashboard, Financeiro e detalhamento usam a MESMA base de apuração.
+  // Vendas com lançamento em aberto no Contas a Receber só entram após a baixa,
+  // o que mantém Dashboard, Cards e Transações Recentes com números idênticos.
+  const dashboardRevenue = useMemo(() => {
+    const hasCustomRange = !!(dashboardDateFrom && dashboardDateTo);
+    let startDate: Date;
+    let endDate: Date;
+    if (hasCustomRange) {
+      startDate = new Date(dashboardDateFrom + 'T00:00:00');
+      endDate = new Date(dashboardDateTo + 'T23:59:59');
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - (dashboardPeriod - 1));
+        endDate = new Date();
+      }
+    } else {
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - (dashboardPeriod - 1));
+      endDate = new Date();
+    }
 
     let totalRevenue = 0;
     let pdvRevenue = 0;
     let onlineRevenue = 0;
 
-    validOrders.forEach(o => {
-      totalRevenue += o.total;
-      if (o.salesChannel === 'physical') pdvRevenue += o.total;
-      else onlineRevenue += o.total;
+    revenueEntries.forEach(entry => {
+      const d = new Date(entry.date);
+      if (d < startDate || d > endDate) return;
+      if (dashboardChannelFilter !== 'all' && entry.channel !== dashboardChannelFilter) return;
+      if (entry.channel === 'manual') {
+        totalRevenue += entry.amount;
+        return;
+      }
+      totalRevenue += entry.amount;
+      if (entry.channel === 'physical') pdvRevenue += entry.amount;
+      else onlineRevenue += entry.amount;
     });
 
-    // Despesas continuam usando o filtro de data
-    let totalExpenses = 0;
-    expenses.forEach(e => {
-      if (financialDateFilter.from && e.date < financialDateFilter.from) return;
-      if (financialDateFilter.to && e.date > financialDateFilter.to) return;
-      totalExpenses += e.amount;
+    return { totalRevenue, pdvRevenue, onlineRevenue };
+  }, [revenueEntries, dashboardPeriod, dashboardDateFrom, dashboardDateTo, dashboardChannelFilter]);
+
+  // REFCOM231: Cards e modal de detalhes consomem EXATAMENTE a mesma base, garantindo
+  // que o valor exibido no card seja idêntico ao valor do detalhamento.
+  const financialStats = useMemo(() => {
+    let totalRevenue = 0;
+    let pdvRevenue = 0;
+    let onlineRevenue = 0;
+
+    filteredRevenueEntries.forEach(entry => {
+      totalRevenue += entry.amount;
+      if (entry.channel === 'physical') pdvRevenue += entry.amount;
+      else if (entry.channel === 'online') onlineRevenue += entry.amount;
     });
+
+    // Despesas respeitam o mesmo filtro de período e tipo das receitas
+    let totalExpenses = 0;
+    if (financialTypeFilter !== 'revenue') {
+      expenses.forEach(e => {
+        if (financialDateFilter.from && e.date < financialDateFilter.from) return;
+        if (financialDateFilter.to && e.date > financialDateFilter.to) return;
+        if (financialPaymentFilter !== 'all') {
+          const method = (toFinalizadora(e.paymentMethod) || e.paymentMethod || '').toLowerCase();
+          if (method !== financialPaymentFilter.toLowerCase()) return;
+        }
+        totalExpenses += e.amount;
+      });
+    }
 
     const netProfit = totalRevenue - totalExpenses;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
-  }, [orders, expenses, financialDateFilter]);
+  }, [filteredRevenueEntries, expenses, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+
+  // REFCOM231: mesmo conjunto filtrado, agrupado por canal e finalizadora, para o modal.
+  const revenueByChannel = useMemo(() => {
+    const build = (channel: 'physical' | 'online' | 'all') => {
+      const byMethod: Record<string, number> = {};
+      filteredRevenueEntries.forEach(entry => {
+        if (channel !== 'all' && entry.channel !== channel) return;
+        byMethod[entry.paymentMethod] = (byMethod[entry.paymentMethod] || 0) + entry.amount;
+      });
+      return byMethod;
+    };
+    return { all: build('all'), pdv: build('physical'), online: build('online') };
+  }, [filteredRevenueEntries]);
 
   // ERRCOM114: Validação de sincronização de estoque (diagnóstico)
   const validateStockConsistency = (product: Product): boolean => {
@@ -2052,6 +2418,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const closeProductModal = () => {
     setIsProductModalOpen(false);
     resetProductForm();
+  };
+
+  /**
+   * REFCOM234: botao "Gerar Cod. Barras" do cadastro leva para a tela de etiquetas.
+   * Se o produto ja estiver salvo, navega com ele selecionado; caso contrario,
+   * avisa que e preciso salvar o produto antes de gerar o GTIN.
+   */
+  const handleOpenLabelGenerator = () => {
+    if (editingProductId != null) {
+      setLabelProductId(editingProductId);
+      setIsProductModalOpen(false);
+      setActiveTab('labels');
+      return;
+    }
+    if (window.confirm('O produto precisa ser salvo antes de gerar o código de barras. Deseja salvar agora?')) {
+      window.alert('Salve o produto para que ele apareça na lista da tela de Etiquetas e possa receber o GTIN/EAN.');
+    }
+  };
+
+  /** REFCOM234: grava o GTIN no formulário quando a tela de etiquetas salva o código. */
+  const handleLabelGtinSaved = (gtin: string) => {
+    setProductForm(prev => ({ ...prev, gtin }));
   };
 
   const handleProductSubmit = async (event: React.FormEvent) => {
@@ -2451,74 +2839,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      // REFCOM223/REFCOM224/REFCOM225: Geração automática de Contas a Receber ao mudar para status de faturamento
-      // Regras:
-      //  - Crédito parcelado (installments > 1) → gera 1 lançamento por parcela
-      //  - WhatsApp (REFCOM224) → gera 1 único lançamento (parcelado se installments > 1)
-      //  - PDV Loja + Crédito (REFCOM225) → gera 1 lançamento por parcela
-      // REFCOM225: PDV Loja é finalizado como 'delivered' (não 'paid'), então incluímos 'delivered' no check
+      // REFCOM223/REFCOM224/REFCOM225/REFCOM229: Geração automática de Contas a Receber
+      // ao mudar o pedido para um status de faturamento.
+      //
+      //  - E-commerce (online) que estava "Reservado" e passa a "Pagamento Efetuado" (paid):
+      //      REFCOM223 (crédito parcelado) e REFCOM224 (WhatsApp) passam a gerar UM
+      //      lançamento interdependente POR PARCELA no Contas a Receber, em Aberto.
+      //  - PDV Loja: a geração acontece já na finalização da venda (handlePdvCheckoutSubmit);
+      //      esta chamada cobre apenas o caso de reclassificação manual de status.
+      //  - A guarda de idempotência passou a ser `orderId` (e não `installmentDetails`),
+      //    porque o Checkout do e-commerce já cria `installmentDetails` ao reservar o pedido
+      //    — essa era a causa de o fluxo REFCOM223 nunca disparar nenhum lançamento.
       const accountingStatuses = ['paid', 'delivered', 'processing', 'shipped'];
       const isAccountingStatus = accountingStatuses.includes(updatedOrder.status);
-      const isCreditInstallment = isAccountingStatus && (updatedOrder.installments ?? 0) > 1 && !orderToUpdate.installmentDetails;
-      const isWhatsAppSale = isAccountingStatus && (
-        updatedOrder.salesChannel === 'online' || updatedOrder.salesChannel === 'whatsapp' ||
-        (updatedOrder.paymentMethod || '').toLowerCase() === 'whatsapp' ||
-        ((updatedOrder.notes || '').toLowerCase().includes('whatsapp') || (updatedOrder.notes || '').toLowerCase().includes('finaliza'))
-      ) && !orderToUpdate.installmentDetails;
-      const isPdvCredit = isAccountingStatus && updatedOrder.salesChannel === 'physical' &&
-        (updatedOrder.paymentMethod || '').toLowerCase() === 'credito' && !orderToUpdate.installmentDetails;
+      // Somente vendas próprias (PDV Loja e E-commerce/WhatsApp) entram no fluxo do
+      // Contas a Receber. Pedidos de marketplace (Mercado Livre, Shopee, ...) ficam de fora.
+      const isFirstPartySale = ['physical', 'online', 'whatsapp', undefined].includes(
+        updatedOrder.salesChannel as any
+      );
 
-      if (isCreditInstallment || isWhatsAppSale || isPdvCredit) {
-        const totalInstallments = updatedOrder.installments && updatedOrder.installments > 1 ? updatedOrder.installments! : 1;
-        const totalAmount = updatedOrder.total;
-        const baseAmount = Math.floor((totalAmount / totalInstallments) * 100) / 100;
-        const remainder = +(totalAmount - baseAmount * (totalInstallments - 1)).toFixed(2);
-        const newDetails: InstallmentStatus[] = [];
-        // WhatsApp com 1 parcela (à vista) gera um único lançamento
-        const effectiveInstallments = (isWhatsAppSale && totalInstallments === 1) ? 1 : totalInstallments;
-
-        for (let i = 1; i <= effectiveInstallments; i++) {
-          const amount = i === effectiveInstallments ? remainder : baseAmount;
-          const due = new Date();
-          due.setMonth(due.getMonth() + (i - 1));
-          newDetails.push({
-            id: `${updatedOrder.id}-${i}/${effectiveInstallments}`,
-            number: `${i}/${effectiveInstallments}`,
-            amount,
-            status: 'pending',
-            paymentMethod: updatedOrder.paymentMethod
-          });
-          const arId = `${updatedOrder.id}-AR-${i}-${Date.now()}`;
-          const description = effectiveInstallments > 1
-            ? `Pedido ${updatedOrder.id} - Parcela ${i}/${effectiveInstallments}`
-            : (isPdvCredit ? `Pedido ${updatedOrder.id} - PDV Loja` : `Pedido ${updatedOrder.id} - WhatsApp`);
-          const receivable: AccountReceivable = {
-            id: arId,
-            description,
-            amount,
-            originalAmount: amount,
-            addition: 0,
-            deduction: 0,
-            dueDate: due.toISOString().slice(0, 10),
-            status: 'open',
-            orderId: updatedOrder.id,
-            customerName: updatedOrder.customerName,
-            customerEmail: updatedOrder.customerEmail,
-            customerPhone: updatedOrder.customerPhone,
-            customerCpfCnpj: updatedOrder.customerCpfCnpj,
-            paymentMethod: (isWhatsAppSale || isPdvCredit) ? 'WhatsApp' : updatedOrder.paymentMethod,
-            channel: updatedOrder.salesChannel === 'physical' ? 'physical' : 'online',
-            notes: isPdvCredit
-              ? `PDV Loja - Crédito - ${updatedOrder.customerEmail || ''}`
-              : `Parcela ${i}/${effectiveInstallments} - ${updatedOrder.customerEmail || ''}`
-          };
-          addAccountReceivable(receivable);
-          setAccountsReceivable(prev => {
-            if (prev.some(p => p.id === arId)) return prev;
-            return [...prev, receivable];
-          });
+      if (isAccountingStatus && isFirstPartySale) {
+        const details = generateReceivablesForOrder(updatedOrder, accountsReceivable);
+        if (details && details.length > 0) {
+          // Preserva notas já existentes das parcelas geradas no Checkout.
+          updatedOrder.installmentDetails = details.map(d => {
+            const previous = orderToUpdate.installmentDetails?.find(
+              p => p.number === d.number
+            );
+            return previous ? { ...d, ...previous, number: d.number } : d;
+          }) as InstallmentStatus[];
         }
-        updatedOrder.installmentDetails = newDetails;
       }
 
       await saveOrder(updatedOrder);
@@ -2814,10 +3164,87 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
+  /**
+   * REFCOM235: ao abrir o PDV, o campo de busca já recebe foco para que o scanner
+   * de código de barras funcione sem precisar clicar no campo.
+   */
+  useEffect(() => {
+    if (activeTab !== 'pdv') return;
+    const timer = window.setTimeout(() => pdvSearchRef.current?.focus(), 100);
+    return () => window.clearTimeout(timer);
+  }, [activeTab]);
+
   const removeFromPdvCart = (productId: number, selectedSize?: string, selectedColor?: string) => {
     setPdvCart(prev => prev.filter(item =>
       !(item.product.id === productId && item.selectedSize === selectedSize && item.selectedColor === selectedColor)
     ));
+  };
+
+  // REFCOM235: Localiza produto pelo GTIN/EAN cadastrado.
+  // Tolerante a "SEM GTIN" e outros valores não numéricos, que nunca devem casar.
+  const findProductByGtin = (gtin: string): Product | null => {
+    const digits = normalizeGtin(gtin);
+    if (digits.length === 0) return null;
+    return products.find(p => normalizeGtin(p.gtin) === digits) || null;
+  };
+
+  /** REFCOM235: busca no PDV por nome, categoria ou GTIN/EAN. */
+  const matchesPdvSearch = (product: Product): boolean => {
+    const term = pdvSearch.trim().toLowerCase();
+    if (!term) return true;
+    if (product.name.toLowerCase().includes(term) || product.category.toLowerCase().includes(term)) return true;
+    // Scanner envia apenas dígitos, com possível espaço/Tab entre eles.
+    const digits = normalizeGtin(term);
+    if (digits.length > 0 && digits === term.replace(/\s/g, '')) {
+      return normalizeGtin(product.gtin).includes(digits);
+    }
+    return false;
+  };
+
+  /**
+   * REFCOM235: Enter (digitado ou enviado pelo scanner) adiciona o produto ao carrinho.
+   * Scanners em modo teclado digitam o codigo e enviam Enter, entao este handler
+   * resolve o GTIN e adiciona direto, sem exigir clique manual.
+   */
+  const handlePdvSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+
+    const term = pdvSearch.trim();
+    if (!term) return;
+
+    const digits = normalizeGtin(term);
+    const isNumericTerm = digits.length > 0 && digits === term.replace(/\s/g, '');
+
+    if (!isNumericTerm) return;
+
+    const product = findProductByGtin(digits);
+    if (!product) {
+      setPdvGtinLookup({ gtin: digits, found: false, productName: '' });
+      return;
+    }
+
+    setPdvGtinLookup({ gtin: digits, found: true, productName: product.name });
+
+    if (!cashRegister.isOpen) {
+      window.alert('🔒 Abra o caixa antes de adicionar produtos.');
+      setIsCashRegisterModalOpen(true);
+      return;
+    }
+    if ((product.stock || 0) <= 0) {
+      window.alert(`O produto "${product.name}" está sem estoque.`);
+      return;
+    }
+    if (product.sizes || product.colors) {
+      setPdvProductModal({ isOpen: true, product });
+      setPdvModalSelection({ size: '', color: '' });
+    } else {
+      addToPdvCart(product);
+    }
+    // Limpa o campo para o próximo escaneamento e devolve o foco.
+    setPdvSearch('');
+    setPdvGtinLookup(null);
+    requestAnimationFrame(() => pdvSearchRef.current?.focus());
   };
 
   const updatePdvItemQuantity = (productId: number, newQuantity: number, selectedSize?: string, selectedColor?: string) => {
@@ -3063,75 +3490,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         order.accountedInCash = false;
       }
 
-      // ERRCOM135: Gerar parcelas se for crédito
-      if (order.paymentMethod === 'credito' && order.installments && order.installments > 1) {
-        const installmentAmount = order.total / order.installments;
-        order.installmentDetails = Array.from({ length: order.installments }).map((_, i) => ({
-          id: `${order.id}-inst-${i + 1}`,
-          number: `${i + 1}/${order.installments}`,
-          amount: installmentAmount,
-          status: 'pending',
-          paymentMethod: 'Credito'
-        }));
-      }
-
-      // REFCOM225: PDV Loja + CREDITO → disparar dois processos automáticos:
-      //   Processo 1: garantir installmentDetails (parcelas interdependentes) no pedido
-      //   Processo 2: criar lançamentos no Contas a Receber (um por parcela)
-      if (
-        !isBudget &&
-        order.salesChannel === 'physical' &&
-        (order.paymentMethod || '').toLowerCase() === 'credito'
-      ) {
-        // Processo 1: garantir installmentDetails (caso ERRCOM135 não tenha criado — crédito 1x)
-        if (!order.installmentDetails || order.installmentDetails.length === 0) {
-          const totalInstallments = (order.installments && order.installments > 1) ? order.installments : 1;
-          const totalAmount = order.total;
-          const baseAmount = Math.floor((totalAmount / totalInstallments) * 100) / 100;
-          const remainder = +(totalAmount - baseAmount * (totalInstallments - 1)).toFixed(2);
-          order.installmentDetails = [];
-          for (let i = 1; i <= totalInstallments; i++) {
-            order.installmentDetails.push({
-              id: `${order.id}-inst-${i}`,
-              number: `${i}/${totalInstallments}`,
-              amount: i === totalInstallments ? remainder : baseAmount,
-              status: 'pending' as const,
-              paymentMethod: 'Credito'
-            });
-          }
-        }
-
-        // Processo 2: criar lançamentos no Contas a Receber (deduplicado por orderId na lista)
-        const existingArForOrder = accountsReceivable.some(ar => ar.orderId === order.id);
-        if (!existingArForOrder && order.installmentDetails && order.installmentDetails.length > 0) {
-          const today = new Date();
-          order.installmentDetails.forEach((det, i) => {
-            const due = new Date(today);
-            due.setMonth(due.getMonth() + i);
-            const arId = `${order.id}-AR-${i + 1}-${Date.now()}`;
-            const receivable: AccountReceivable = {
-              id: arId,
-              description: order.installmentDetails!.length > 1
-                ? `Pedido ${order.id} - Parcela ${det.number}`
-                : `Pedido ${order.id} - PDV Loja`,
-              amount: det.amount,
-              originalAmount: det.amount,
-              addition: 0,
-              deduction: 0,
-              dueDate: due.toISOString().slice(0, 10),
-              status: 'open',
-              orderId: order.id,
-              customerName: order.customerName,
-              customerEmail: order.customerEmail,
-              customerPhone: order.customerPhone,
-              customerCpfCnpj: order.customerCpfCnpj,
-              paymentMethod: 'WhatsApp', // Força WhatsApp para exigir escolha antes da baixa (REFCOM224)
-              channel: 'physical',
-              notes: `PDV Loja - Crédito - ${order.customerEmail || ''}`
-            };
-            addAccountReceivable(receivable);
-            setAccountsReceivable(prev => prev.some(p => p.id === arId) ? prev : [...prev, receivable]);
-          });
+      // REFCOM225/REFCOM229: PDV Loja - TODA venda finalizada (Credito, Dinheiro, PIX e Debito)
+      // passa obrigatoriamente pelo Contas a Receber antes de aparecer em Transacoes Recentes.
+      //
+      //  - Credito (REFCOM225): lancamentos interdependentes, um por parcela.
+      //  - Dinheiro/PIX/Debito (REFCOM229): lancamento unico (1/1) em Aberto.
+      //  - A forma de pagamento e gravada exatamente como selecionada no PDV (ex.: "Credito"),
+      //    nunca um placeholder "WhatsApp" (correcao REFCOM225).
+      if (!isBudget && order.salesChannel === 'physical') {
+        const details = generateReceivablesForOrder(order, accountsReceivable);
+        if (details && details.length > 0) {
+          order.installmentDetails = details as unknown as InstallmentStatus[];
         }
       }
 
@@ -3680,6 +4049,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     ['financial', 'Financeiro'],
                     ['abc', 'Curva ABC'],
                     ['fiscal', 'Fiscal/NF-e'],
+                    ['labels', 'Etiquetas'],
                     ['marketplaces', 'Marketplaces'],
                     ['payment', 'Pagamento'],
                     ['coupons', 'Cupom Desconto'],
@@ -3706,6 +4076,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             ))}
           </div>
         </div>
+
+        {/* REFCOM198: Selo de faturamento com contador regressivo (canto superior direito) */}
+        {(() => {
+          const status = getBillingStatus(getBillingConfig());
+          const cfg = getBillingConfig();
+          const amount = getBillingDueAmount(cfg);
+          if (status.phase === 'normal' && status.daysRemaining > 14) return null;
+          const overdue = status.daysRemaining <= 0;
+          const tone = status.blocked
+            ? 'bg-red-600/90 border-red-400'
+            : overdue
+              ? 'bg-orange-600/90 border-orange-300'
+              : 'bg-amber-500/90 border-amber-200';
+          const countdown = status.blocked
+            ? 'ACESSO BLOQUEADO'
+            : overdue
+              ? `${status.daysOfAccess} dia${status.daysOfAccess === 1 ? '' : 's'} de acesso`
+              : `Vence em ${status.daysRemaining} dia${status.daysRemaining === 1 ? '' : 's'}`;
+          return (
+            <button
+              onClick={() => {
+                if (cfg?.pixKey) {
+                  window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(`Olá! Preciso do PIX/Boleto para pagamento da fatura Versiory. Valor: R$ ${amount.toFixed(2)}`)}`, '_blank');
+                } else {
+                  window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent('Olá! Preciso do boleto/PIX para pagamento da fatura Versiory.')}`, '_blank');
+                }
+              }}
+              title="Clique para gerar o boleto/PIX da fatura mensal"
+              className="fixed top-3 right-3 z-[90] flex items-center gap-2.5 ${tone} border-2 text-white px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-xl hover:scale-105 transition-transform max-w-[calc(100vw-1.5rem)]"
+            >
+              <span className="text-xl leading-none shrink-0">
+                {status.blocked ? '🔒' : overdue ? '⚠️' : '📅'}
+              </span>
+              <span className="text-left leading-tight min-w-0">
+                <span className="block text-[10px] font-black uppercase tracking-wider opacity-90">
+                  Fatura Versiory · R$ {amount.toFixed(2)}
+                </span>
+                <span className="block text-xs font-black whitespace-nowrap truncate">
+                  {countdown}
+                </span>
+              </span>
+            </button>
+          );
+        })()}
 
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
@@ -3830,7 +4244,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-slate-400 font-medium text-sm">Total Pedidos</div>
               </div>
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
-                <div className="text-3xl font-bold text-white mb-2">{formatCurrency(stats.totalRevenue)}</div>
+                <div className="text-3xl font-bold text-white mb-2">{formatCurrency(dashboardRevenue.totalRevenue)}</div>
                 <div className="text-slate-400 font-medium text-sm">Faturamento</div>
               </div>
               <div className="bg-[#1b2a47] rounded-xl p-6 border border-white/5 shadow-lg">
@@ -3842,20 +4256,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="text-slate-400 font-medium text-sm">Descontos (Cupons)</div>
               </div>
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'online' })}
                 className={`bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border shadow-lg text-left transition-all ${dashboardChannelFilter === 'all' || dashboardChannelFilter === 'online' ? 'border-blue-500/30' : 'border-white/5 opacity-50'}`}
               >
                 <div className="text-3xl font-bold text-blue-400 mb-2">
-                  {stats.onlineRevenue > 0 || dashboardChannelFilter !== 'physical' ? formatCurrency(stats.onlineRevenue) : formatCurrency(0)}
+                  {dashboardRevenue.onlineRevenue > 0 || dashboardChannelFilter !== 'physical' ? formatCurrency(dashboardRevenue.onlineRevenue) : formatCurrency(0)}
                 </div>
                 <div className="text-slate-400 font-medium text-sm">🌐 Vendas Online — detalhes</div>
               </button>
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv' })}
                 className={`bg-[#1b2a47] hover:bg-[#243558] rounded-xl p-6 border shadow-lg text-left transition-all ${dashboardChannelFilter === 'all' || dashboardChannelFilter === 'physical' ? 'border-green-500/30' : 'border-white/5 opacity-50'}`}
               >
                 <div className="text-3xl font-bold text-green-400 mb-2">
-                  {stats.pdvRevenue > 0 || dashboardChannelFilter !== 'online' ? formatCurrency(stats.pdvRevenue) : formatCurrency(0)}
+                  {dashboardRevenue.pdvRevenue > 0 || dashboardChannelFilter !== 'online' ? formatCurrency(dashboardRevenue.pdvRevenue) : formatCurrency(0)}
                 </div>
                 <div className="text-slate-400 font-medium text-sm">🏪 Vendas PDV — detalhes</div>
               </button>
@@ -4017,19 +4431,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="p-6 pb-4 border-b border-white/10 sticky top-0 bg-[#0a1b3d]/90 backdrop-blur-md z-10">
                   <div className="flex justify-between items-center">
                     <h2 className="text-xl font-black text-white tablet-desktop-text">Adicionar Produtos</h2>
-                    <input
-                      type="text"
-                      value={pdvSearch}
-                      onChange={e => setPdvSearch(e.target.value)}
-                      placeholder="Buscar por nome ou categoria..."
-                      className="px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none w-64"
-                    />
+                    <div className="flex flex-col items-end gap-1">
+                      <input
+                        ref={pdvSearchRef}
+                        type="text"
+                        inputMode="search"
+                        value={pdvSearch}
+                        onChange={e => setPdvSearch(e.target.value)}
+                        onKeyDown={handlePdvSearchKeyDown}
+                        placeholder="Buscar por nome, categoria ou GTIN/EAN..."
+                        className="px-4 py-2 border border-white/20 bg-white/5 backdrop-blur-md text-white rounded-lg focus:ring-2 focus:ring-versiory-coral outline-none w-64"
+                      />
+                      {/* REFCOM235: feedback da consulta por GTIN/EAN */}
+                      {pdvGtinLookup && (
+                        <p className={`text-[10px] font-bold ${pdvGtinLookup.found ? 'text-green-400' : 'text-amber-300'}`}>
+                          {pdvGtinLookup.found
+                            ? `GTIN ${pdvGtinLookup.gtin}: ${pdvGtinLookup.productName}`
+                            : `GTIN ${pdvGtinLookup.gtin} não encontrado no cadastro.`}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 tablet-desktop-grid gap-4 p-6 overflow-y-auto custom-scrollbar flex-1">
                   {products
-                    .filter(p => p.active !== false && (p.name.toLowerCase().includes(pdvSearch.toLowerCase()) || p.category.toLowerCase().includes(pdvSearch.toLowerCase())))
+                    .filter(p => p.active !== false && matchesPdvSearch(p))
                     .map(product => (
                       <div key={product.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col justify-between hover:bg-white/10 transition-colors">
                         <div className="flex items-start gap-3 mb-3">
@@ -4037,6 +4464,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="flex-1">
                             <h4 className="font-bold text-white text-sm line-clamp-2">{product.name}</h4>
                             <span className="text-slate-300 text-xs">{product.category}</span>
+                            {/* REFCOM235: exibe o GTIN/EAN cadastrado */}
+                            {normalizeGtin(product.gtin).length === 13 && (
+                              <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
+                                GTIN: {normalizeGtin(product.gtin)}
+                              </span>
+                            )}
                             {(product.sizes || product.colors) && (
                               <div className="text-xs text-blue-300 mt-1">
                                 {product.sizes && `Tamanhos disponíveis`}
@@ -4676,19 +5109,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* ERRCOM031B: Cards de total e status de pedidos */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
               <div className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20">
-                <div className="text-xl font-black text-white">{formatCurrency(orders.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}</div>
+                <div className="text-xl font-black text-white">{formatCurrency(ordersByScope.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).reduce((s, o) => s + o.total, 0))}</div>
                 <div className="text-slate-300 text-xs font-medium mt-1">Valor Total de Pedidos</div>
               </div>
               {(['pending', 'reserved', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as OrderStatus[]).map(status => (
                 <div key={status} className="bg-white/10 backdrop-blur-xl rounded-2xl p-3 border border-white/20">
-                  <div className="text-lg font-black text-white">{orders.filter(o => o.status === status).length}</div>
+                  <div className="text-lg font-black text-white">{ordersByScope.filter(o => o.status === status).length}</div>
                   <div className="text-xs text-slate-300">{STATUS_LABELS[status]}</div>
                 </div>
               ))}
               {/* REFCOM197: Card Orçamentos Pendentes */}
               <button
                 onClick={() => {
-                  const pendingBudgets = orders.filter(o => o.isBudget && !['paid', 'processing', 'shipped', 'delivered'].includes(o.status));
+                  const pendingBudgets = ordersByScope.filter(o => o.isBudget && !['paid', 'processing', 'shipped', 'delivered'].includes(o.status));
                   if (pendingBudgets.length === 0) {
                     alert('Nenhum orçamento pendente no momento.');
                     return;
@@ -4698,7 +5131,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="col-span-2 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-purple-500/30 shadow-lg text-left transition-all hover:bg-white/20"
               >
                 <div className="text-xl font-black text-purple-400">
-                  {orders.filter(o => o.isBudget && !['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).length}
+                  {ordersByScope.filter(o => o.isBudget && !['paid', 'processing', 'shipped', 'delivered'].includes(o.status)).length}
                 </div>
                 <div className="text-slate-300 text-xs font-medium mt-1">Orçamentos Pendentes</div>
               </button>
@@ -4706,7 +5139,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="col-span-2 md:col-span-4 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={() => {
-                    const reservedOrders = orders.filter(o => o.status === 'reserved');
+                    const reservedOrders = ordersByScope.filter(o => o.status === 'reserved');
                     if (reservedOrders.length === 0) {
                       alert('Nenhum pedido com estoque reservado no momento.');
                       return;
@@ -4716,14 +5149,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-teal-500/30 shadow-lg text-left transition-all hover:bg-white/20"
                 >
                   <div className="text-xl font-black text-teal-400">
-                    {orders.filter(o => o.status === 'reserved').reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0)}
+                    {ordersByScope.filter(o => o.status === 'reserved').reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0)}
                   </div>
                   <div className="text-slate-300 text-xs font-medium mt-1">Itens em Estoque Reservado</div>
                 </button>
                 {/* REFCOM217: Card Devoluções alinhado ao lado de Itens em Estoque Reservado */}
                 <button
                   onClick={() => {
-                    const returnOrders = orders.filter(o => o.status === 'returned');
+                    const returnOrders = ordersByScope.filter(o => o.status === 'returned');
                     if (returnOrders.length === 0) {
                       alert('Nenhuma devolução no momento.');
                       return;
@@ -4733,7 +5166,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-orange-500/30 shadow-lg text-left transition-all hover:bg-white/20"
                 >
                   <div className="text-xl font-black text-orange-400">
-                    {orders.filter(o => o.status === 'returned').length}
+                    {ordersByScope.filter(o => o.status === 'returned').length}
                   </div>
                   <div className="text-slate-300 text-xs font-medium mt-1">Devoluções</div>
                 </button>
@@ -4775,6 +5208,60 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="cancelled">Cancelado</option>
                 </select>
               </div>
+            </div>
+
+            {/* REFCOM233: Filtros por período (De/Até) e canal + botão de limpeza */}
+            <div className="flex flex-wrap items-center gap-3 mb-4 p-4 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10">
+              <span className="text-xs font-black text-slate-300 uppercase tracking-wider">Filtros</span>
+              <div className="flex items-center gap-2">
+                <label htmlFor="orderDateFrom" className="text-xs font-bold text-slate-300">De:</label>
+                <input
+                  id="orderDateFrom"
+                  type="date"
+                  value={orderDateFrom}
+                  onChange={e => setOrderDateFrom(e.target.value)}
+                  className="px-3 py-2 border border-white/20 bg-white/10 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none [color-scheme:dark]"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="orderDateTo" className="text-xs font-bold text-slate-300">Até:</label>
+                <input
+                  id="orderDateTo"
+                  type="date"
+                  value={orderDateTo}
+                  onChange={e => setOrderDateTo(e.target.value)}
+                  className="px-3 py-2 border border-white/20 bg-white/10 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none [color-scheme:dark]"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="orderChannel" className="text-xs font-bold text-slate-300">Canal:</label>
+                <select
+                  id="orderChannel"
+                  value={orderChannelFilter}
+                  onChange={e => setOrderChannelFilter(e.target.value)}
+                  className="px-3 py-2 border border-white/25 bg-white/70 backdrop-blur-md text-slate-900 rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none"
+                >
+                  <option value="all">Todos</option>
+                  <option value="online">Online</option>
+                  <option value="physical">PDV Loja</option>
+                  <option value="mercadolivre">Mercado Livre</option>
+                  <option value="shopee">Shopee</option>
+                  <option value="magalu">Magalu</option>
+                  <option value="amazon">Amazon</option>
+                </select>
+              </div>
+              {(orderDateFrom || orderDateTo || orderChannelFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setOrderDateFrom('');
+                    setOrderDateTo('');
+                    setOrderChannelFilter('all');
+                  }}
+                  className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-2 rounded-lg font-black transition-all"
+                >
+                  Limpar Filtros
+                </button>
+              )}
             </div>
 
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20">
@@ -4849,6 +5336,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </tr>
                     ))}
                   </tbody>
+                  {/* REFCOM233: Totalizador no rodapé do grid, respeitando data, canal e status */}
+                  <tfoot className="bg-white/15 backdrop-blur-md border-t-2 border-versiory-coral/60 sticky bottom-0">
+                    <tr>
+                      <td colSpan={2} className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-xs font-black text-slate-100 uppercase tracking-wider">
+                          Total ({ordersTotals.count} pedido{ordersTotals.count === 1 ? '' : 's'})
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-200">{ordersTotals.items} itens</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-versiory-coral">
+                        {formatCurrency(ordersTotals.total)}
+                      </td>
+                      <td colSpan={3} />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
@@ -5443,22 +5945,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'financial' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* REFCOM231: cards e modal usam a MESMA base (revenueByChannel/revenueEntries) */}
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'all', orders: orders.filter(o => ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'all' })}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-slate-100">{formatCurrency(financialStats.totalRevenue)}</div>
                 <div className="text-slate-100 font-medium text-sm">Receita bruta Total — clique para detalhes</div>
               </button>
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'pdv', orders: orders.filter(o => o.salesChannel === 'physical' && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'pdv' })}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-green-400">{formatCurrency(financialStats.pdvRevenue)}</div>
                 <div className="text-slate-100 font-medium text-sm">Vendas PDV - clique para detalhes</div>
               </button>
               <button
-                onClick={() => setPaymentBreakdownModal({ channel: 'online', orders: orders.filter(o => (!o.salesChannel || o.salesChannel === 'online') && ['paid', 'processing', 'shipped', 'delivered'].includes(o.status)) })}
+                onClick={() => setPaymentBreakdownModal({ channel: 'online' })}
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/20 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-blue-400">{formatCurrency(financialStats.onlineRevenue)}</div>
@@ -5625,7 +6128,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            Forma: {transaction.paymentMethod.charAt(0).toUpperCase() + transaction.paymentMethod.slice(1)}
                          </div>
                        )}
-                      {/* Novo: Observações */}
+                       {/* Novo: Observações */}
                       {'notes' in transaction && transaction.notes && (
                         <div className="text-xs text-slate-400 mt-1 italic">{transaction.notes as string}</div>
                       )}
@@ -5639,6 +6142,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {transaction.type === 'revenue' ? 'Receita' : 'Despesa'}
                         </div>
                       </div>
+                      {/* REFCOM223.5 / REFCOM229.4: Estorno devolve a baixa ao Contas a Receber */}
+                      {transaction.type === 'revenue' && 'receivableId' in transaction && transaction.receivableId && (
+                        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => handleReceivableRefund(transaction.receivableId!)}
+                            className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-[10px] font-black transition-all"
+                            title="Estornar recebimento e devolver o lançamento ao Contas a Receber"
+                          >
+                            ↩︎ Estorno
+                          </button>
+                        </div>
+                      )}
                       {transaction.type === 'expense' && 'expenseId' in transaction && (
                         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                           {!isBillingRestricted && (
@@ -6126,6 +6641,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <CouponManagement />
           </div>
         )}
+
+        {/* REFCOM234: Tela de criacao de etiquetas com GTIN/EAN */}
+        {activeTab === 'labels' && (
+          <LabelGenerator
+            products={products}
+            onUpdateProducts={onUpdateProducts}
+            initialProductId={labelProductId}
+            isBillingRestricted={isBillingRestricted}
+            onProductGtinSaved={handleLabelGtinSaved}
+          />
+        )}
       </div>
 
       {
@@ -6542,6 +7068,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="px-6 py-3 border border-slate-200 text-slate-700 rounded-xl font-bold bg-white hover:bg-slate-50 transition-colors"
                   >
                     Cancelar
+                  </button>
+                  {/* REFCOM234: redireciona para a tela de criacao de etiquetas */}
+                  <button
+                    type="button"
+                    onClick={handleOpenLabelGenerator}
+                    className="px-6 py-3 border border-blue-200 text-blue-700 rounded-xl font-bold bg-blue-50 hover:bg-blue-100 transition-colors"
+                  >
+                    Gerar Cód. Barras
                   </button>
                   <button
                     type="submit"
@@ -7127,7 +7661,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {receivableDetail && (() => {
         const linkedOrder = receivableDetail.orderId ? orders.find(o => o.id === receivableDetail.orderId) : null;
         const installmentMatch = receivableDetail.description?.match(/(\d+)\/(\d+)/);
-        const installmentLabel = installmentMatch ? installmentMatch[0] : '-';
+        const installmentLabel = receivableDetail.installmentNumber || (installmentMatch ? installmentMatch[0] : '1/1');
         return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -7146,10 +7680,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div><span className="text-slate-500">E-mail:</span> <span className="font-bold text-slate-900">{receivableDetail.customerEmail || linkedOrder?.customerEmail || '-'}</span></div>
                 <div><span className="text-slate-500">Telefone:</span> <span className="font-bold text-slate-900">{receivableDetail.customerPhone || linkedOrder?.customerPhone || '-'}</span></div>
                 <div><span className="text-slate-500">CPF/CNPJ:</span> <span className="font-bold text-slate-900">{receivableDetail.customerCpfCnpj || linkedOrder?.customerCpfCnpj || '-'}</span></div>
-                <div><span className="text-slate-500">Data:</span> <span className="font-bold text-slate-900">{receivableDetail.dueDate}</span></div>
+                {/* REFCOM225: Data da venda com hora + data de vencimento da parcela */}
+                <div><span className="text-slate-500">Data da Venda:</span> <span className="font-bold text-slate-900">{formatDateTime(receivableDetail.saleDate || linkedOrder?.date)}</span></div>
+                <div><span className="text-slate-500">Vencimento:</span> <span className="font-bold text-slate-900">{receivableDetail.dueDate}</span></div>
+                {receivableDetail.status === 'paid' && (
+                  <div><span className="text-slate-500">Data Recebimento:</span> <span className="font-bold text-slate-900">{formatDateTime(receivableDetail.paidAt)}</span></div>
+                )}
                 <div><span className="text-slate-500">Status:</span> <span className="font-bold text-slate-900">{receivableDetail.status === 'paid' ? 'Pago' : 'Aberto'}</span></div>
-                <div><span className="text-slate-500">Canal:</span> <span className="font-bold text-slate-900">{receivableDetail.channel || linkedOrder?.salesChannel || '-'}</span></div>
-                <div><span className="text-slate-500">Forma de Pagamento:</span> <span className="font-bold text-slate-900">{receivableDetail.paymentMethod || linkedOrder?.paymentMethod || '-'}</span></div>
+                {/* REFCOM225: canal exibido em português e com a origem da venda */}
+                <div><span className="text-slate-500">Canal:</span> <span className="font-bold text-slate-900">{channelLabel(receivableDetail.channel, linkedOrder?.salesChannel)}</span></div>
+                {/* REFCOM225: forma de pagamento gravada como selecionada (ex.: Crédito) */}
+                <div><span className="text-slate-500">Forma de Pagamento:</span> <span className="font-bold text-slate-900">{receivableDetail.paymentMethod || toFinalizadora(linkedOrder?.paymentMethod) || 'Não informada'}</span></div>
                 <div className="sm:col-span-2"><span className="text-slate-500">Endereço:</span> <span className="font-bold text-slate-900">{linkedOrder?.address || '-'}</span></div>
                 <div className="sm:col-span-2">
                   <span className="text-slate-500">Itens:</span>
@@ -7186,6 +7727,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Forma de Pagamento</label>
                   <select value={receivableEdit.paymentMethod} onChange={e => setReceivableEdit({ ...receivableEdit, paymentMethod: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400">
+                    <option value="">Selecione...</option>
                     <option>Dinheiro</option>
                     <option>PIX</option>
                     <option>Débito</option>
@@ -7244,8 +7786,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
                 <button onClick={saveReceivableEdit} className="flex-1 min-w-[120px] bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl font-black transition-all">💾 Salvar Alterações</button>
-                <button onClick={() => { saveReceivableEdit(); setReceivableDetail(null); void handleReceivablePay(receivableDetail.id); }} className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-black transition-all">✅ Dar Baixa</button>
-                <button onClick={() => { handleReceivableDelete(receivableDetail.id); setReceivableDetail(null); }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-xl font-black transition-all">🗑️ Excluir</button>
+                {receivableDetail.status === 'paid' ? (
+                  <button onClick={() => { void handleReceivableRefund(receivableDetail.id); setReceivableDetail(null); }} className="flex-1 min-w-[120px] bg-amber-500 hover:bg-amber-600 text-white px-4 py-3 rounded-xl font-black transition-all">↩︎ Estorno</button>
+                ) : (
+                  <button onClick={() => { void saveReceivableEditAndPay(); }} className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-black transition-all">✅ Dar Baixa</button>
+                )}
+                {receivableDetail.status !== 'paid' && (
+                  <button onClick={() => { handleReceivableDelete(receivableDetail.id); setReceivableDetail(null); }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-xl font-black transition-all">🗑️ Excluir</button>
+                )}
               </div>
             </div>
           </div>
@@ -7898,30 +8446,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button onClick={() => setPaymentBreakdownModal(null)} className="text-white/60 hover:text-white">✕</button>
             </div>
             {(() => {
-              const byMethod: Record<string, number> = {};
-              paymentBreakdownModal.orders.forEach(o => {
-                const method = (o as any).paymentMethod || 'Não informado';
-                byMethod[method] = (byMethod[method] || 0) + o.total;
-              });
-              // REFCOM135: Formatar nome da forma de pagamento
-              const formatMethodName = (method: string) => {
-                if (method === 'credito') return 'Crédito';
-                if (method === 'debito') return 'Débito';
-                if (method === 'pix') return 'PIX';
-                if (method === 'whatsapp' || method === 'A combinar') return 'A combinar';
-                return method.toUpperCase();
-              };
+              // REFCOM231: o detalhamento usa exatamente a mesma base de cálculo do card,
+              // garantindo que o total do modal seja idêntico ao valor exibido no card.
+              const byMethod =
+                paymentBreakdownModal.channel === 'all' ? revenueByChannel.all
+                : paymentBreakdownModal.channel === 'pdv' ? revenueByChannel.pdv
+                : revenueByChannel.online;
+              const entries = Object.entries(byMethod).sort((a, b) => b[1] - a[1]);
+              const total = entries.reduce((s, [, v]) => s + v, 0);
               return (
                 <div className="space-y-3">
-                  {Object.entries(byMethod).map(([method, total]) => (
+                  {entries.length === 0 && (
+                    <p className="text-sm text-white/60 text-center py-4">Nenhuma venda apurada neste canal.</p>
+                  )}
+                  {entries.map(([method, value]) => (
                     <div key={method} className="flex justify-between items-center p-3 bg-white/5 rounded-xl">
-                      <span className="text-white font-medium">{formatMethodName(method)}</span>
-                      <span className="text-versiory-coral font-black">{formatCurrency(total)}</span>
+                      <span className="text-white font-medium">{method}</span>
+                      <span className="text-versiory-coral font-black">{formatCurrency(value)}</span>
                     </div>
                   ))}
                   <div className="border-t border-white/10 pt-2 flex justify-between">
                     <span className="text-white font-bold">Total</span>
-                    <span className="text-white font-black">{formatCurrency(paymentBreakdownModal.orders.reduce((s, o) => s + o.total, 0))}</span>
+                    <span className="text-white font-black">{formatCurrency(total)}</span>
                   </div>
                 </div>
               );

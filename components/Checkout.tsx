@@ -296,10 +296,11 @@ const Checkout: React.FC<CheckoutProps> = ({
         notes: orderNotes || '',
         salesChannel: 'online',
         orderTime: new Date().toLocaleTimeString('pt-BR'), // ERRCOM083
-        installments: paymentMethod === 'credito' ? installments : 1, // ERRCOM088
+        // REFCOM223/REFCOM224: parcelamento vale para Crédito e para WhatsApp (a combinar)
+        installments: (paymentMethod === 'credito' || paymentMethod === 'whatsapp') ? installments : 1, // ERRCOM088
         paymentMethod: paymentMethod, // REFCOM135: Garantir que paymentMethod seja salvo
         stockDecremented: true, // REFCOM219: Marcar que estoque já foi baixado no checkout (status reserved)
-        installmentDetails: paymentMethod === 'credito' && installments > 1 ? (() => {
+        installmentDetails: (paymentMethod === 'credito' || paymentMethod === 'whatsapp') && installments > 1 ? (() => {
           const cardRate = items[0]?.cardRate || 0;
           return calculateInstallments({
             total,
@@ -310,7 +311,7 @@ const Checkout: React.FC<CheckoutProps> = ({
             number: inst.number,
             amount: inst.amount,
             status: 'pending' as const,
-            paymentMethod: 'Credito'
+            paymentMethod: paymentMethod === 'whatsapp' ? 'WhatsApp' : 'Credito'
           }));
         })() : undefined // REFCOM135: Gerar installmentDetails no checkout também
       }; // REFCOM135.5: paymentMethod === 'credito' needs to be 'credito'
@@ -538,7 +539,8 @@ const Checkout: React.FC<CheckoutProps> = ({
       // REFCOM224: Salvar 'WhatsApp' como forma de pagamento para identificação no Contas a Receber
       paymentMethod: paymentMethod === 'whatsapp' ? 'WhatsApp' : paymentMethod, // REFCOM135: Salvar paymentMethod como 'credito' para verificação correta
       salesChannel: paymentMethod === 'whatsapp' ? 'whatsapp' : 'online',
-      installments: paymentMethod === 'credito' ? installments : 1,
+      // REFCOM224: vendas a combinar no WhatsApp também podem ser parceladas
+      installments: (paymentMethod === 'credito' || paymentMethod === 'whatsapp') ? installments : 1,
       discountAmount: discount > 0 ? discount : undefined, // REFCOM151
       discountType: 'fixed', // REFCOM151
       couponCode: couponApplied ? couponCode : undefined // REFCOM151
@@ -955,9 +957,13 @@ const Checkout: React.FC<CheckoutProps> = ({
                 </div>
               </label>
 
-              {paymentMethod === 'credito' && (
+              {/* REFCOM223/REFCOM224: parcelamento disponível tanto para Crédito quanto para
+                  WhatsApp (a combinar), gerando lançamentos interdependentes no Contas a Receber. */}
+              {(paymentMethod === 'credito' || paymentMethod === 'whatsapp') && (
                 <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
-                  <label className="block text-sm font-black text-blue-900 mb-2">Parcelamento</label>
+                  <label className="block text-sm font-black text-blue-900 mb-2">
+                    Parcelamento {paymentMethod === 'whatsapp' ? '(a combinar)' : ''}
+                  </label>
                   <select
                     value={installments}
                     onChange={e => setInstallments(parseInt(e.target.value))}
@@ -969,12 +975,12 @@ const Checkout: React.FC<CheckoutProps> = ({
                       const cardRate = items[0]?.cardRate || 0;
                       return [...Array(Math.min(maxInstallments, 12))].map((_, i) => {
                         const n = i + 1;
-                        const installments = calculateInstallments({
+                        const installmentList = calculateInstallments({
                           total,
                           installments: n,
                           cardRate
                         });
-                        const amount = installments[0]?.amount || total / n;
+                        const amount = installmentList[0]?.amount || total / n;
                         return (
                           <option key={n} value={n}>
                             {n}x de R$ {amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} {n === 1 ? '(Sem juros)' : ''}
@@ -983,6 +989,12 @@ const Checkout: React.FC<CheckoutProps> = ({
                       });
                     })()}
                   </select>
+                  {installments > 1 && (
+                    <p className="text-xs text-blue-800 font-bold mt-2">
+                      Serão gerados {installments} lançamentos interdependentes no Contas a Receber
+                      quando o pedido for marcado como &quot;Pagamento Efetuado&quot;.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

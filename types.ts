@@ -218,6 +218,9 @@ export interface ManualRevenue { // ERRCOM136: Registro de receitas avulsas
   notes?: string;
   user: string;
   paymentMethod?: string; // REFCOM220: Forma de pagamento (dinheiro, pix, debito, credito)
+  // REFCOM223/225/229: rastreia a baixa do Contas a Receber que originou esta receita
+  sourceReceivableId?: string;
+  sourceChannel?: 'online' | 'physical' | 'whatsapp';
 }
 
 // REFCOM222: Contas a Receber e Contas a Pagar
@@ -236,6 +239,8 @@ export interface AccountReceivable {
   paidAt?: string;
   status: ReceivableStatus;
   orderId?: string;
+  installmentNumber?: string; // REFCOM223/225: referência da parcela (ex.: "2/3")
+  saleDate?: string; // REFCOM225: data + hora exatas da venda
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
@@ -243,6 +248,7 @@ export interface AccountReceivable {
   paymentMethod?: string; // REFCOM223: Dinheiro, PIX, Débito, Crédito
   channel?: 'online' | 'physical' | 'whatsapp';
   notes?: string;
+  revenueId?: number; // REFCOM223/225/229: id da ManualRevenue gerada na baixa (permite estorno)
   deletedAt?: string; // REFCOM223: data de exclusão (para log)
   deletedBy?: string; // REFCOM223: usuário que excluiu
   deleteReason?: string; // REFCOM223: observações obrigatórias no momento da exclusão

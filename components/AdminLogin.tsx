@@ -164,6 +164,55 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
               </div>
             )}
 
+            {/* REFCOM198: Aviso de faturamento com contador regressivo */}
+            {(() => {
+              if (billingStatus.phase === 'normal' && billingStatus.daysRemaining > 14) return null;
+              const isBlocked = billingStatus.blocked;
+              const isOverdue = billingStatus.daysRemaining <= 0;
+              const bg = isBlocked
+                ? 'bg-red-500/25 border-red-300/40'
+                : isOverdue
+                  ? 'bg-orange-500/25 border-orange-300/40'
+                  : 'bg-amber-400/20 border-amber-200/40';
+              return (
+                <div className={`${bg} backdrop-blur-xl border rounded-2xl px-4 py-3 text-white`}>
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl leading-none mt-0.5">
+                      {isBlocked ? '🔒' : isOverdue ? '⚠️' : '📅'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-black uppercase tracking-wide opacity-90">
+                        Fatura Mensal Versiory
+                      </p>
+                      <p className="text-xs font-bold leading-snug mt-0.5">
+                        {billingStatus.message}
+                      </p>
+                      {billingStatus.detail && (
+                        <p className="text-[11px] opacity-80 mt-0.5">{billingStatus.detail}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 mt-2 text-[10px] font-black">
+                        <span className="bg-black/30 rounded-lg px-2 py-1">
+                          💰 R$ {dueAmount.toFixed(2)}
+                        </span>
+                        {billingStatus.daysRemaining > 0 && (
+                          <span className="bg-black/30 rounded-lg px-2 py-1">
+                            ⏳ Vence em {billingStatus.daysRemaining} dia
+                            {billingStatus.daysRemaining === 1 ? '' : 's'}
+                          </span>
+                        )}
+                        {isOverdue && billingStatus.daysOfAccess > 0 && (
+                          <span className="bg-black/40 rounded-lg px-2 py-1">
+                            🔥 {billingStatus.daysOfAccess} dia
+                            {billingStatus.daysOfAccess === 1 ? '' : 's'} de acesso restante
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Submit Button */}
             <button 
               type="submit" 
