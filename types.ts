@@ -265,6 +265,8 @@ export interface AccountPayable {
   supplier?: string;
   supplierCpfCnpj?: string;
   paymentMethod?: string;
+  // REFCOM236: canal de origem do lançamento (Contas a Pagar predominantemente 'avulso')
+  channel?: 'online' | 'physical' | 'whatsapp' | 'avulso';
   notes?: string;
 }
 

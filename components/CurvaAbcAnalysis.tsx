@@ -78,9 +78,22 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
     });
   }, [orders, dateFrom, dateTo, channelFilter]);
 
+  /**
+   * REFCOM239: Vendas canceladas (e devolvidas) NÃO entram no faturamento.
+   *
+   * Antes, `revenueByProduct` somava todos os pedidos do período, então o
+   * "Faturamento total" do gráfico de Distribuição e os cards das classes A/B/C
+   * ficavam inflados pelos cancelados — o valor ignorado aparecia apenas como
+   * informação na tela, sem sair do cálculo.
+   */
+  const validOrders = useMemo(
+    () => filteredOrders.filter(order => order.status !== 'cancelled' && order.status !== 'returned'),
+    [filteredOrders]
+  );
+
   const revenueByProduct = useMemo(() => {
     const map = new Map<number, ProductRevenue>();
-    filteredOrders.forEach(order => {
+    validOrders.forEach(order => {
       const orderGross = order.items?.reduce((s, it) => s + it.price * it.quantity, 0) || 0;
       const discount = order.discountAmount ?? 0;
       const factor = orderGross > 0 ? Math.max(0, (orderGross - discount) / orderGross) : 1;
@@ -96,8 +109,9 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
       });
     });
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
-  }, [filteredOrders, productMap]);
+  }, [validOrders, productMap]);
 
+  // Valor excluído do faturamento por estar cancelado ou devolvido.
   const ignoredSales = useMemo(() => {
     return filteredOrders
       .filter(order => order.status === 'cancelled' || order.status === 'returned')
@@ -312,6 +326,9 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
                 <span className="text-red-300">Vendas ignoradas (Cancelados/Devolvidos)</span>
                 <span className="text-white font-bold">{formatCurrency(ignoredSales)}</span>
               </div>
+              <p className="text-[11px] text-slate-400 leading-tight">
+                REFCOM239: cancelados e devolvidos são excluídos do faturamento total e dos cards A/B/C.
+              </p>
             </div>
           </div>
         </div>

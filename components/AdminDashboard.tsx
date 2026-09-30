@@ -190,6 +190,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // REFCOM226: Campo de pesquisa em Contas a Pagar e Receber
   const [receivableSearch, setReceivableSearch] = useState('');
   const [payableSearch, setPayableSearch] = useState('');
+  // REFCOM236: Filtros por Status e Canal nos grids Contas a Receber e Contas a Pagar
+  const [receivableStatusFilter, setReceivableStatusFilter] = useState<'all' | 'paid' | 'open'>('all');
+  const [receivableChannelFilter, setReceivableChannelFilter] = useState<'all' | 'physical' | 'online' | 'avulso'>('all');
+  const [payableStatusFilter, setPayableStatusFilter] = useState<'all' | 'paid' | 'open'>('all');
+  const [payableChannelFilter, setPayableChannelFilter] = useState<'all' | 'physical' | 'online' | 'avulso'>('all');
   const [payableDateFrom, setPayableDateFrom] = useState('');
   const [payableDateTo, setPayableDateTo] = useState('');
   const [selectedReceivables, setSelectedReceivables] = useState<string[]>([]);
@@ -1585,6 +1590,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return accountsReceivable.filter(item => {
       if (receivableDateFrom && item.dueDate < receivableDateFrom) return false;
       if (receivableDateTo && item.dueDate > receivableDateTo) return false;
+      // REFCOM236: Filtro por Status (Todos / Pago / Aberto)
+      if (receivableStatusFilter === 'paid' && item.status !== 'paid') return false;
+      if (receivableStatusFilter === 'open' && item.status === 'paid') return false;
+      // REFCOM236: Filtro por Canal (Todos / PDV Loja / Online / Avulso)
+      if (receivableChannelFilter !== 'all') {
+        if (receivableChannelFilter === 'avulso') {
+          if (item.channel) return false;
+        } else if ((item.channel || 'online') !== receivableChannelFilter) {
+          return false;
+        }
+      }
       // REFCOM226: Filtro por nº pedido, cliente, CPF/CNPJ ou descrição
       if (q) {
         const orderId = (item.orderId || '').toLowerCase();
@@ -1595,13 +1611,54 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return true;
     });
-  }, [accountsReceivable, receivableDateFrom, receivableDateTo, receivableSearch]);
+  }, [accountsReceivable, receivableDateFrom, receivableDateTo, receivableSearch, receivableStatusFilter, receivableChannelFilter]);
+
+  // REFCOM236: Totais por status considerando Data, Status, Canal e pesquisa.
+  const receivableTotals = useMemo(() => {
+    const base = accountsReceivable.filter(item => {
+      if (receivableDateFrom && item.dueDate < receivableDateFrom) return false;
+      if (receivableDateTo && item.dueDate > receivableDateTo) return false;
+      if (receivableChannelFilter !== 'all') {
+        if (receivableChannelFilter === 'avulso') {
+          if (item.channel) return false;
+        } else if ((item.channel || 'online') !== receivableChannelFilter) return false;
+      }
+      const q = receivableSearch.trim().toLowerCase();
+      if (q) {
+        const orderId = (item.orderId || '').toLowerCase();
+        const customer = (item.customerName || '').toLowerCase();
+        const cpf = (item.customerCpfCnpj || '').toLowerCase();
+        const desc = (item.description || '').toLowerCase();
+        if (!orderId.includes(q) && !customer.includes(q) && !cpf.includes(q) && !desc.includes(q)) return false;
+      }
+      return true;
+    });
+    return {
+      listed: filteredAccountsReceivable.length,
+      listedTotal: filteredAccountsReceivable.reduce((s, i) => s + i.amount, 0),
+      openCount: base.filter(i => i.status !== 'paid').length,
+      openTotal: base.filter(i => i.status !== 'paid').reduce((s, i) => s + i.amount, 0),
+      paidCount: base.filter(i => i.status === 'paid').length,
+      paidTotal: base.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0),
+    };
+  }, [accountsReceivable, receivableDateFrom, receivableDateTo, receivableSearch, receivableChannelFilter, filteredAccountsReceivable]);
 
   const filteredAccountsPayable = useMemo(() => {
     const q = payableSearch.trim().toLowerCase();
     return accountsPayable.filter(item => {
       if (payableDateFrom && item.dueDate < payableDateFrom) return false;
       if (payableDateTo && item.dueDate > payableDateTo) return false;
+      // REFCOM236: Filtro por Status (Todos / Pago / Aberto)
+      if (payableStatusFilter === 'paid' && item.status !== 'paid') return false;
+      if (payableStatusFilter === 'open' && item.status === 'paid') return false;
+      // REFCOM236: Filtro por Canal (Todos / PDV Loja / Online / Avulso)
+      if (payableChannelFilter !== 'all') {
+        if (payableChannelFilter === 'avulso') {
+          if (item.channel && item.channel !== 'avulso') return false;
+        } else if ((item.channel || 'avulso') !== payableChannelFilter) {
+          return false;
+        }
+      }
       // REFCOM226: Filtro por descrição, fornecedor, CPF/CNPJ
       if (q) {
         const desc = (item.description || '').toLowerCase();
@@ -1611,7 +1668,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return true;
     });
-  }, [accountsPayable, payableDateFrom, payableDateTo, payableSearch]);
+  }, [accountsPayable, payableDateFrom, payableDateTo, payableSearch, payableStatusFilter, payableChannelFilter]);
+
+  // REFCOM236: Totais por status considerando Data, Status, Canal e pesquisa.
+  const payableTotals = useMemo(() => {
+    const base = accountsPayable.filter(item => {
+      if (payableDateFrom && item.dueDate < payableDateFrom) return false;
+      if (payableDateTo && item.dueDate > payableDateTo) return false;
+      if (payableChannelFilter !== 'all') {
+        if (payableChannelFilter === 'avulso') {
+          if (item.channel && item.channel !== 'avulso') return false;
+        } else if ((item.channel || 'avulso') !== payableChannelFilter) return false;
+      }
+      const q = payableSearch.trim().toLowerCase();
+      if (q) {
+        const desc = (item.description || '').toLowerCase();
+        const supplier = (item.supplier || '').toLowerCase();
+        const cpf = (item.supplierCpfCnpj || '').toLowerCase();
+        if (!desc.includes(q) && !supplier.includes(q) && !cpf.includes(q)) return false;
+      }
+      return true;
+    });
+    return {
+      listed: filteredAccountsPayable.length,
+      listedTotal: filteredAccountsPayable.reduce((s, i) => s + i.amount, 0),
+      openCount: base.filter(i => i.status !== 'paid').length,
+      openTotal: base.filter(i => i.status !== 'paid').reduce((s, i) => s + i.amount, 0),
+      paidCount: base.filter(i => i.status === 'paid').length,
+      paidTotal: base.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0),
+    };
+  }, [accountsPayable, payableDateFrom, payableDateTo, payableSearch, payableChannelFilter, filteredAccountsPayable]);
 
   const categoryOptions = useMemo(() => {
     const productCategories = products.map(product => product.category).filter(Boolean);
@@ -2208,6 +2294,64 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     return { totalRevenue, pdvRevenue, onlineRevenue };
   }, [revenueEntries, dashboardPeriod, dashboardDateFrom, dashboardDateTo, dashboardChannelFilter]);
+
+  // REFCOM238: Cards "Contas a Receber" e "Contas a Pagar" do módulo Financeiro.
+  // Antes eles consumiam os filtros do próprio grid (Contas a Receber/Pagar) e ficavam
+  // parados quando o usuário mudava Data/Tipo/Forma de pagamento aqui no Financeiro.
+  // Agora respeitam exatamente o mesmo conjunto de filtros das demais cards.
+  const financialReceivableTotal = useMemo(() => {
+    // Filtro por Tipo: "Despesas" não tem contas a receber a apurar.
+    if (financialTypeFilter === 'expense') return 0;
+    return accountsReceivable
+      .filter(item => {
+        if (item.status === 'paid') return false;
+        if (financialDateFilter.from && item.dueDate < financialDateFilter.from) return false;
+        if (financialDateFilter.to && item.dueDate > financialDateFilter.to) return false;
+        if (financialPaymentFilter !== 'all') {
+          const method = (toFinalizadora(item.paymentMethod) || item.paymentMethod || '').toLowerCase();
+          if (method !== financialPaymentFilter) return false;
+        }
+        return true;
+      })
+      .reduce((s, i) => s + i.amount, 0);
+  }, [accountsReceivable, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+
+  const financialPayableTotal = useMemo(() => {
+    // Filtro por Tipo: "Receitas" não tem contas a pagar a apurar.
+    if (financialTypeFilter === 'revenue') return 0;
+    return accountsPayable
+      .filter(item => {
+        if (item.status === 'paid') return false;
+        if (financialDateFilter.from && item.dueDate < financialDateFilter.from) return false;
+        if (financialDateFilter.to && item.dueDate > financialDateFilter.to) return false;
+        if (financialPaymentFilter !== 'all') {
+          const method = (toFinalizadora(item.paymentMethod) || item.paymentMethod || '').toLowerCase();
+          if (method !== financialPaymentFilter) return false;
+        }
+        return true;
+      })
+      .reduce((s, i) => s + i.amount, 0);
+  }, [accountsPayable, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+
+  // REFCOM238: Transações Recentes e os cards de receita/despesa já consomem
+  // `filteredTransactions` / `financialStats`, ambos derivados de `filteredRevenueEntries`,
+  // que é filtrado por Período + Tipo + Forma de pagamento. A soma das transações
+  // listadas é, por construção, igual à dos cards.
+
+  // REFCOM238: despesas do card "Despesas". É a MESMA lista usada por `financialStats`
+  // e por Transações Recentes, garantindo que card, lista e detalhamento batam.
+  const filteredExpensesForCard = useMemo(() => {
+    if (financialTypeFilter === 'revenue') return [];
+    return expenses.filter(e => {
+      if (financialDateFilter.from && e.date < financialDateFilter.from) return false;
+      if (financialDateFilter.to && e.date > financialDateFilter.to) return false;
+      if (financialPaymentFilter !== 'all') {
+        const method = (toFinalizadora(e.paymentMethod) || e.paymentMethod || '').toLowerCase();
+        if (method !== financialPaymentFilter) return false;
+      }
+      return true;
+    });
+  }, [expenses, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
 
   // REFCOM231: Cards e modal de detalhes consomem EXATAMENTE a mesma base, garantindo
   // que o valor exibido no card seja idêntico ao valor do detalhamento.
@@ -5969,7 +6113,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={() => {
-                  const expensesList = expenses.map(e => ({
+                  // REFCOM238: o detalhamento lista exatamente as despesas do card,
+                  // respeitando Período, Tipo e Forma de pagamento aplicados.
+                  const expensesList = filteredExpensesForCard.map(e => ({
                     ...e,
                     categoryLabel: e.category === 'fixed' ? 'Fixa' : e.category === 'variable' ? 'Variável' : e.category === 'investment' ? 'Investimento' : 'Emergencial'
                   }));
@@ -6009,7 +6155,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-emerald-500/30 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-emerald-400">
-                  {formatCurrency(filteredAccountsReceivable.filter(i => i.status !== 'paid').reduce((s, i) => s + i.amount, 0))}
+                  {formatCurrency(financialReceivableTotal)}
                 </div>
                 <div className="text-slate-100 font-medium text-sm">Contas a Receber — clique para detalhes</div>
               </button>
@@ -6018,7 +6164,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-red-500/30 hover:bg-white/20 transition-all text-left"
               >
                 <div className="text-2xl font-bold text-red-400">
-                  {formatCurrency(filteredAccountsPayable.filter(i => i.status !== 'paid').reduce((s, i) => s + i.amount, 0))}
+                  {formatCurrency(financialPayableTotal)}
                 </div>
                 <div className="text-slate-100 font-medium text-sm">Contas a Pagar — clique para detalhes</div>
               </button>
@@ -6057,22 +6203,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
-            {/* ERRCOM027: Filtro de data */}
+            {/* REFCOM237: Filtros unificados em uma única linha no topo do módulo
+                (antes havia dois blocos separados: um de período e outro de tipo/forma). */}
             <div className="flex flex-wrap gap-3 items-center mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
-              <span className="text-slate-300 text-sm font-bold">Filtrar por período:</span>
-              <input type="date" value={financialDateFilter.from} onChange={e => setFinancialDateFilter(p => ({ ...p, from: e.target.value }))}
-                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none" />
+              <span className="text-slate-300 text-sm font-bold">Período:</span>
+              <input
+                type="date"
+                value={financialDateFilter.from}
+                onChange={e => setFinancialDateFilter(p => ({ ...p, from: e.target.value }))}
+                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none [color-scheme:dark]"
+              />
               <span className="text-slate-400 text-sm">até</span>
-              <input type="date" value={financialDateFilter.to} onChange={e => setFinancialDateFilter(p => ({ ...p, to: e.target.value }))}
-                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none" />
-              {(financialDateFilter.from || financialDateFilter.to) && (
-                <button onClick={() => setFinancialDateFilter({ from: '', to: '' })} className="text-slate-400 hover:text-white text-sm underline">Limpar</button>
-              )}
-            </div>
+              <input
+                type="date"
+                value={financialDateFilter.to}
+                onChange={e => setFinancialDateFilter(p => ({ ...p, to: e.target.value }))}
+                className="px-3 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none [color-scheme:dark]"
+              />
 
-            {/* REFCOM160/REFCOM229: Filtros por Tipo e Forma de Pagamento */}
-            <div className="flex flex-wrap gap-3 items-center mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
-              <span className="text-slate-100 text-sm font-bold">Filtrar por tipo:</span>
+              <span className="text-slate-100 text-sm font-bold ml-2">Tipo:</span>
               <select
                 value={financialTypeFilter}
                 onChange={e => setFinancialTypeFilter(e.target.value as 'all' | 'revenue' | 'expense')}
@@ -6083,7 +6232,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="expense">Despesas</option>
               </select>
 
-              <span className="text-slate-100 text-sm font-bold ml-4">Forma de pagamento:</span>
+              <span className="text-slate-100 text-sm font-bold">Forma de pagamento:</span>
               <select
                 value={financialPaymentFilter}
                 onChange={e => setFinancialPaymentFilter(e.target.value as 'all' | 'dinheiro' | 'pix' | 'debito' | 'credito')}
@@ -6096,8 +6245,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="credito">Crédito</option>
               </select>
 
-              {(financialTypeFilter !== 'all' || financialPaymentFilter !== 'all') && (
-                <button onClick={() => { setFinancialTypeFilter('all'); setFinancialPaymentFilter('all'); }} className="text-slate-100 hover:text-versiory-coral text-sm underline font-medium">Limpar</button>
+              {(financialDateFilter.from || financialDateFilter.to || financialTypeFilter !== 'all' || financialPaymentFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setFinancialDateFilter({ from: '', to: '' });
+                    setFinancialTypeFilter('all');
+                    setFinancialPaymentFilter('all');
+                  }}
+                  className="text-slate-100 hover:text-versiory-coral text-sm underline font-medium"
+                >
+                  Limpar filtros
+                </button>
               )}
             </div>
 
@@ -6194,27 +6352,79 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <h3 className="text-lg font-bold text-white">Contas a Receber</h3>
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* REFCOM226: Campo de pesquisa */}
-                  <input
-                    type="text"
-                    value={receivableSearch}
-                    onChange={e => setReceivableSearch(e.target.value)}
-                    placeholder="🔍 Nº Pedido, Cliente, CPF/CNPJ ou Descrição"
-                    className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 w-72 focus:ring-2 focus:ring-emerald-400 outline-none placeholder:text-slate-400"
-                  />
-                  <input type="date" value={receivableDateFrom} onChange={e => setReceivableDateFrom(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
-                  <input type="date" value={receivableDateTo} onChange={e => setReceivableDateTo(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
                   <button onClick={handleBatchReceivablePay} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-lg font-black">Baixar Selecionados</button>
                   <button onClick={() => { setEditingReceivable(null); setReceivableForm({ description: '', amount: 0, dueDate: '', status: 'open' }); setIsReceivableModalOpen(true); }} className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-2 rounded-lg font-black border border-white/20">+ Nova</button>
                 </div>
               </div>
-              <div className="overflow-x-auto">
+
+              {/* REFCOM236: Barra unificada de filtros (Pesquisa, Data, Status e Canal) */}
+              <div className="flex flex-wrap items-center gap-2 mb-4 p-3 bg-white/5 rounded-xl border border-white/10">
+                <input
+                  type="text"
+                  value={receivableSearch}
+                  onChange={e => setReceivableSearch(e.target.value)}
+                  placeholder="🔍 Nº Pedido, Cliente, CPF/CNPJ ou Descrição"
+                  className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 w-64 focus:ring-2 focus:ring-emerald-400 outline-none placeholder:text-slate-400"
+                />
+                <input type="date" value={receivableDateFrom} onChange={e => setReceivableDateFrom(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
+                <input type="date" value={receivableDateTo} onChange={e => setReceivableDateTo(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
+                <select
+                  value={receivableStatusFilter}
+                  onChange={e => setReceivableStatusFilter(e.target.value as 'all' | 'paid' | 'open')}
+                  className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:ring-2 focus:ring-emerald-400 outline-none"
+                >
+                  <option value="all">Status: Todos</option>
+                  <option value="paid">Status: Pago</option>
+                  <option value="open">Status: Aberto</option>
+                </select>
+                <select
+                  value={receivableChannelFilter}
+                  onChange={e => setReceivableChannelFilter(e.target.value as 'all' | 'physical' | 'online' | 'avulso')}
+                  className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:ring-2 focus:ring-emerald-400 outline-none"
+                >
+                  <option value="all">Canal: Todos</option>
+                  <option value="physical">Canal: PDV Loja</option>
+                  <option value="online">Canal: Online</option>
+                  <option value="avulso">Canal: Avulso</option>
+                </select>
+                {(receivableSearch || receivableDateFrom || receivableDateTo || receivableStatusFilter !== 'all' || receivableChannelFilter !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setReceivableSearch('');
+                      setReceivableDateFrom('');
+                      setReceivableDateTo('');
+                      setReceivableStatusFilter('all');
+                      setReceivableChannelFilter('all');
+                    }}
+                    className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-2 rounded-lg font-black"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              {/* REFCOM236: Resumo do período filtrado */}
+              <div className="flex flex-wrap gap-3 mb-3 text-xs">
+                <span className="px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-200 font-bold">
+                  Aberto: {receivableTotals.openCount} • {formatCurrency(receivableTotals.openTotal)}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-green-500/15 text-green-200 font-bold">
+                  Pago: {receivableTotals.paidCount} • {formatCurrency(receivableTotals.paidTotal)}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-white/10 text-slate-200 font-bold">
+                  Listado: {receivableTotals.listed} • {formatCurrency(receivableTotals.listedTotal)}
+                </span>
+              </div>
+
+              {/* REFCOM236: barra de rolagem vertical para listas extensas */}
+              <div className="overflow-auto max-h-[420px] custom-scrollbar">
                 <table className="w-full text-left text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-[#16294a]">
                     <tr className="border-b border-white/20 text-slate-300">
                       <th className="py-2 px-2"><input type="checkbox" onChange={e => { if (e.target.checked) setSelectedReceivables(filteredAccountsReceivable.filter(i => i.status !== 'paid').map(i => i.id)); else setSelectedReceivables([]); }} /></th>
                       <th className="py-2 px-2">Pedido / Parcela</th>
                       <th className="py-2 px-2">Cliente</th>
+                      <th className="py-2 px-2 text-center">Canal</th>
                       <th className="py-2 px-2 text-right">Valor</th>
                       <th className="py-2 px-2 text-right">Vencimento</th>
                       <th className="py-2 px-2 text-center">Status</th>
@@ -6232,6 +6442,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           )}
                         </td>
                         <td className="py-2 px-2 text-white text-xs">{item.customerName || '-'}</td>
+                        {/* REFCOM236: canal de origem do lançamento */}
+                        <td className="py-2 px-2 text-center">
+                          <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-white/10 text-slate-200">
+                            {item.channel ? channelLabel(item.channel) : 'Avulso'}
+                          </span>
+                        </td>
                         <td className="py-2 px-2 text-right text-white">{formatCurrency(item.amount)}</td>
                         <td className="py-2 px-2 text-right text-white">{item.dueDate}</td>
                         <td className="py-2 px-2 text-center">
@@ -6264,7 +6480,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </td>
                       </tr>
                     ))}
-                    {filteredAccountsReceivable.length === 0 && (<tr><td colSpan={7} className="py-4 text-center text-slate-400">Nenhuma conta a receber.</td></tr>)}
+                    {filteredAccountsReceivable.length === 0 && (<tr><td colSpan={8} className="py-4 text-center text-slate-400">Nenhuma conta a receber.</td></tr>)}
                   </tbody>
                 </table>
               </div>
@@ -6275,26 +6491,79 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <h3 className="text-lg font-bold text-white">Contas a Pagar</h3>
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* REFCOM226: Campo de pesquisa */}
-                  <input
-                    type="text"
-                    value={payableSearch}
-                    onChange={e => setPayableSearch(e.target.value)}
-                    placeholder="🔍 Descrição, Fornecedor ou CPF/CNPJ"
-                    className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 w-72 focus:ring-2 focus:ring-red-400 outline-none placeholder:text-slate-400"
-                  />
-                  <input type="date" value={payableDateFrom} onChange={e => setPayableDateFrom(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
-                  <input type="date" value={payableDateTo} onChange={e => setPayableDateTo(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
                   <button onClick={handleBatchPayablePay} className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-2 rounded-lg font-black">Baixar Selecionados</button>
                   <button onClick={() => { setEditingPayable(null); setPayableForm({ description: '', amount: 0, dueDate: '', status: 'open' }); setIsPayableModalOpen(true); }} className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-2 rounded-lg font-black border border-white/20">+ Nova</button>
                 </div>
               </div>
-              <div className="overflow-x-auto">
+
+              {/* REFCOM236: Barra unificada de filtros (Pesquisa, Data, Status e Canal) */}
+              <div className="flex flex-wrap items-center gap-2 mb-4 p-3 bg-white/5 rounded-xl border border-white/10">
+                <input
+                  type="text"
+                  value={payableSearch}
+                  onChange={e => setPayableSearch(e.target.value)}
+                  placeholder="🔍 Descrição, Fornecedor ou CPF/CNPJ"
+                  className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 w-64 focus:ring-2 focus:ring-red-400 outline-none placeholder:text-slate-400"
+                />
+                <input type="date" value={payableDateFrom} onChange={e => setPayableDateFrom(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
+                <input type="date" value={payableDateTo} onChange={e => setPayableDateTo(e.target.value)} className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10" />
+                <select
+                  value={payableStatusFilter}
+                  onChange={e => setPayableStatusFilter(e.target.value as 'all' | 'paid' | 'open')}
+                  className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:ring-2 focus:ring-red-400 outline-none"
+                >
+                  <option value="all">Status: Todos</option>
+                  <option value="paid">Status: Pago</option>
+                  <option value="open">Status: Aberto</option>
+                </select>
+                <select
+                  value={payableChannelFilter}
+                  onChange={e => setPayableChannelFilter(e.target.value as 'all' | 'physical' | 'online' | 'avulso')}
+                  className="bg-[#1b2a47] text-white text-sm px-3 py-2 rounded-lg border border-white/10 focus:ring-2 focus:ring-red-400 outline-none"
+                >
+                  <option value="all">Canal: Todos</option>
+                  <option value="physical">Canal: PDV Loja</option>
+                  <option value="online">Canal: Online</option>
+                  <option value="avulso">Canal: Avulso</option>
+                </select>
+                {(payableSearch || payableDateFrom || payableDateTo || payableStatusFilter !== 'all' || payableChannelFilter !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setPayableSearch('');
+                      setPayableDateFrom('');
+                      setPayableDateTo('');
+                      setPayableStatusFilter('all');
+                      setPayableChannelFilter('all');
+                    }}
+                    className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-2 rounded-lg font-black"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              {/* REFCOM236: Resumo do período filtrado */}
+              <div className="flex flex-wrap gap-3 mb-3 text-xs">
+                <span className="px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-200 font-bold">
+                  Aberto: {payableTotals.openCount} • {formatCurrency(payableTotals.openTotal)}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-green-500/15 text-green-200 font-bold">
+                  Pago: {payableTotals.paidCount} • {formatCurrency(payableTotals.paidTotal)}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-white/10 text-slate-200 font-bold">
+                  Listado: {payableTotals.listed} • {formatCurrency(payableTotals.listedTotal)}
+                </span>
+              </div>
+
+              {/* REFCOM236: barra de rolagem vertical para listas extensas */}
+              <div className="overflow-auto max-h-[420px] custom-scrollbar">
                 <table className="w-full text-left text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-[#16294a]">
                     <tr className="border-b border-white/20 text-slate-300">
                       <th className="py-2 px-2"><input type="checkbox" onChange={e => { if (e.target.checked) setSelectedPayables(filteredAccountsPayable.filter(i => i.status !== 'paid').map(i => i.id)); else setSelectedPayables([]); }} /></th>
                       <th className="py-2 px-2">Descricao</th>
+                      {/* REFCOM236: canal de origem do lançamento */}
+                      <th className="py-2 px-2 text-center">Canal</th>
                       <th className="py-2 px-2 text-right">Valor</th>
                       <th className="py-2 px-2 text-right">Vencimento</th>
                       <th className="py-2 px-2 text-center">Status</th>
@@ -6306,6 +6575,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <tr key={item.id} className="border-b border-white/10 hover:bg-white/5">
                         <td className="py-2 px-2"><input type="checkbox" checked={selectedPayables.includes(item.id)} onChange={e => setSelectedPayables(prev => e.target.checked ? [...prev, item.id] : prev.filter(id => id !== item.id))} disabled={item.status === 'paid'} /></td>
                         <td className="py-2 px-2 text-white">{item.description}</td>
+                        {/* REFCOM236: canal de origem do lançamento */}
+                        <td className="py-2 px-2 text-center">
+                          <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-white/10 text-slate-200">
+                            {item.channel && item.channel !== 'avulso' ? channelLabel(item.channel) : 'Avulso'}
+                          </span>
+                        </td>
                         <td className="py-2 px-2 text-right text-white">{formatCurrency(item.amount)}</td>
                         <td className="py-2 px-2 text-right text-white">{item.dueDate}</td>
                         <td className="py-2 px-2 text-center">
@@ -6338,7 +6613,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                          </td>
                       </tr>
                     ))}
-                    {filteredAccountsPayable.length === 0 && (<tr><td colSpan={6} className="py-4 text-center text-slate-400">Nenhuma conta a pagar.</td></tr>)}
+                    {filteredAccountsPayable.length === 0 && (<tr><td colSpan={7} className="py-4 text-center text-slate-400">Nenhuma conta a pagar.</td></tr>)}
                   </tbody>
                 </table>
               </div>
