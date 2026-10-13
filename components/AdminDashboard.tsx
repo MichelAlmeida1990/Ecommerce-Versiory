@@ -42,6 +42,10 @@ import {
   channelLabel,
   formatDateTime,
   buildInstallmentPlan,
+  splitInstallments,
+  installmentDueDates,
+  calcFinalAmount,
+  calcInstallmentValue,
 } from '../utils/receivableHelpers';
 
 interface AdminDashboardProps {
@@ -204,7 +208,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingReceivable, setEditingReceivable] = useState<AccountReceivable | null>(null);
   const [editingPayable, setEditingPayable] = useState<AccountPayable | null>(null);
   const [receivableForm, setReceivableForm] = useState<Partial<AccountReceivable>>({ description: '', amount: 0, dueDate: '', status: 'open' });
-  const [payableForm, setPayableForm] = useState<Partial<AccountPayable>>({ description: '', amount: 0, dueDate: '', status: 'open' });
+  const [payableForm, setPayableForm] = useState<Partial<AccountPayable>>({ description: '', amount: 0, dueDate: '', status: 'open', channel: 'avulso', paymentMethod: 'Dinheiro' });
 
   const [orderFilter, setOrderFilter] = useState<string>('all');
   const [isFiscalConfigOpen, setIsFiscalConfigOpen] = useState(false);
@@ -639,13 +643,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
   const [expenseForm, setExpenseForm] = useState({
     description: '',
+    cpfCnpj: '',
     category: 'fixed' as Expense['category'],
+    paymentMethod: 'dinheiro' as 'dinheiro' | 'pix' | 'debito' | 'credito',
     amount: 0,
-    date: new Date().toISOString().split('T')[0],
+    addition: 0,
+    additionType: 'R$' as 'R$' | '%',
+    deduction: 0,
+    deductionType: 'R$' as 'R$' | '%',
+    installments: 1,
     dueDate: new Date().toISOString().split('T')[0],
     reference: '',
-    notes: '',
-    paymentMethod: 'dinheiro' as 'dinheiro' | 'pix' | 'debito' | 'credito'
+    notes: ''
   });
 
   // ERRCOM027: Filtro de data dos lançamentos financeiros
@@ -659,7 +668,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [manualRevenues, setManualRevenues] = useState<ManualRevenue[]>([]); // ERRCOM136
   const [isManualRevenueModalOpen, setIsManualRevenueModalOpen] = useState(false);
   const [manualRevenueForm, setManualRevenueForm] = useState<Partial<ManualRevenue>>({
-    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0], reference: '', notes: '', paymentMethod: 'pix'
+    description: '', category: 'PIX', amount: 0, originalAmount: 0, addition: 0, additionType: 'R$',
+    deduction: 0, deductionType: 'R$', installments: 1, date: new Date().toISOString().split('T')[0],
+    dueDate: new Date().toISOString().split('T')[0], reference: '', notes: '', paymentMethod: 'pix'
   });
 
   const [orderSearch, setOrderSearch] = useState('');
@@ -1078,7 +1089,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
   }, []);
 
-  // ERRCOM136/REFCOM228: Lançamento de Receita Manual
+  // REFCOM247: Lançamento avulso de Receita — com suporte a parcelas, acréscimo/dedução
+  // e migração automática para Contas a Receber (Aberto).
+  // A receita só aparece no Card Receita/Transações Recentes após a Dar Baixa do
+  // lançamento no Contas a Receber.
   const handleManualRevenueSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // REFCOM136: Corrigido — 0 é falsy, então validação era !0 = true sempre bloqueava
@@ -1095,32 +1109,97 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     try {
       const { saveManualRevenue } = await import('../services/firebase');
+      const { addAccountReceivable } = await import('../services/accountsPayableReceivable');
+
+      const revenueId = Date.now();
+      const today = new Date().toISOString().slice(0, 10);
+
+      // REFCOM247: calcula o valor final com acréscimo/dedução (R$ ou %)
+      const finalAmount = calcFinalAmount(
+        manualRevenueForm.amount || 0,
+        manualRevenueForm.addition || 0,
+        manualRevenueForm.additionType || 'R$',
+        manualRevenueForm.deduction || 0,
+        manualRevenueForm.deductionType || 'R$'
+      );
+
       const revenue: ManualRevenue = {
-        id: Date.now(),
+        id: revenueId,
         description: manualRevenueForm.description,
         category: (manualRevenueForm.category || 'PIX') as any,
-        amount: manualRevenueForm.amount,
-        date: manualRevenueForm.date || new Date().toISOString().split('T')[0],
-        dueDate: manualRevenueForm.dueDate,
+        amount: finalAmount,
+        originalAmount: manualRevenueForm.amount,
+        addition: manualRevenueForm.addition,
+        additionType: manualRevenueForm.additionType,
+        deduction: manualRevenueForm.deduction,
+        deductionType: manualRevenueForm.deductionType,
+        installments: manualRevenueForm.installments,
+        installmentValue: calcInstallmentValue(finalAmount, manualRevenueForm.installments || 1),
+        date: manualRevenueForm.date || today,
+        dueDate: manualRevenueForm.dueDate || today,
         reference: manualRevenueForm.reference,
         notes: manualRevenueForm.notes,
         user: 'Admin',
-        paymentMethod: manualRevenueForm.paymentMethod // REFCOM220
+        paymentMethod: manualRevenueForm.paymentMethod, // REFCOM220
+        receivableIds: [],
+        isPaid: false
       };
+
+      // REFCOM247: gera parcelas no Contas a Receber
+      const nParcelas = Math.max(1, manualRevenueForm.installments || 1);
+      const parcelas = nParcelas > 1 ? splitInstallments(finalAmount, nParcelas) : [finalAmount];
+      const dueDates = nParcelas > 1 ? installmentDueDates(nParcelas) : [manualRevenueForm.dueDate || today];
+
+      const receivableIds: string[] = [];
+      for (let i = 0; i < parcelas.length; i++) {
+        const parcelNum = parcelas.length > 1 ? `${i + 1}/${nParcelas}` : undefined;
+        const arId = `AR-${revenueId}-${i + 1}-${Date.now()}`;
+        receivableIds.push(arId);
+
+        const ar: AccountReceivable = {
+          id: arId,
+          description: parcelNum
+            ? `${manualRevenueForm.description} - Parcela ${parcelNum}`
+            : manualRevenueForm.description,
+          amount: parcelas[i],
+          originalAmount: manualRevenueForm.amount,
+          addition: manualRevenueForm.addition || 0,
+          additionType: manualRevenueForm.additionType || 'R$',
+          deduction: manualRevenueForm.deduction || 0,
+          deductionType: manualRevenueForm.deductionType || 'R$',
+          dueDate: dueDates[i],
+          status: 'open' as const,
+          saleDate: today,
+          customerName: '',
+          customerCpfCnpj: '',
+          paymentMethod: toFinalizadora(manualRevenueForm.paymentMethod) || manualRevenueForm.paymentMethod || 'Dinheiro',
+          channel: 'online',
+          notes: manualRevenueForm.notes,
+          revenueId: revenueId
+        };
+
+        addAccountReceivable(ar);
+        setAccountsReceivable(prev => [...prev, ar]);
+      }
+
+      revenue.receivableIds = receivableIds;
       await saveManualRevenue(revenue);
-      setManualRevenues(prev => [...prev, revenue]); // Atualiza o gráfico e cards imediatamente
-      alert('Receita lançada com sucesso!');
+      setManualRevenues(prev => [...prev, revenue]);
+
+      // Sincronizar com localStorage
+      const stored = localStorage.getItem('versiory_manual_revenues');
+      const list: ManualRevenue[] = stored ? JSON.parse(stored) : [];
+      list.push(revenue);
+      localStorage.setItem('versiory_manual_revenues', JSON.stringify(list));
+      window.dispatchEvent(new Event('manualRevenueUpdated'));
+
+      alert(`Receita avulsa lançada com ${nParcelas} parcela(s).${nParcelas > 1 ? ' Acesse Contas a Receber para Dar Baixa.' : ''}`);
       setIsManualRevenueModalOpen(false);
       // Resetar formulário
       setManualRevenueForm({
-        description: '',
-        category: 'PIX',
-        amount: 0,
-        date: new Date().toISOString().split('T')[0],
-        dueDate: new Date().toISOString().split('T')[0],
-        reference: '',
-        notes: '',
-        paymentMethod: 'pix'
+        description: '', category: 'PIX', amount: 0, originalAmount: 0, addition: 0, additionType: 'R$',
+        deduction: 0, deductionType: 'R$', installments: 1, date: today, dueDate: today,
+        reference: '', notes: '', paymentMethod: 'pix'
       });
     } catch (error) {
       console.error('Erro ao lançar receita:', error);
@@ -1247,6 +1326,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const now = new Date().toISOString();
     const today = now.slice(0, 10);
     const created: ManualRevenue[] = [];
+    const avulsoRevenuesUpdated: ManualRevenue[] = [];
 
     for (const id of selectedReceivables) {
       const item = accountsReceivable.find(i => i.id === id);
@@ -1255,26 +1335,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         alert(`⚠️ "${item.description}" está sem Forma de Pagamento válida (Dinheiro, PIX, Débito ou Crédito). Use ALTERAR antes de baixar em lote.`);
         continue;
       }
+
+      // REFCOM247: se o recebível foi criado a partir de Receita Avulsa, ativa a receita existente
+      const avulsoRevenue = item.revenueId
+        ? manualRevenues.find(r => r.id === item.revenueId && r.receivableIds && r.receivableIds.length > 0)
+        : null;
+
       const revenueId = Date.now() + created.length;
-      const revenue: ManualRevenue = {
-        id: revenueId,
-        description: `${item.description} - Recebimento`,
-        category: item.paymentMethod as ManualRevenue['category'],
-        amount: item.amount,
-        date: now,
-        notes: `Recebimento de parcela do pedido ${item.orderId || ''}`,
-        user: userRole === 'admin' ? 'Admin' : 'Vendedor',
-        paymentMethod: item.paymentMethod,
-        sourceReceivableId: item.id,
-        sourceChannel: item.channel,
-      };
-      created.push(revenue);
-      updateAccountReceivable(id, {
-        status: 'paid',
-        paidAt: now,
-        receivedDate: today,
-        revenueId,
-      });
+      let revenue: ManualRevenue;
+      if (avulsoRevenue) {
+        revenue = { ...avulsoRevenue, isPaid: true };
+        avulsoRevenuesUpdated.push(revenue);
+        updateAccountReceivable(id, { status: 'paid', paidAt: now, receivedDate: today, revenueId: avulsoRevenue.id });
+      } else {
+        revenue = {
+          id: revenueId,
+          description: `${item.description} - Recebimento`,
+          category: item.paymentMethod as ManualRevenue['category'],
+          amount: item.amount,
+          date: now,
+          notes: `Recebimento de parcela do pedido ${item.orderId || ''}`,
+          user: userRole === 'admin' ? 'Admin' : 'Vendedor',
+          paymentMethod: item.paymentMethod,
+          sourceReceivableId: item.id,
+          sourceChannel: item.channel,
+        };
+        created.push(revenue);
+        updateAccountReceivable(id, { status: 'paid', paidAt: now, receivedDate: today, revenueId });
+      }
     }
 
     if (created.length === 0) {
@@ -1287,19 +1375,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ? { ...item, status: 'paid' as const, paidAt: now, receivedDate: today }
         : item
     ));
-    setManualRevenues(prev => [...prev, ...created]);
+     setManualRevenues(prev => {
+      const updated = prev.map(r => {
+        const avulso = avulsoRevenuesUpdated.find(a => a.id === r.id);
+        return avulso || r;
+      });
+      return [...new Set([...updated, ...created])];
+    });
     setSelectedReceivables([]);
 
     try {
       const { saveManualRevenue } = await import('../services/firebase');
-      await Promise.all(created.map(saveManualRevenue));
+      await Promise.all([...created, ...avulsoRevenuesUpdated].map(saveManualRevenue));
       const stored = localStorage.getItem('versiory_manual_revenues');
       const list: ManualRevenue[] = stored ? JSON.parse(stored) : [];
-      localStorage.setItem('versiory_manual_revenues', JSON.stringify([...list, ...created]));
+      const updatedList = list.map(r => {
+        const avulso = avulsoRevenuesUpdated.find(a => a.id === r.id);
+        return avulso || r;
+      });
+      localStorage.setItem('versiory_manual_revenues', JSON.stringify([...new Set([...updatedList, ...created])]));
       window.dispatchEvent(new Event('manualRevenueUpdated'));
     } catch (e) { console.error(e); }
 
-    alert(`Baixa realizada com sucesso! ${created.length} lançamento(s) movido(s) para Transações Recentes.`);
+    alert(`Baixa realizada com sucesso! ${created.length + avulsoRevenuesUpdated.length} lançamento(s) movido(s) para Transações Recentes.`);
   };
 
   // REFCOM223: Detalhes e edição do Contas a Receber
@@ -1309,9 +1407,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     originalAmount: number;
     addition: number;
     deduction: number;
+    dueDate: string;
     receivedDate: string;
     notes: string;
-  }>({ paymentMethod: '', originalAmount: 0, addition: 0, deduction: 0, receivedDate: new Date().toISOString().slice(0, 10), notes: '' });
+  }>({ paymentMethod: '', originalAmount: 0, addition: 0, deduction: 0, dueDate: '', receivedDate: new Date().toISOString().slice(0, 10), notes: '' });
 
   const openReceivableDetail = (item: AccountReceivable) => {
     setReceivableDetail(item);
@@ -1322,6 +1421,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       originalAmount: item.originalAmount ?? item.amount,
       addition: item.addition ?? 0,
       deduction: item.deduction ?? 0,
+      dueDate: item.dueDate || '',
       receivedDate: item.receivedDate || new Date().toISOString().slice(0, 10),
       notes: item.notes || ''
     });
@@ -1336,41 +1436,65 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       openReceivableDetail(item);
       return;
     }
-    if (!window.confirm(`Confirmar baixa (recebimento) de ${item.description}?`)) return;
+     if (!window.confirm(`Confirmar baixa (recebimento) de ${item.description}?`)) return;
     const now = new Date().toISOString();
+    const today = now.slice(0, 10);
     // REFCOM223.4 / REFCOM229.2: a receita gerada guarda a origem no Contas a Receber
     // para permitir o Estorno devolvendo o lançamento ao status Aberto.
     const revenueId = Date.now();
     const updates: Partial<AccountReceivable> = {
       status: 'paid',
       paidAt: now,
-      receivedDate: new Date().toISOString().slice(0, 10),
+      receivedDate: today,
       revenueId,
     };
     updateAccountReceivable(id, updates);
     setAccountsReceivable(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
 
-    const revenue: ManualRevenue = {
-      id: revenueId,
-      description: `${item.description} - Recebimento`,
-      category: item.paymentMethod as ManualRevenue['category'],
-      amount: item.amount,
-      date: now,
-      notes: `Recebimento de parcela do pedido ${item.orderId || ''}`,
-      user: userRole === 'admin' ? 'Admin' : 'Vendedor',
-      paymentMethod: item.paymentMethod,
-      sourceReceivableId: item.id,
-      sourceChannel: item.channel,
-    };
+    // REFCOM247: Se o recebível foi criado a partir de uma Receita Avulsa, ativa
+    // a receita existente (isPaid=true) em vez de criar uma nova.
+    const linkedManualRevenue = item.revenueId
+      ? manualRevenues.find(r => r.id === item.revenueId) ||
+        (await import('../services/firebase').then(m => m.getManualRevenues ? m.getManualRevenues() : [])).find((r: ManualRevenue) => r.id === item.revenueId)
+      : null;
+
+    let revenue: ManualRevenue;
+    if (linkedManualRevenue) {
+      revenue = { ...linkedManualRevenue, isPaid: true };
+    } else {
+      revenue = {
+        id: revenueId,
+        description: `${item.description} - Recebimento`,
+        category: item.paymentMethod as ManualRevenue['category'],
+        amount: item.amount,
+        date: now,
+        notes: `Recebimento de parcela do pedido ${item.orderId || ''}`,
+        user: userRole === 'admin' ? 'Admin' : 'Vendedor',
+        paymentMethod: item.paymentMethod,
+        sourceReceivableId: item.id,
+        sourceChannel: item.channel,
+      };
+    }
+
     try {
       // REFCOM225: Persistir no Firebase para aparecer em Transações Recentes e Receita Bruta Total
       const { saveManualRevenue } = await import('../services/firebase');
       await saveManualRevenue(revenue);
-      setManualRevenues(prev => [...prev, revenue]);
+      setManualRevenues(prev => {
+        const filtered = linkedManualRevenue
+          ? prev.map(r => r.id === revenue.id ? revenue : r)
+          : [...prev, revenue];
+        return filtered;
+      });
       // Sincronizar com localStorage (compatibilidade com outros módulos)
       const stored = localStorage.getItem('versiory_manual_revenues');
       const list: ManualRevenue[] = stored ? JSON.parse(stored) : [];
-      list.push(revenue);
+      if (linkedManualRevenue) {
+        const idx = list.findIndex(r => r.id === revenue.id);
+        if (idx >= 0) list[idx] = revenue; else list.push(revenue);
+      } else {
+        list.push(revenue);
+      }
       localStorage.setItem('versiory_manual_revenues', JSON.stringify(list));
       window.dispatchEvent(new Event('manualRevenueUpdated'));
     } catch (e) { console.error(e); }
@@ -1395,7 +1519,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
-    // 1) Remove a receita gerada na baixa
+     // 1) Remove/desativa a receita gerada na baixa
     const linkedRevenue = manualRevenues.find(rev => rev.sourceReceivableId === item.id);
     if (linkedRevenue) {
       try {
@@ -1412,6 +1536,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         );
       }
       window.dispatchEvent(new Event('manualRevenueUpdated'));
+    }
+
+    // REFCOM247: desativa a receita avulsa pre-existente (isPaid=false)
+    if (item.revenueId) {
+      const avulsoRevenue = manualRevenues.find(r => r.id === item.revenueId && r.receivableIds && r.receivableIds.length > 0);
+      if (avulsoRevenue) {
+        try {
+          const { saveManualRevenue } = await import('../services/firebase');
+          await saveManualRevenue({ ...avulsoRevenue, isPaid: false });
+        } catch (e) { console.error(e); }
+        setManualRevenues(prev => prev.filter(r => r.id !== avulsoRevenue.id));
+        const stored = localStorage.getItem('versiory_manual_revenues');
+        if (stored) {
+          const list: ManualRevenue[] = JSON.parse(stored);
+          localStorage.setItem('versiory_manual_revenues', JSON.stringify(list.filter(r => r.id !== avulsoRevenue.id)));
+        }
+        window.dispatchEvent(new Event('manualRevenueUpdated'));
+      }
     }
 
     // 2) Devolve o lançamento para Aberto
@@ -1476,6 +1618,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       originalAmount: receivableEdit.originalAmount,
       addition: receivableEdit.addition,
       deduction: receivableEdit.deduction,
+      dueDate: receivableEdit.dueDate,
       receivedDate: receivableEdit.receivedDate,
       amount: finalAmount,
       notes: receivableEdit.notes
@@ -1507,22 +1650,121 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     await handleReceivablePay(merged.id, merged);
   };
 
-  const handleBatchPayablePay = () => {
+  // REFCOM247: Dar Baixa em lote de Contas a Pagar — também ativa as despesas
+  // vinculadas (isPaid=true), fazendo-as migrar para o Card Despesas.
+   const handleBatchPayablePay = async () => {
     if (selectedPayables.length === 0) {
       alert('Selecione pelo menos um item para dar baixa.');
       return;
     }
     const now = new Date().toISOString();
+    const affectedExpenseIds = new Set<number>();
+
     selectedPayables.forEach(id => {
+      const item = accountsPayable.find(p => p.id === id);
+      if (item?.expenseId) affectedExpenseIds.add(item.expenseId);
       updateAccountPayable(id, { status: 'paid', paidAt: now });
     });
     setAccountsPayable(prev => prev.map(item => selectedPayables.includes(item.id) ? { ...item, status: 'paid', paidAt: now } : item));
     setSelectedPayables([]);
+
+    // REFCOM247: ativa as despesas vinculadas
+    if (affectedExpenseIds.size > 0) {
+      onUpdateExpenses(expenses.map(e => affectedExpenseIds.has(e.id) ? { ...e, isPaid: true } : e));
+      const { saveExpense } = await import('../services/firebase');
+      expenses.forEach(e => { if (affectedExpenseIds.has(e.id)) saveExpense({ ...e, isPaid: true }); });
+    }
+
     alert('Baixa realizada com sucesso!');
   };
 
-  // REFCOM228: Detalhes e edição do Contas a Pagar
-  const [payableDetail, setPayableDetail] = useState<AccountPayable | null>(null);
+  // REFCOM247: Dar Baixa individual de Contas a Pagar (com ativação da despesa)
+  const handlePayablePay = async (id: string) => {
+    const item = accountsPayable.find(p => p.id === id);
+    if (!item) return;
+    if (!window.confirm(`Confirmar baixa (pagamento) de ${item.description}?`)) return;
+    const now = new Date().toISOString();
+
+    updateAccountPayable(id, { status: 'paid', paidAt: now });
+    setAccountsPayable(prev => prev.map(i => i.id === id ? { ...i, status: 'paid', paidAt: now } : i));
+
+    // REFCOM247: ativa a despesa vinculada
+    if (item.expenseId) {
+      onUpdateExpenses(expenses.map(e => e.id === item.expenseId ? { ...e, isPaid: true } : e));
+      const { saveExpense } = await import('../services/firebase');
+      const exp = expenses.find(e => e.id === item.expenseId);
+      if (exp) saveExpense({ ...exp, isPaid: true });
+    }
+  };
+
+  // REFCOM247: Estorno de despesa avulsa — reverte a baixa do Contas a Pagar,
+  // devolvendo o lançamento ao status Aberto e removendo o valor do Card Despesas.
+  const handleExpenseRefund = async (expenseId: number) => {
+    const expense = expenses.find(e => e.id === expenseId);
+    if (!expense) return;
+    if (!window.confirm(
+      `⚠️ Estornar o pagamento de ${expense.description}?\n\n` +
+      'O lançamento sairá de Transações Recentes, o valor será subtraído do Card ' +
+      'Despesas e voltará para Contas a Pagar com status Aberto.'
+    )) return;
+
+    const reason = window.prompt('Informe as Observações do estorno (obrigatórias):');
+    if (!reason || !reason.trim()) {
+      alert('Estorno cancelado. As observações são obrigatórias.');
+      return;
+    }
+
+    // 1) Reverte isPaid na despesa e remove do localStorage do Firebase
+    try {
+       const { saveExpense } = await import('../services/firebase');
+      await saveExpense({ ...expense, isPaid: false, notes: [(expense.notes || ''), `[Estorno: ${reason.trim()}]`].filter(Boolean).join('\n') });
+      onUpdateExpenses(expenses.map(e => e.id === expenseId ? { ...e, isPaid: false, notes: [(e.notes || ''), `[Estorno: ${reason.trim()}]`].filter(Boolean).join('\n') } : e));
+    } catch (e) { console.error(e); }
+
+    // 2) Reabre os lançamentos do Contas a Pagar vinculados
+    const linkedPayables = accountsPayable.filter(p => p.expenseId === expenseId);
+    linkedPayables.forEach(p => {
+      updateAccountPayable(p.id, { status: 'open', paidAt: undefined });
+    });
+    setAccountsPayable(prev => prev.map(i => linkedPayables.some(p => p.id === i.id) ? { ...i, status: 'open' as const, paidAt: undefined } : i));
+
+    alert('✅ Estorno realizado. O lançamento voltou para Contas a Pagar com status Aberto.');
+  };
+
+   // REFCOM247: Estorno individual de Conta a Pagar (avulso ou vinculado a despesa)
+   const handlePayableRefund = async (id: string) => {
+     const item = accountsPayable.find(p => p.id === id);
+     if (!item || item.status !== 'paid') return;
+     if (!window.confirm(
+       `⚠️ Estornar a baixa de ${item.description}?\n\n` +
+       'O lançamento voltará para status Aberto.'
+     )) return;
+
+     const reason = window.prompt('Informe as Observações do estorno (obrigatórias):');
+     if (!reason || !reason.trim()) {
+       alert('Estorno cancelado. As observações são obrigatórias.');
+       return;
+     }
+
+     // Se vinculado a uma despesa, delega ao estorno de despesa completo
+     if (item.expenseId) {
+       await handleExpenseRefund(item.expenseId);
+       return;
+     }
+
+     // Estorno avulso: apenas reabre o lançamento
+     const updates: Partial<AccountPayable> = {
+       status: 'open' as const,
+       paidAt: undefined,
+       notes: [item.notes || '', `Estorno: ${reason.trim()}`].filter(Boolean).join('\n'),
+     };
+     updateAccountPayable(item.id, updates);
+     setAccountsPayable(prev => prev.map(i => i.id === item.id ? { ...i, ...updates } : i));
+     alert('✅ Estorno realizado. O lançamento voltou para status Aberto.');
+   };
+
+   // REFCOM228: Detalhes e edição do Contas a Pagar
+   const [payableDetail, setPayableDetail] = useState<AccountPayable | null>(null);
   const [payableEdit, setPayableEdit] = useState<{
     paymentMethod: string;
     amount: number;
@@ -2159,9 +2401,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
     });
 
-    // 3) Receitas avulsas lancadas manualmente (sem origem em Contas a Receber)
+     // 3) Receitas avulsas lancadas manualmente (sem origem em Contas a Receber)
+    // REFCOM247: pula receitas avulsas que ainda estão em aberto no Contas a Receber
+    // (aparecem aqui apenas após Dar Baixa do recebível)
     manualRevenues.forEach(rev => {
       if (rev.sourceReceivableId) return; // duplicata da baixa acima
+      if (rev.receivableIds && rev.receivableIds.length > 0 && !rev.isPaid) return; // REFCOM247: aguarda baixa
       entries.push({
         key: `manual:${rev.id}`,
         refId: String(rev.id),
@@ -2228,16 +2473,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       orderId: entry.orderId,
     }));
 
-    const expenseItems = financialTypeFilter === 'revenue' ? [] : expenses
-      .filter(e => {
-        if (financialDateFilter.from && e.date < financialDateFilter.from) return false;
-        if (financialDateFilter.to && e.date > financialDateFilter.to) return false;
-        if (financialPaymentFilter !== 'all') {
-          const method = (toFinalizadora(e.paymentMethod) || e.paymentMethod || '').toLowerCase();
-          if (method !== financialPaymentFilter.toLowerCase()) return false;
-        }
-        return true;
-      })
+    const expenseItems = financialTypeFilter === 'revenue' ? [] : filteredExpensesForCard
       .map(expense => ({
         id: String(expense.id),
         description: expense.description,
@@ -2252,7 +2488,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     return [...revenue, ...expenseItems]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [filteredRevenueEntries, expenses, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+  }, [filteredRevenueEntries, filteredExpensesForCard]);
 
   // REFCOM231: Dashboard, Financeiro e detalhamento usam a MESMA base de apuração.
   // Vendas com lançamento em aberto no Contas a Receber só entram após a baixa,
@@ -2343,6 +2579,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const filteredExpensesForCard = useMemo(() => {
     if (financialTypeFilter === 'revenue') return [];
     return expenses.filter(e => {
+      // REFCOM247: despesas vinculadas a Contas a Pagar só aparecem no card após Dar Baixa (isPaid)
+      if (e.payableIds && e.payableIds.length > 0 && !e.isPaid) return false;
       if (financialDateFilter.from && e.date < financialDateFilter.from) return false;
       if (financialDateFilter.to && e.date > financialDateFilter.to) return false;
       if (financialPaymentFilter !== 'all') {
@@ -2366,16 +2604,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       else if (entry.channel === 'online') onlineRevenue += entry.amount;
     });
 
-    // Despesas respeitam o mesmo filtro de período e tipo das receitas
+     // Despesas respeitam o mesmo filtro de período e tipo das receitas
     let totalExpenses = 0;
     if (financialTypeFilter !== 'revenue') {
-      expenses.forEach(e => {
-        if (financialDateFilter.from && e.date < financialDateFilter.from) return;
-        if (financialDateFilter.to && e.date > financialDateFilter.to) return;
-        if (financialPaymentFilter !== 'all') {
-          const method = (toFinalizadora(e.paymentMethod) || e.paymentMethod || '').toLowerCase();
-          if (method !== financialPaymentFilter.toLowerCase()) return;
-        }
+      filteredExpensesForCard.forEach(e => {
         totalExpenses += e.amount;
       });
     }
@@ -2384,7 +2616,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     return { totalRevenue, pdvRevenue, onlineRevenue, totalExpenses, netProfit, profitMargin };
-  }, [filteredRevenueEntries, expenses, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+  }, [filteredRevenueEntries, filteredExpensesForCard, financialTypeFilter]);
 
   // REFCOM231: mesmo conjunto filtrado, agrupado por canal e finalizadora, para o modal.
   const revenueByChannel = useMemo(() => {
@@ -3902,27 +4134,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (expense) {
       setExpenseForm({
         description: expense.description,
+        cpfCnpj: expense.supplierCpfCnpj || '',
         category: expense.category,
-        amount: expense.amount,
-        date: expense.date,
-        notes: expense.notes || '',
-        paymentMethod: (expense.paymentMethod as any) || 'dinheiro'
+        paymentMethod: (expense.paymentMethod as any) || 'dinheiro',
+        amount: expense.originalAmount || expense.amount,
+        addition: expense.addition || 0,
+        additionType: expense.additionType || 'R$',
+        deduction: expense.deduction || 0,
+        deductionType: expense.deductionType || 'R$',
+        installments: expense.payableIds?.length || 1,
+        dueDate: expense.dueDate || new Date().toISOString().split('T')[0],
+        reference: expense.reference || '',
+        notes: expense.notes || ''
       });
       setEditingExpenseId(expense.id);
     } else {
       setExpenseForm({
         description: '',
+        cpfCnpj: '',
         category: 'fixed',
+        paymentMethod: 'dinheiro',
         amount: 0,
-        date: new Date().toISOString().split('T')[0],
-        notes: '',
-        paymentMethod: 'dinheiro'
+        addition: 0,
+        additionType: 'R$',
+        deduction: 0,
+        deductionType: 'R$',
+        installments: 1,
+        dueDate: new Date().toISOString().split('T')[0],
+        reference: '',
+        notes: ''
       });
       setEditingExpenseId(null);
     }
     setIsExpenseModalOpen(true);
   };
 
+  // REFCOM247: Lançamento avulso de Despesa — com suporte a parcelas, acréscimo/dedução
+  // e migração automática para o Contas a Pagar (Aberto).
+  // A despesa só aparece no Card Despesas/Transações Recentes após a Dar Baixa do
+  // lançamento no Contas a Pagar.
   const handleExpenseSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!expenseForm.description.trim()) {
@@ -3938,20 +4188,84 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     try {
       const { saveExpense } = await import('../services/firebase');
+      const { addAccountPayable } = await import('../services/accountsPayableReceivable');
+
+      const expenseId = editingExpenseId || Date.now();
+      const today = new Date().toISOString().slice(0, 10);
+      const emissionDate = today; // REFCOM247: Data Emissão fixa (hoje)
+
+      // REFCOM247: calcula o valor final com acréscimo/dedução (R$ ou %)
+      const finalAmount = calcFinalAmount(
+        expenseForm.amount,
+        expenseForm.addition,
+        expenseForm.additionType,
+        expenseForm.deduction,
+        expenseForm.deductionType
+      );
 
       const expense: Expense = {
-        id: editingExpenseId || Date.now(),
+        id: expenseId,
         description: expenseForm.description,
         category: expenseForm.category,
-        amount: expenseForm.amount,
-        date: expenseForm.date,
+        amount: finalAmount,
+        originalAmount: expenseForm.amount,
+        addition: expenseForm.addition,
+        additionType: expenseForm.additionType,
+        deduction: expenseForm.deduction,
+        deductionType: expenseForm.deductionType,
+        date: emissionDate,
         dueDate: expenseForm.dueDate,
         reference: expenseForm.reference,
         notes: expenseForm.notes,
         user: 'Admin',
-        paymentMethod: expenseForm.paymentMethod // REFCOM220
+        paymentMethod: expenseForm.paymentMethod,
+        supplierCpfCnpj: expenseForm.cpfCnpj,
+        payableIds: [], // preenchido abaixo
+        isPaid: false
       };
 
+      await saveExpense(expense);
+
+      // REFCOM247: gera parcelas no Contas a Pagar
+      const nParcelas = Math.max(1, expenseForm.installments);
+      const parcelas = nParcelas > 1 ? splitInstallments(finalAmount, nParcelas) : [finalAmount];
+      const dueDates = nParcelas > 1 ? installmentDueDates(nParcelas) : [expenseForm.dueDate || today];
+
+      const payableIds: string[] = [];
+      for (let i = 0; i < parcelas.length; i++) {
+        const parcelNum = parcelas.length > 1 ? `${i + 1}/${nParcelas}` : undefined;
+        const payableId = `AP-${expenseId}-${i + 1}-${Date.now()}`;
+        payableIds.push(payableId);
+
+        const payable: AccountPayable = {
+          id: payableId,
+          description: parcelNum
+            ? `${expenseForm.description} - Parcela ${parcelNum}`
+            : expenseForm.description,
+          amount: parcelas[i],
+          originalAmount: expenseForm.amount,
+          addition: expenseForm.addition,
+          additionType: expenseForm.additionType,
+          deduction: expenseForm.deduction,
+          deductionType: expenseForm.deductionType,
+          dueDate: dueDates[i],
+          status: 'open' as const,
+          expenseId: Number(expenseId),
+          supplier: expenseForm.description,
+          supplierCpfCnpj: expenseForm.cpfCnpj,
+          paymentMethod: expenseForm.paymentMethod,
+          channel: 'avulso',
+          installmentNumber: parcelNum,
+          totalInstallments: nParcelas,
+          notes: expenseForm.notes
+        };
+
+        addAccountPayable(payable);
+        setAccountsPayable(prev => [...prev, payable]);
+      }
+
+      // Atualiza o expense com os IDs dos payables
+      expense.payableIds = payableIds;
       await saveExpense(expense);
 
       if (editingExpenseId) {
@@ -3964,6 +4278,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       setIsExpenseModalOpen(false);
       setEditingExpenseId(null);
+      alert(`Despesa lançada com ${nParcelas} parcela(s). ${parcelas.length > 1 ? 'Acesse Contas a Pagar para Dar Baixa.' : ''}`);
     } catch (error) {
       console.error(error);
       window.alert("Erro ao salvar despesa");
@@ -4152,6 +4467,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     downloadCsv(`relatorio_financeiro_${new Date().toISOString().split('T')[0]}.csv`, report);
+  };
+
+  // REFCOM246: Exportação CSV no módulo Pedido de Compras (Pedidos).
+  // Respeita os filtros de período (De/Até) e canal aplicados em ordersByScope.
+  // O valor exportado é o total bruto do pedido (order.total), independente de
+  // parcelas, descontos ou acréscimos — a contabilidade apura sempre o valor cheio.
+  const generateOrdersCsvReport = () => {
+    const channelCategory = (channel?: string) => {
+      switch (channel) {
+        case 'physical':       return 'Venda PDV';
+        case 'mercadolivre':   return 'Venda Mercado Livre';
+        case 'shopee':         return 'Venda Shopee';
+        case 'magalu':         return 'Venda Magalu';
+        case 'amazon':         return 'Venda Amazon';
+        default:               return 'Venda Online';
+      }
+    };
+
+    const report = ordersByScope.map(order => ({
+      Tipo: order.isBudget ? 'Orçamento' : 'Receita',
+      Descricao: `${channelCategory(order.salesChannel)} - ${order.customerName}`,
+      Categoria: channelCategory(order.salesChannel),
+      Valor: (order.total || 0).toFixed(2),
+      Data: formatDate(order.date),
+      FormaPagamento: order.paymentMethod || '',
+      DocumentoRef: order.id,
+      FornecedorCliente: order.customerName,
+      CpfCnpj: order.customerCpfCnpj || '',
+    }));
+
+    downloadCsv(`pedido_compras_${new Date().toISOString().split('T')[0]}.csv`, report);
   };
 
   return (
@@ -5334,6 +5680,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   📄 Baixar XML NF-e
                 </button>
+                {/* REFCOM246: Botão Exportar CSV - Pedido de Compras */}
+                <button
+                  onClick={generateOrdersCsvReport}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
+                >
+                  📊 Exportar CSV
+                </button>
                 <select
                   value={orderFilter}
                   onChange={event => setOrderFilter(event.target.value)}
@@ -6179,8 +6532,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
                   setManualRevenueForm({
-                    description: '', category: 'PIX', amount: 0, date: new Date().toISOString().split('T')[0], notes: '', paymentMethod: 'pix'
+                    description: '', category: 'PIX', amount: 0, originalAmount: 0, addition: 0, additionType: 'R$',
+                    deduction: 0, deductionType: 'R$', installments: 1, cpfCnpj: '',
+                    date: today, dueDate: today, reference: '', notes: '', paymentMethod: 'pix'
                   });
                   setIsManualRevenueModalOpen(true);
                 }}
@@ -6312,34 +6668,47 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </button>
                         </div>
                       )}
-                      {transaction.type === 'expense' && 'expenseId' in transaction && (
-                        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                          {!isBillingRestricted && (
-                            <button
-                              onClick={() => openExpenseModal(expenses.find(e => e.id === transaction.expenseId))}
-                              className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-all"
-                              title="Editar"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                          {!isBillingRestricted && (
-                            <button
-                              onClick={() => handleExpenseDelete(transaction.expenseId!)}
-                              className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-all"
-                              title="Excluir"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </button>
+                       {transaction.type === 'expense' && 'expenseId' in transaction && (() => {
+                         const expense = expenses.find(e => e.id === transaction.expenseId);
+                         return (
+                           <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                             {/* REFCOM247: Estorno só aparece para despesas com lancamento no Contas a Pagar */}
+                             {expense?.payableIds && expense.payableIds.length > 0 && (
+                               <button
+                                 onClick={() => handleExpenseRefund(transaction.expenseId!)}
+                                 className="bg-amber-500 hover:bg-amber-600 text-white p-2 rounded-lg transition-all"
+                                 title="Estornar pagamento e devolver ao Contas a Pagar"
+                               >
+                                 ↩︎ Estorno
+                               </button>
+                             )}
+                             {!isBillingRestricted && (
+                               <button
+                                 onClick={() => openExpenseModal(expense)}
+                                 className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-all"
+                                 title="Editar"
+                               >
+                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                 </svg>
+                               </button>
+                             )}
+                             {!isBillingRestricted && (
+                               <button
+                                 onClick={() => handleExpenseDelete(transaction.expenseId!)}
+                                 className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-all"
+                                 title="Excluir"
+                               >
+                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                 </svg>
+                               </button>
+                             )}
+                           </div>
+                         );
+                        })()}
+                     </div>
+                   </button>
                 ))}
                 {recentTransactions.length === 0 && (
                   <p className="text-sm text-slate-200">Nenhuma transacao recente.</p>
@@ -6476,6 +6845,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 title="Excluir"
                               >Excluir</button>
                             )}
+                            {item.status === 'paid' && (
+                              <button
+                                onClick={() => handleReceivableRefund(item.id)}
+                                className="bg-amber-500 hover:bg-amber-600 text-white px-2 py-1 rounded-lg text-[10px] font-black transition-all"
+                                title="Estornar"
+                              >↩︎ Estorno</button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -6595,20 +6971,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                  title="Detalhes / Alterar"
                                >Alterar</button>
                              )}
-                             {item.status !== 'paid' && (
-                               <button
-                                 onClick={() => { updateAccountPayable(item.id, { status: 'paid', paidAt: new Date().toISOString() }); setAccountsPayable(prev => prev.map(i => i.id === item.id ? { ...i, status: 'paid', paidAt: new Date().toISOString() } : i)); }}
-                                 className="bg-emerald-500 hover:bg-emerald-600 text-white px-2 py-1 rounded-lg text-[10px] font-black"
-                                 title="Dar Baixa"
-                               >Baixa</button>
-                             )}
-                             {item.status !== 'paid' && (
-                               <button
-                                 onClick={() => handlePayableDelete(item.id)}
-                                 className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg text-[10px] font-black"
-                                 title="Excluir"
-                               >Excluir</button>
-                             )}
+                              {item.status !== 'paid' && (
+                                <button
+                                  onClick={() => handlePayablePay(item.id)}
+                                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-2 py-1 rounded-lg text-[10px] font-black"
+                                  title="Dar Baixa"
+                                >Baixa</button>
+                              )}
+                              {item.status !== 'paid' && (
+                                <button
+                                  onClick={() => handlePayableDelete(item.id)}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg text-[10px] font-black transition-all"
+                                  title="Excluir"
+                                >Excluir</button>
+                              )}
+                              {item.status === 'paid' && (
+                                <button
+                                  onClick={() => handlePayableRefund(item.id)}
+                                  className="bg-amber-500 hover:bg-amber-600 text-white px-2 py-1 rounded-lg text-[10px] font-black transition-all"
+                                  title="Estornar"
+                                >↩︎ Estorno</button>
+                              )}
                            </div>
                          </td>
                       </tr>
@@ -7733,21 +8116,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       {
-        isExpenseModalOpen && (
+        isExpenseModalOpen && (() => {
+          const finalAmount = calcFinalAmount(
+            expenseForm.amount, expenseForm.addition, expenseForm.additionType,
+            expenseForm.deduction, expenseForm.deductionType
+          );
+          const instalValue = calcInstallmentValue(finalAmount, expenseForm.installments);
+          return (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
               <div className="p-6 border-b border-gray-200">
                 <h3 className="text-xl font-black text-gray-900">{editingExpenseId ? 'Editar Despesa' : 'Lancar Despesa'}</h3>
               </div>
               <form onSubmit={handleExpenseSubmit} className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-black text-gray-700 mb-2">Descricao</label>
+                  <label className="block text-sm font-black text-gray-700 mb-2">Descrição</label>
                   <input
                     type="text"
                     value={expenseForm.description}
                     onChange={event => setExpenseForm(prev => ({ ...prev, description: event.target.value }))}
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
                     required
+                  />
+                </div>
+                {/* REFCOM247: CPF/CNPJ */}
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">CPF/CNPJ</label>
+                  <input
+                    type="text"
+                    value={expenseForm.cpfCnpj}
+                    onChange={event => setExpenseForm(prev => ({ ...prev, cpfCnpj: event.target.value }))}
+                    placeholder="Ex: 000.000.000-00"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
                   />
                 </div>
                 <div>
@@ -7764,6 +8164,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value="emergency">Emergencial</option>
                   </select>
                 </div>
+                {/* REFCOM247: Forma de Pagamento */}
                 <div>
                   <label className="block text-sm font-black text-gray-700 mb-2">Forma de Pagamento *</label>
                   <select
@@ -7778,26 +8179,113 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value="credito">Crédito</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={expenseForm.amount}
-                    onChange={event => setExpenseForm(prev => ({ ...prev, amount: parseFloat(event.target.value) }))}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  {/* REFCOM247: Valor original */}
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Valor (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={expenseForm.amount}
+                      onChange={event => setExpenseForm(prev => ({ ...prev, amount: parseFloat(event.target.value) || 0 }))}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                      required
+                    />
+                  </div>
+                  {/* REFCOM247: Valor final (calculado) */}
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Valor Final (R$)</label>
+                    <div className="px-4 py-3 bg-slate-100 border-2 border-gray-300 rounded-xl font-black text-slate-900">
+                      {formatCurrency(finalAmount)}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-black text-gray-700 mb-2">Data Vencimento</label>
-                  <input
-                    type="date"
-                    value={expenseForm.dueDate}
-                    onChange={event => setExpenseForm(prev => ({ ...prev, dueDate: event.target.value }))}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
-                    required
-                  />
+                {/* REFCOM247: Acréscimo */}
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 mb-1">Acréscimo</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={expenseForm.addition}
+                      onChange={event => setExpenseForm(prev => ({ ...prev, addition: parseFloat(event.target.value) || 0 }))}
+                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 mb-1">Tipo</label>
+                    <select
+                      value={expenseForm.additionType}
+                      onChange={event => setExpenseForm(prev => ({ ...prev, additionType: event.target.value as 'R$' | '%' }))}
+                      className="w-full px-3 py-2 border border-white/25 bg-white/70 text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                    >
+                      <option value="R$">R$</option>
+                      <option value="%">%</option>
+                    </select>
+                  </div>
+                </div>
+                {/* REFCOM247: Dedução */}
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 mb-1">Dedução</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={expenseForm.deduction}
+                      onChange={event => setExpenseForm(prev => ({ ...prev, deduction: parseFloat(event.target.value) || 0 }))}
+                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 mb-1">Tipo</label>
+                    <select
+                      value={expenseForm.deductionType}
+                      onChange={event => setExpenseForm(prev => ({ ...prev, deductionType: event.target.value as 'R$' | '%' }))}
+                      className="w-full px-3 py-2 border border-white/25 bg-white/70 text-slate-900 rounded-xl focus:ring-2 focus:ring-versiory-coral outline-none"
+                    >
+                      <option value="R$">R$</option>
+                      <option value="%">%</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* REFCOM247: Data Emissão (fixo, não editável) */}
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Data Emissão</label>
+                    <div className="px-4 py-3 bg-gray-100 border-2 border-gray-300 rounded-xl font-black text-gray-500">
+                      {new Date().toISOString().slice(0, 10)}
+                    </div>
+                  </div>
+                  {/* REFCOM247: Data Vencimento */}
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Data Vencimento</label>
+                    <input
+                      type="date"
+                      value={expenseForm.dueDate}
+                      onChange={event => setExpenseForm(prev => ({ ...prev, dueDate: event.target.value }))}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+                {/* REFCOM247: Parcelas */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Qnt. Parcela</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={expenseForm.installments}
+                      onChange={event => setExpenseForm(prev => ({ ...prev, installments: parseInt(event.target.value, 10) || 1 }))}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-versiory-coral focus:border-transparent outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Valor Parcela</label>
+                    <div className="px-4 py-3 bg-slate-100 border-2 border-gray-300 rounded-xl font-bold text-slate-900">
+                      {formatCurrency(instalValue)}
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-black text-gray-700 mb-2">Referencia (opcional)</label>
@@ -7836,19 +8324,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </form>
             </div>
           </div>
-        )
+        );
+        })()
       }
 
-      {/* ERRCOM136/REFCOM228: Modal de Lançamento de Receita */}
-      {isManualRevenueModalOpen && (
+       {/* ERRCOM136/REFCOM228: Modal de Lançamento de Receita */}
+       {isManualRevenueModalOpen && (() => {
+         const finalAmount = calcFinalAmount(
+           manualRevenueForm.amount || 0, manualRevenueForm.addition || 0, manualRevenueForm.additionType || 'R$',
+           manualRevenueForm.deduction || 0, manualRevenueForm.deductionType || 'R$'
+         );
+         const instalValue = calcInstallmentValue(finalAmount, manualRevenueForm.installments || 1);
+         return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="p-6">
               <h3 className="text-xl font-black text-gray-900 mb-4">Lançar Receita Avulsa</h3>
               <form onSubmit={handleManualRevenueSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-black text-gray-700 mb-2">Descrição</label>
                   <input type="text" value={manualRevenueForm.description} onChange={e => setManualRevenueForm({ ...manualRevenueForm, description: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                </div>
+                {/* REFCOM247: CPF/CNPJ */}
+                <div>
+                  <label className="block text-sm font-black text-gray-700 mb-2">CPF/CNPJ</label>
+                  <input type="text" value={manualRevenueForm.cpfCnpj || ''} onChange={e => setManualRevenueForm({ ...manualRevenueForm, cpfCnpj: e.target.value })} placeholder="Ex: 000.000.000-00" className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" />
                 </div>
                 <div>
                   <label className="block text-sm font-black text-gray-700 mb-2">Categoria</label>
@@ -7875,8 +8375,59 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <input type="number" step="0.01" value={manualRevenueForm.amount} onChange={e => setManualRevenueForm({ ...manualRevenueForm, amount: parseFloat(e.target.value) })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
                   </div>
                   <div>
-                    <label className="block text-sm font-black text-gray-700 mb-2">Data Vencimento</label>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Valor Final (R$)</label>
+                    <div className="px-4 py-3 bg-slate-100 border-2 border-gray-300 rounded-xl font-bold text-slate-900">{formatCurrency(finalAmount)}</div>
+                  </div>
+                </div>
+                {/* REFCOM247: Acréscimo */}
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 mb-1">Acréscimo</label>
+                    <input type="number" step="0.01" value={manualRevenueForm.addition || 0} onChange={e => setManualRevenueForm({ ...manualRevenueForm, addition: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 mb-1">Tipo</label>
+                    <select value={manualRevenueForm.additionType || 'R$'} onChange={e => setManualRevenueForm({ ...manualRevenueForm, additionType: e.target.value as 'R$' | '%' })} className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none">
+                      <option value="R$">R$</option>
+                      <option value="%">%</option>
+                    </select>
+                  </div>
+                </div>
+                {/* REFCOM247: Dedução */}
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 mb-1">Dedução</label>
+                    <input type="number" step="0.01" value={manualRevenueForm.deduction || 0} onChange={e => setManualRevenueForm({ ...manualRevenueForm, deduction: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-700 mb-1">Tipo</label>
+                    <select value={manualRevenueForm.deductionType || 'R$'} onChange={e => setManualRevenueForm({ ...manualRevenueForm, deductionType: e.target.value as 'R$' | '%' })} className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none">
+                      <option value="R$">R$</option>
+                      <option value="%">%</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* REFCOM247: Data Emissão (fixo) */}
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Data Emissão</label>
+                    <div className="px-4 py-3 bg-gray-100 border-2 border-gray-300 rounded-xl font-black text-gray-500">{new Date().toISOString().slice(0, 10)}</div>
+                  </div>
+                  {/* REFCOM247: Data Recebimento */}
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Data Recebimento</label>
                     <input type="date" value={manualRevenueForm.dueDate} onChange={e => setManualRevenueForm({ ...manualRevenueForm, dueDate: e.target.value })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" required />
+                  </div>
+                </div>
+                {/* REFCOM247: Parcelas */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Qnt. Parcela</label>
+                    <input type="number" min="1" value={manualRevenueForm.installments || 1} onChange={e => setManualRevenueForm({ ...manualRevenueForm, installments: parseInt(e.target.value, 10) || 1 })} className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-black text-gray-700 mb-2">Valor Parcela</label>
+                    <div className="px-4 py-3 bg-slate-100 border-2 border-gray-300 rounded-xl font-bold text-slate-900">{formatCurrency(instalValue)}</div>
                   </div>
                 </div>
                 <div>
@@ -7895,7 +8446,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         </div>
-      )}
+         );
+         })()
+       }
 
       {/* REFCOM222: Modal Contas a Receber */}
       {isReceivableModalOpen && (
@@ -7955,9 +8508,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div><span className="text-slate-500">E-mail:</span> <span className="font-bold text-slate-900">{receivableDetail.customerEmail || linkedOrder?.customerEmail || '-'}</span></div>
                 <div><span className="text-slate-500">Telefone:</span> <span className="font-bold text-slate-900">{receivableDetail.customerPhone || linkedOrder?.customerPhone || '-'}</span></div>
                 <div><span className="text-slate-500">CPF/CNPJ:</span> <span className="font-bold text-slate-900">{receivableDetail.customerCpfCnpj || linkedOrder?.customerCpfCnpj || '-'}</span></div>
-                {/* REFCOM225: Data da venda com hora + data de vencimento da parcela */}
-                <div><span className="text-slate-500">Data da Venda:</span> <span className="font-bold text-slate-900">{formatDateTime(receivableDetail.saleDate || linkedOrder?.date)}</span></div>
-                <div><span className="text-slate-500">Vencimento:</span> <span className="font-bold text-slate-900">{receivableDetail.dueDate}</span></div>
+                {/* REFCOM225: Data de emissão + hora (fixo) e data de vencimento da parcela (editável) */}
+                <div><span className="text-slate-500">Data Emissão + hora:</span> <span className="font-bold text-slate-900">{formatDateTime(receivableDetail.saleDate || linkedOrder?.date)}</span></div>
+                <div><span className="text-slate-500">Data de Vencimento:</span> <span className="font-bold text-slate-900">{receivableEdit.dueDate || receivableDetail.dueDate}</span></div>
                 {receivableDetail.status === 'paid' && (
                   <div><span className="text-slate-500">Data Recebimento:</span> <span className="font-bold text-slate-900">{formatDateTime(receivableDetail.paidAt)}</span></div>
                 )}
@@ -8022,6 +8575,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <input type="number" step="0.01" value={receivableEdit.deduction} onChange={e => setReceivableEdit({ ...receivableEdit, deduction: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
                 </div>
                 <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Data de Vencimento</label>
+                  <input type="date" value={receivableEdit.dueDate} onChange={e => setReceivableEdit({ ...receivableEdit, dueDate: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
+                </div>
+                <div>
                   <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Data Recebimento</label>
                   <input type="date" value={receivableEdit.receivedDate} onChange={e => setReceivableEdit({ ...receivableEdit, receivedDate: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
                 </div>
@@ -8043,7 +8600,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       onClick={() => {
                         const phone = (linkedOrder.customerPhone || '').replace(/\D/g, '');
                         if (!phone) { window.alert('Telefone do cliente não disponível.'); return; }
-                        const msg = `Olá ${linkedOrder.customerName}, sua parcela ${installmentLabel} do pedido ${formatOrderId(linkedOrder.id)} no valor de ${formatCurrency(receivableDetail.amount)} vence em ${receivableDetail.dueDate}.`;
+                        // REFCOM242: utiliza a Data de Vencimento (editável em tempo real) como vencimento na notificação.
+                        // Não utiliza a Data da Venda (Data Emissão + hora).
+                        const vencimento = receivableEdit.dueDate || receivableDetail.dueDate;
+                        const vencimentoFmt = vencimento ? new Date(vencimento).toLocaleDateString('pt-BR') : '-';
+                        const msg = `Olá ${linkedOrder.customerName}, sua parcela ${installmentLabel} do pedido ${formatOrderId(linkedOrder.id)} no valor de ${formatCurrency(receivableDetail.amount)} vence em ${vencimentoFmt}.`;
                         window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(msg)}`, '_blank');
                       }}
                       className="flex-1 min-w-[140px] bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl font-black transition-all flex items-center justify-center gap-2"
@@ -8160,8 +8721,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
                 <button onClick={savePayableEdit} className="flex-1 min-w-[120px] bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl font-black transition-all">💾 Salvar Alterações</button>
-                <button onClick={() => { savePayableEdit(); setPayableDetail(null); updateAccountPayable(payableDetail.id, { status: 'paid', paidAt: new Date().toISOString() }); setAccountsPayable(prev => prev.map(i => i.id === payableDetail.id ? { ...i, status: 'paid', paidAt: new Date().toISOString() } : i)); }} className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-black transition-all">✅ Dar Baixa</button>
-                <button onClick={() => { handlePayableDelete(payableDetail.id); setPayableDetail(null); }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-xl font-black transition-all">🗑️ Excluir</button>
+                  {payableDetail.status === 'paid' ? (
+                  // REFCOM247: Estorno devolve o pagamento ao Contas a Pagar e remove do Card Despesas
+                  payableDetail.expenseId ? (
+                    <button onClick={async () => { await handleExpenseRefund(payableDetail.expenseId!); setPayableDetail(null); }} className="flex-1 min-w-[120px] bg-amber-500 hover:bg-amber-600 text-white px-4 py-3 rounded-xl font-black transition-all">↩︎ Estorno</button>
+                  ) : (
+                    <button onClick={async () => { await handlePayableRefund(payableDetail.id); setPayableDetail(null); }} className="flex-1 min-w-[120px] bg-amber-500 hover:bg-amber-600 text-white px-4 py-3 rounded-xl font-black transition-all">↩︎ Estorno</button>
+                  )
+                ) : (
+                  <button onClick={() => { void handlePayablePay(payableDetail.id); setPayableDetail(null); }} className="flex-1 min-w-[120px] bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-black transition-all">✅ Dar Baixa</button>
+                )}
+                {payableDetail.status !== 'paid' && (
+                  <button onClick={() => { handlePayableDelete(payableDetail.id); setPayableDetail(null); }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-xl font-black transition-all">🗑️ Excluir</button>
+                )}
               </div>
             </div>
           </div>

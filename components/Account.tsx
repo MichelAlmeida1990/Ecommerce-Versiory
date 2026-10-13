@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Customer, Address, Order } from '../types';
 import CustomerOrders from './CustomerOrders';
 import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
+import {
+  maskBirthDate,
+  toIsoBirthDate,
+  toBrazilianBirthDate,
+  validateBirthDate,
+  BIRTH_DATE_ERROR_MESSAGES,
+} from '../utils/validators'; // REFCOM240
 
 const Account: React.FC = () => {
   const navigate = useNavigate();
@@ -49,7 +56,10 @@ const Account: React.FC = () => {
     phone: '',
     cpfCnpj: '',
     avatar: '',
+    // REFCOM240: digitado em DD/MM/AAAA, persistido em YYYY-MM-DD
+    birthDate: '',
   });
+  const [birthDateError, setBirthDateError] = useState<string>(''); // REFCOM240
 
   const [addressForm, setAddressForm] = useState<Address>({
     id: '',
@@ -126,6 +136,8 @@ const Account: React.FC = () => {
           phone: currentCustomer.phone,
           cpfCnpj: currentCustomer.cpfCnpj || '',
           avatar: currentCustomer.avatar || '',
+          // REFCOM240: exibe o birthDate canônico (YYYY-MM-DD) como DD/MM/AAAA
+          birthDate: toBrazilianBirthDate(currentCustomer.birthDate),
         });
       }
     } catch (error) {
@@ -171,15 +183,36 @@ const Account: React.FC = () => {
 
   const handleProfileSave = async () => {
     if (!customer) return;
+
+    // REFCOM240: valida a data antes de qualquer gravação no Firestore.
+    const birthDateCheck = validateBirthDate(profileForm.birthDate);
+    if (!birthDateCheck.valid) {
+      const message = birthDateCheck.error
+        ? BIRTH_DATE_ERROR_MESSAGES[birthDateCheck.error]
+        : 'Data de nascimento inválida.';
+      setBirthDateError(message);
+      return;
+    }
+    setBirthDateError('');
+
     try {
       const { saveCustomer, saveUserSession } = await import('../services/firebase');
-      const updated = { ...customer, ...profileForm };
+      // REFCOM240: grava sempre em YYYY-MM-DD, sobrescrevendo o valor anterior
+      // do ADM quando o cliente altera a data pelo e-commerce.
+      const isoBirthDate = toIsoBirthDate(profileForm.birthDate);
+      const updated: Customer = {
+        ...customer,
+        ...profileForm,
+        birthDate: isoBirthDate || undefined,
+      };
       await saveCustomer(updated);
       await saveUserSession({ email: updated.email, name: updated.name, loginTime: Date.now() });
       setCustomer(updated);
+      setProfileForm(prev => ({ ...prev, birthDate: toBrazilianBirthDate(isoBirthDate) }));
       setEditProfile(false);
     } catch (error) {
       console.error('Erro ao salvar perfil:', error);
+      alert('Não foi possível salvar o perfil. Tente novamente.');
     }
   };
 
@@ -389,7 +422,13 @@ const Account: React.FC = () => {
                       <h3 className="text-2xl font-black text-slate-900">Informações Pessoais</h3>
                       {!editProfile && (
                         <button
-                          onClick={() => setEditProfile(true)}
+                          onClick={() => {
+                            // REFCOM240: o formulário reabre sempre com o valor atual do cliente,
+                            // descartando qualquer edição de data não salva.
+                            setProfileForm(prev => ({ ...prev, birthDate: toBrazilianBirthDate(customer.birthDate) }));
+                            setBirthDateError('');
+                            setEditProfile(true);
+                          }}
                           className="bg-slate-50 hover:bg-slate-900 hover:text-white px-6 py-2 rounded-2xl font-bold transition-all text-sm"
                         >
                           Editar Perfil
@@ -418,6 +457,13 @@ const Account: React.FC = () => {
                             <div>
                               <p className="text-xs font-black text-slate-400 uppercase mb-1">CPF / CNPJ</p>
                               <p className="text-lg font-bold text-slate-900">{customer.cpfCnpj || 'Não informado'}</p>
+                            </div>
+                            {/* REFCOM240: Data de Nascimento exibida em DD/MM/AAAA */}
+                            <div>
+                              <p className="text-xs font-black text-slate-400 uppercase mb-1">Data de Nascimento</p>
+                              <p className="text-lg font-bold text-slate-900">
+                                {toBrazilianBirthDate(customer.birthDate) || 'Não informado'}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -582,6 +628,26 @@ const Account: React.FC = () => {
                           <div className="flex flex-col gap-1">
                             <label className="text-xs font-black text-slate-500 ml-2">CPF/CNPJ</label>
                             <input value={profileForm.cpfCnpj} onChange={e => setProfileForm({ ...profileForm, cpfCnpj: e.target.value })} className="bg-slate-50 border-none rounded-2xl p-4 focus:ring-2 ring-versiory-coral/20 outline-none transition-all font-bold" />
+                          </div>
+                          {/* REFCOM240: Data de Nascimento com máscara DD/MM/AAAA */}
+                          <div className="flex flex-col gap-1 md:col-span-2">
+                            <label className="text-xs font-black text-slate-500 ml-2">DATA DE NASCIMENTO</label>
+                            <input
+                              value={profileForm.birthDate}
+                              onChange={e => {
+                                setBirthDateError('');
+                                setProfileForm({ ...profileForm, birthDate: maskBirthDate(e.target.value) });
+                              }}
+                              onBlur={() => {
+                                const result = validateBirthDate(profileForm.birthDate);
+                                setBirthDateError(result.valid ? '' : (result.error ? BIRTH_DATE_ERROR_MESSAGES[result.error] : ''));
+                              }}
+                              placeholder="DD/MM/AAAA"
+                              inputMode="numeric"
+                              maxLength={10}
+                              className={`bg-slate-50 border-none rounded-2xl p-4 focus:ring-2 ring-versiory-coral/20 outline-none transition-all font-bold ${birthDateError ? 'ring-2 ring-red-400' : ''}`}
+                            />
+                            {birthDateError && <p className="text-xs font-bold text-red-500 ml-2">{birthDateError}</p>}
                           </div>
                         </div>
                         <div className="flex gap-4">

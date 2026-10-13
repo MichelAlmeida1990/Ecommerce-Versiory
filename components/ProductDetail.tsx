@@ -39,6 +39,14 @@ const ProductDetail: React.FC = () => {
     fetchProduct();
   }, [id]);
 
+  // REFCOM244: rola até a âncora #detalhes quando o produto já está carregado
+  useEffect(() => {
+    if (!loading && product && window.location.hash === '#detalhes') {
+      const el = document.getElementById('detalhes');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [loading, product]);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
@@ -214,6 +222,19 @@ const ProductDetail: React.FC = () => {
                     </p>
                   )}
                 </div>
+
+                {/* REFCOM244: Botão [+Detalhes] - acesso direto a guias de tamanhos, medidas e detalhes técnicos */}
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('detalhes');
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }}
+                  className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-versiory-coral hover:bg-[#fff1e7] px-4 py-2 rounded-xl border border-versiory-coral/20 transition-all"
+                >
+                  <span aria-hidden>+</span> [+Detalhes]
+                </button>
 
                 {/* Shipping & Stock */}
                 <div className="bg-slate-50 rounded-2xl p-5 mb-8 border border-slate-100">
@@ -430,8 +451,8 @@ const ProductDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Product Specs / About */}
-        <div className="mt-12 bg-white rounded-3xl p-8 lg:p-12 shadow-sm border border-slate-100">
+        {/* REFCOM244: Product Specs / About */}
+        <div id="detalhes" className="mt-12 bg-white rounded-3xl p-8 lg:p-12 shadow-sm border border-slate-100">
           <h2 className="text-2xl font-bold text-slate-900 mb-6">Sobre este item</h2>
           <div className="prose prose-slate max-w-none prose-p:text-slate-600 prose-li:text-slate-600 prose-li:marker:text-versiory-coral whitespace-pre-wrap">
             <p>{product.description}</p>

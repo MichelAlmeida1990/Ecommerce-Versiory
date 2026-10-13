@@ -23,6 +23,7 @@ import {
   subscribeToExpenses,
   getCategories,
   getCustomers,
+  subscribeToCustomers,
   getTracking,
   saveCategory
 } from './services/firebase';
@@ -76,6 +77,7 @@ const AdminApp: React.FC = () => {
     let unsubOrders: (() => void) | undefined;
     let unsubMovements: (() => void) | undefined;
     let unsubExpenses: (() => void) | undefined;
+    let unsubCustomers: (() => void) | undefined;
 
     const startSubscriptions = async () => {
       try {
@@ -104,10 +106,15 @@ const AdminApp: React.FC = () => {
           setExpenses(data);
         });
 
-        // Dados estáticos (categorias, clientes, rastreio) continuam com fetch único ou podem ser movidos também
-        const [categoriesData, customersData, trackingData] = await Promise.all([
+        // Clientes (REFCOM240): assinatura em tempo real para refletir na hora
+        // alterações feitas pelo cliente no e-commerce (ex.: Data de Nascimento).
+        unsubCustomers = subscribeToCustomers((data) => {
+          setCustomers(data);
+        });
+
+        // Dados estáticos (categorias e rastreio) continuam com fetch único
+        const [categoriesData, trackingData] = await Promise.all([
           getCategories(),
-          getCustomers(),
           getTracking()
         ]);
 
@@ -123,7 +130,6 @@ const AdminApp: React.FC = () => {
           setCategories(categoriesData);
         }
 
-        setCustomers(customersData);
         setTracking(trackingData);
 
       } catch (error) {
@@ -139,6 +145,7 @@ const AdminApp: React.FC = () => {
       if (unsubOrders) unsubOrders();
       if (unsubMovements) unsubMovements();
       if (unsubExpenses) unsubExpenses();
+      if (unsubCustomers) unsubCustomers();
     };
   }, [isAuthenticated]);
 

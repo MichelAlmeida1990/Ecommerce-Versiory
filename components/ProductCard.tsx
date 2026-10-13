@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Product } from '../types';
 
 interface ProductCardProps {
@@ -9,6 +10,7 @@ interface ProductCardProps {
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewDetails }) => {
+  const navigate = useNavigate();
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [showSizeError, setShowSizeError] = useState(false);
@@ -257,6 +259,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
               className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-versiory-coral transition-colors text-right"
             >
               Mais Detalhes →
+            </button>
+            {/* REFCOM244: Botão [+Detalhes] - acesso direto às guias de tamanhos, medidas e detalhes técnicos */}
+            <button
+              onClick={() => navigate(`/product/${product.id}#detalhes`)}
+              className="text-[10px] font-black uppercase tracking-widest text-versiory-coral hover:text-versiory-ink transition-colors text-right"
+            >
+              [+Detalhes]
             </button>
             <button
               onClick={handleAddToCart}

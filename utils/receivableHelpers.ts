@@ -110,3 +110,43 @@ export const buildInstallmentPlan = (order: Order): { drafts: ReceivableDraft[];
 
   return { drafts, details };
 };
+
+// REFCOM247: Helpers para cálculo de acréscimo/dedução e valor final em lançamentos avulsos
+
+/** Tipo de unidade monetária para acréscimo/dedução. */
+export type MoneyType = 'R$' | '%';
+
+/**
+ * Calcula o valor adicional/subtraído conforme a unidade (R$ absoluto ou % do valor base).
+ */
+export const calcMoneyAdjust = (value: number, amount: number, type: MoneyType): number => {
+  if (!amount) return 0;
+  return type === 'R$' ? amount : +(value * amount / 100).toFixed(2);
+};
+
+/**
+ * Valor final = originalAmount + addition - deduction (considerando R$/%).
+ */
+export const calcFinalAmount = (original: number, addition: number, additionType: MoneyType, deduction: number, deductionType: MoneyType): number => {
+  const add = calcMoneyAdjust(original, addition, additionType);
+  const ded = calcMoneyAdjust(original, deduction, deductionType);
+  return +(original + add - ded).toFixed(2);
+};
+
+/**
+ * Calcula o valor da parcela a partir do valor final e número de parcelas,
+ * garantindo que a soma seja exatamente igual ao total.
+ */
+export const calcInstallmentValue = (finalAmount: number, installments: number): number => {
+  const n = Math.max(1, Math.floor(installments || 1));
+  return +((finalAmount / n).toFixed(2));
+};
+
+/**
+ * Interface para lançamentos avulsos (despesa ou receita) com parcelamento.
+ */
+export interface AvulsoEntryDraft {
+  amount: number;
+  dueDate: string;
+  installmentNumber?: string;
+}

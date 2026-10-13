@@ -195,6 +195,11 @@ export interface Expense {
   description: string;
   category: 'fixed' | 'variable' | 'investment' | 'emergency';
   amount: number;
+  originalAmount?: number; // REFCOM247: valor original antes de acréscimos/deduções
+  addition?: number; // REFCOM247: acréscimo adicionado ao valor
+  additionType?: 'R$' | '%'; // REFCOM247: unidade do acréscimo
+  deduction?: number; // REFCOM247: dedução subtraída do valor
+  deductionType?: 'R$' | '%'; // REFCOM247: unidade da dedução
   date: string;
   dueDate?: string;
   reference?: string;
@@ -204,7 +209,10 @@ export interface Expense {
   paymentMethod?: string;
   documentRef?: string;
   supplier?: string;
-  supplierCpfCnpj?: string;
+  supplierCpfCnpj?: string; // REFCOM247: CPF/CNPJ do fornecedor/lançamento
+  // REFCOM247: controle de integração com Contas a Pagar
+  payableIds?: string[]; // REFCOM247: IDs dos lançamentos de Contas a Pagar gerados
+  isPaid?: boolean; // REFCOM247: indica se o lançamento foi baixado (pago)
 }
 
 export interface ManualRevenue { // ERRCOM136: Registro de receitas avulsas
@@ -212,6 +220,13 @@ export interface ManualRevenue { // ERRCOM136: Registro de receitas avulsas
   description: string;
   category: 'PIX' | 'Dinheiro' | 'Credito' | 'Debito' | 'Deposito';
   amount: number;
+  originalAmount?: number; // REFCOM247: valor original antes de acréscimos/deduções
+  addition?: number; // REFCOM247: acréscimo adicionado ao valor
+  additionType?: 'R$' | '%'; // REFCOM247: unidade do acréscimo
+  deduction?: number; // REFCOM247: dedução subtraída do valor
+  deductionType?: 'R$' | '%'; // REFCOM247: unidade da dedução
+  installments?: number; // REFCOM247: quantidade de parcelas
+  installmentValue?: number; // REFCOM247: valor calculado por parcela
   date: string;
   dueDate?: string;
   reference?: string;
@@ -221,6 +236,9 @@ export interface ManualRevenue { // ERRCOM136: Registro de receitas avulsas
   // REFCOM223/225/229: rastreia a baixa do Contas a Receber que originou esta receita
   sourceReceivableId?: string;
   sourceChannel?: 'online' | 'physical' | 'whatsapp';
+  // REFCOM247: controle de integração com Contas a Receber
+  receivableIds?: string[]; // REFCOM247: IDs dos lançamentos de Contas a Receber gerados
+  isPaid?: boolean; // REFCOM247: indica se a receita foi baixada (recebida)
 }
 
 // REFCOM222: Contas a Receber e Contas a Pagar
@@ -233,7 +251,9 @@ export interface AccountReceivable {
   amount: number;
   originalAmount?: number; // REFCOM223: valor original da parcela (antes de acréscimos/deduções)
   addition?: number; // REFCOM223: acréscimo somado ao valor
+  additionType?: 'R$' | '%'; // REFCOM241: unidade do acréscimo (absoluto ou percentual do valor da parcela)
   deduction?: number; // REFCOM223: dedução subtraída do valor
+  deductionType?: 'R$' | '%'; // REFCOM241: unidade da dedução (absoluto ou percentual do valor da parcela)
   receivedDate?: string; // REFCOM223: data de recebimento (preenchida na baixa)
   dueDate: string;
   paidAt?: string;
@@ -258,12 +278,19 @@ export interface AccountPayable {
   id: string;
   description: string;
   amount: number;
+  originalAmount?: number; // REFCOM247: valor original antes de acréscimos/deduções
+  addition?: number; // REFCOM247: acréscimo adicionado ao valor
+  additionType?: 'R$' | '%'; // REFCOM247: unidade do acréscimo
+  deduction?: number; // REFCOM247: dedução subtraída do valor
+  deductionType?: 'R$' | '%'; // REFCOM247: unidade da dedução
   dueDate: string;
   paidAt?: string;
   status: PayableStatus;
-  expenseId?: number;
+  expenseId?: number; // REFCOM247: ligação com a despesa avulsa originária
+  installmentNumber?: string; // REFCOM247: referência da parcela (ex.: "2/3")
+  totalInstallments?: number; // REFCOM247: número total de parcelas
   supplier?: string;
-  supplierCpfCnpj?: string;
+  supplierCpfCnpj?: string; // REFCOM247: CPF/CNPJ
   paymentMethod?: string;
   // REFCOM236: canal de origem do lançamento (Contas a Pagar predominantemente 'avulso')
   channel?: 'online' | 'physical' | 'whatsapp' | 'avulso';

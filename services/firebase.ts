@@ -163,6 +163,15 @@ export const getOrder = async (id: string): Promise<Order | null> => {
 // ---- Customers ----
 export const getCustomers = () => getCollection<Customer>("customers");
 export const saveCustomer = (customer: Customer) => setDocument("customers", customer.id, customer);
+// REFCOM240: assinatura em tempo real dos clientes. Antes o ADM carregava a lista uma
+// única vez, então alterações feitas no e-commerce (ex.: Data de Nascimento em Meu
+// Perfil) só apareciam depois de recarregar a página.
+export const subscribeToCustomers = (callback: (customers: Customer[]) => void) => {
+    return onSnapshot(collection(db, "customers"), (snapshot) => {
+        const customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Customer));
+        callback(customers);
+    });
+};
 
 // ---- Cart Persistence ----
 export const saveCart = async (email: string, items: any[]) => {
