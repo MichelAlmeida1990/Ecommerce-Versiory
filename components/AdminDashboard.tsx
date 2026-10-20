@@ -2458,6 +2458,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // REFCOM160 / REFCOM231: a lista "Transações Recentes" é montada a partir do MESMO
   // conjunto já filtrado que alimenta os cards e o modal de detalhes, garantindo que
   // a soma das transações exibidas nunca divirja dos valores apurados nos cards.
+    const filteredExpensesForCard = useMemo(() => {
+    if (financialTypeFilter === 'revenue') return [];
+    return expenses.filter(e => {
+      // REFCOM247: despesas vinculadas a Contas a Pagar só aparecem no card após Dar Baixa (isPaid)
+      if (e.payableIds && e.payableIds.length > 0 && !e.isPaid) return false;
+      if (financialDateFilter.from && e.date < financialDateFilter.from) return false;
+      if (financialDateFilter.to && e.date > financialDateFilter.to) return false;
+      if (financialPaymentFilter !== 'all') {
+        const method = (toFinalizadora(e.paymentMethod) || e.paymentMethod || '').toLowerCase();
+        if (method !== financialPaymentFilter) return false;
+      }
+      return true;
+    });
+  }, [expenses, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+
   const filteredTransactions = useMemo(() => {
     const revenue = filteredRevenueEntries.map(entry => ({
       id: entry.refId,
@@ -2576,20 +2591,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // REFCOM238: despesas do card "Despesas". É a MESMA lista usada por `financialStats`
   // e por Transações Recentes, garantindo que card, lista e detalhamento batam.
-  const filteredExpensesForCard = useMemo(() => {
-    if (financialTypeFilter === 'revenue') return [];
-    return expenses.filter(e => {
-      // REFCOM247: despesas vinculadas a Contas a Pagar só aparecem no card após Dar Baixa (isPaid)
-      if (e.payableIds && e.payableIds.length > 0 && !e.isPaid) return false;
-      if (financialDateFilter.from && e.date < financialDateFilter.from) return false;
-      if (financialDateFilter.to && e.date > financialDateFilter.to) return false;
-      if (financialPaymentFilter !== 'all') {
-        const method = (toFinalizadora(e.paymentMethod) || e.paymentMethod || '').toLowerCase();
-        if (method !== financialPaymentFilter) return false;
-      }
-      return true;
-    });
-  }, [expenses, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+
 
   // REFCOM231: Cards e modal de detalhes consomem EXATAMENTE a mesma base, garantindo
   // que o valor exibido no card seja idêntico ao valor do detalhamento.
@@ -6661,27 +6663,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => handleReceivableRefund(transaction.receivableId!)}
-                            className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-[10px] font-black transition-all"
+                            className="bg-amber-500 hover:bg-amber-600 text-white p-2 rounded-lg transition-all"
                             title="Estornar recebimento e devolver o lançamento ao Contas a Receber"
                           >
-                            ↩︎ Estorno
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
                           </button>
                         </div>
                       )}
-                       {transaction.type === 'expense' && 'expenseId' in transaction && (() => {
-                         const expense = expenses.find(e => e.id === transaction.expenseId);
-                         return (
-                           <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                             {/* REFCOM247: Estorno só aparece para despesas com lancamento no Contas a Pagar */}
-                             {expense?.payableIds && expense.payableIds.length > 0 && (
-                               <button
-                                 onClick={() => handleExpenseRefund(transaction.expenseId!)}
-                                 className="bg-amber-500 hover:bg-amber-600 text-white p-2 rounded-lg transition-all"
-                                 title="Estornar pagamento e devolver ao Contas a Pagar"
-                               >
-                                 ↩︎ Estorno
-                               </button>
-                             )}
+                        {transaction.type === 'expense' && 'expenseId' in transaction && (() => {
+                          const expense = expenses.find(e => e.id === transaction.expenseId);
+                          const hasLinkedPaidPayable = expense && accountsPayable.some(p => p.expenseId === expense.id && p.status === 'paid');
+                          const canRefund = (expense?.payableIds && expense.payableIds.length > 0) || hasLinkedPaidPayable || expense?.isPaid;
+                          return (
+                            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                              {/* REFCOM247: Estorno só aparece para despesas com lancamento no Contas a Pagar */}
+                              {canRefund && (
+                                <button
+                                  onClick={() => handleExpenseRefund(transaction.expenseId!)}
+                                  className="bg-amber-500 hover:bg-amber-600 text-white p-2 rounded-lg transition-all"
+                                  title="Estornar pagamento e devolver ao Contas a Pagar"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                                  </svg>
+                                </button>
+                              )}
                              {!isBillingRestricted && (
                                <button
                                  onClick={() => openExpenseModal(expense)}
