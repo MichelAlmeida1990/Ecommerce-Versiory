@@ -1768,11 +1768,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAccountsPayable(prev => prev.map(i => i.id === id ? { ...i, status: 'paid', paidAt: now } : i));
 
     // REFCOM247: ativa a despesa vinculada
+    // REFCOM259: Only mark expense as fully paid when ALL installments are paid
     if (item.expenseId) {
-      onUpdateExpenses(expenses.map(e => e.id === item.expenseId ? { ...e, isPaid: true } : e));
-      const { saveExpense } = await import('../services/firebase');
-      const exp = expenses.find(e => e.id === item.expenseId);
-      if (exp) saveExpense({ ...exp, isPaid: true });
+      const expense = expenses.find(e => e.id === item.expenseId);
+      if (expense && expense.payableIds && expense.payableIds.length > 0) {
+        // Check if all linked payables are paid
+        const allPayables = accountsPayable.filter(p => expense.payableIds?.includes(p.id));
+        const allPaid = allPayables.every(p => p.status === 'paid');
+        
+        if (allPaid) {
+          onUpdateExpenses(expenses.map(e => e.id === item.expenseId ? { ...e, isPaid: true } : e));
+          const { saveExpense } = await import('../services/firebase');
+          if (expense) saveExpense({ ...expense, isPaid: true });
+        }
+      } else if (expense) {
+        // Non-installment expense - mark as paid immediately
+        onUpdateExpenses(expenses.map(e => e.id === item.expenseId ? { ...e, isPaid: true } : e));
+        const { saveExpense } = await import('../services/firebase');
+        saveExpense({ ...expense, isPaid: true });
+      }
     }
   };
 
@@ -2539,9 +2553,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // a soma das transações exibidas nunca divirja dos valores apurados nos cards.
     const filteredExpensesForCard = useMemo(() => {
     if (financialTypeFilter === 'revenue') return [];
-    return expenses.filter(e => {
+    return expenses.map(e => {
+      // REFCOM259: For expenses with installments, calculate amount based on paid installments only
+      let calculatedAmount = e.amount;
+      if (e.payableIds && e.payableIds.length > 0) {
+        const paidPayables = accountsPayable.filter(p => 
+          e.payableIds?.includes(p.id) && p.status === 'paid'
+        );
+        calculatedAmount = paidPayables.reduce((sum, p) => sum + p.amount, 0);
+      }
+      
+      return { ...e, amount: calculatedAmount };
+    }).filter(e => {
       // REFCOM247: despesas vinculadas a Contas a Pagar só aparecem no card após Dar Baixa (isPaid)
-      if (e.payableIds && e.payableIds.length > 0 && !e.isPaid) return false;
+      if (e.payableIds && e.payableIds.length > 0 && !e.isPaid && e.amount === 0) return false;
       if (financialDateFilter.from && e.date < financialDateFilter.from) return false;
       if (financialDateFilter.to && e.date > financialDateFilter.to) return false;
       if (financialPaymentFilter !== 'all') {
@@ -2550,7 +2575,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return true;
     });
-  }, [expenses, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
+  }, [expenses, accountsPayable, financialDateFilter, financialTypeFilter, financialPaymentFilter]);
 
   const filteredTransactions = useMemo(() => {
     const revenue = filteredRevenueEntries.map(entry => ({
