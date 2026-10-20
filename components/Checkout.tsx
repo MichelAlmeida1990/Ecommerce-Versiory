@@ -464,6 +464,10 @@ const Checkout: React.FC<CheckoutProps> = ({
   };
 
   const buildWhatsAppMessage = (orderId: string, fullName: string, email: string, address: string, paymentMethod: string) => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR');
+    const timeStr = now.toLocaleTimeString('pt-BR');
+    
     const lines = [
       `🛒 *NOVO PEDIDO - ${orderId}*`,
       '',
@@ -476,8 +480,8 @@ const Checkout: React.FC<CheckoutProps> = ({
       effectiveIsStorePickup ? `🏬 *MODALIDADE:* Retire na Loja` : `🚚 *MODALIDADE:* Entrega via Transportadora`,
       '',
       '*DETALHES DA VENDA:*',
-      `🕒 Hora: ${new Date().toLocaleTimeString('pt-BR')}`,
-      `💳 Forma de Pagto: ${paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod === 'credito' ? `Crédito (${installments}x)` : paymentMethod.toUpperCase()}`,
+      `� Data da Venda: ${dateStr} ${timeStr}`,
+      `💳 Forma de Pagto: ${paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod === 'credito' ? `CRÉDITO (${installments}x)` : paymentMethod.toUpperCase()}`,
       `🏷️ Origem: E-commerce (Site)`,
       '',
       '*ITENS DO PEDIDO:*',
@@ -492,11 +496,21 @@ const Checkout: React.FC<CheckoutProps> = ({
       '',
       `*TOTAL: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*`,
       '',
+      // REFCOM255: Add installment details for parcelled purchases
+      (paymentMethod === 'credito' || paymentMethod === 'whatsapp') && installments > 1 ? [
+        '*PARCELAS:*',
+        ...Array.from({ length: installments }, (_, i) => {
+          const installmentNum = i + 1;
+          const installmentAmount = (total / installments).toFixed(2);
+          return `- Parcela ${installmentNum}/${installments}: R$ ${installmentAmount} (Pendente)`;
+        }),
+        ''
+      ].join('\n') : '',
       orderNotes ? `*Observações:* ${orderNotes}` : '',
       '',
       'Olá! Gostaria de finalizar o pagamento deste pedido, poderia verificar se ainda tem em estoque, quais são as formas de pagamento e os próximos passos? 🙏'
     ];
-    return lines.join('\n');
+    return lines.filter(line => line !== '').join('\n');
   };
 
   const handlePrintReceipt = async () => {
