@@ -40,6 +40,14 @@ export interface Product {
   cClassTrib?: string; // Código de Classificação Tributária (Reforma 2026)
   installments?: number; // Parcelamento máximo sem juros
   cardRate?: number; // REFCOM184: Taxa de cartão (%) para parcelamento
+  // REFCOM251: Sugestão de Preço de Venda
+  costPrice?: number; // Custo do Produto
+  saleFeePercent?: number; // Taxa por venda (%)
+  variableExpenses?: number; // Despesas Variáveis (R$)
+  fixedExpenses?: number; // Custos Fixos (R$)
+  desiredMarginPercent?: number; // Margem de Lucro desejada (%)
+  suggestedPrice?: number; // Preço sugerido calculado
+  suggestedNetProfit?: number; // Lucro líquido sugerido
   active?: boolean; // ERRCOM105: Inativo/Ativo
   // Marketplace Integration
   mlId?: string; // ID do anúncio no Mercado Livre

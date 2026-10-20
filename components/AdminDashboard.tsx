@@ -485,7 +485,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     aliquotaIbs: 0,
     aliquotaIs: 0,
     cClassTrib: '',
-    installments: 1
+    installments: 1,
+    costPrice: 0,
+    saleFeePercent: 0,
+    variableExpenses: 0,
+    fixedExpenses: 0,
+    desiredMarginPercent: 0,
+    suggestedPrice: 0,
+    suggestedNetProfit: 0
   });
 
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -2774,7 +2781,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       aliquotaIs: 0,
       cClassTrib: '',
       gtin: '',
-      gtinTrib: ''
+      gtinTrib: '',
+      costPrice: 0,
+      saleFeePercent: 0,
+      variableExpenses: 0,
+      fixedExpenses: 0,
+      desiredMarginPercent: 0,
+      suggestedPrice: 0,
+      suggestedNetProfit: 0
     });
     setEditingProductId(null);
     setIsCustomCategory(false);
