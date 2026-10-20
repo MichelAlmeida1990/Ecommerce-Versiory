@@ -2609,9 +2609,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [filteredRevenueEntries, filteredExpensesForCard]);
 
-  // REFCOM231: Dashboard, Financeiro e detalhamento usam a MESMA base de apuração.
-  // Vendas com lançamento em aberto no Contas a Receber só entram após a baixa,
-  // o que mantém Dashboard, Cards e Transações Recentes com números idênticos.
+  // REFCOM258: Dashboard usa regime de competência (orders) em vez de regime de caixa (revenueEntries)
+  // Faturamento considera vendas realizadas independentemente da baixa financeira
   const dashboardRevenue = useMemo(() => {
     const hasCustomRange = !!(dashboardDateFrom && dashboardDateTo);
     let startDate: Date;
@@ -2634,21 +2633,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     let pdvRevenue = 0;
     let onlineRevenue = 0;
 
-    revenueEntries.forEach(entry => {
-      const d = new Date(entry.date);
+    // REFCOM258: Use orders instead of revenueEntries for accrual accounting
+    orders.forEach(order => {
+      // REFCOM258: Exclude orders with invalid statuses
+      if (order.status === 'pending' || order.status === 'cancelled' || order.status === 'reserved') return;
+      if (order.isBudget) return; // Exclude budgets
+      
+      const d = new Date(order.date);
       if (d < startDate || d > endDate) return;
-      if (dashboardChannelFilter !== 'all' && entry.channel !== dashboardChannelFilter) return;
-      if (entry.channel === 'manual') {
-        totalRevenue += entry.amount;
-        return;
-      }
-      totalRevenue += entry.amount;
-      if (entry.channel === 'physical') pdvRevenue += entry.amount;
-      else onlineRevenue += entry.amount;
+      
+      // REFCOM258: Apply channel filter
+      const channel = order.salesChannel === 'physical' ? 'physical' : 'online';
+      if (dashboardChannelFilter !== 'all' && channel !== dashboardChannelFilter) return;
+      
+      totalRevenue += order.total;
+      if (channel === 'physical') pdvRevenue += order.total;
+      else onlineRevenue += order.total;
     });
 
     return { totalRevenue, pdvRevenue, onlineRevenue };
-  }, [revenueEntries, dashboardPeriod, dashboardDateFrom, dashboardDateTo, dashboardChannelFilter]);
+  }, [orders, dashboardPeriod, dashboardDateFrom, dashboardDateTo, dashboardChannelFilter]);
 
   // REFCOM238: Cards "Contas a Receber" e "Contas a Pagar" do módulo Financeiro.
   // Antes eles consumiam os filtros do próprio grid (Contas a Receber/Pagar) e ficavam
