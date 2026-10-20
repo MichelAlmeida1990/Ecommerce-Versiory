@@ -9200,16 +9200,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {/* ERRCOM154: Botão Cancelar removido (redundante - usar Atualizar Status) */}
               </div>
 
-              {/* ERRCOM135: Botão Baixa Parcial */}
-              {selectedOrderDetail.installmentDetails && selectedOrderDetail.installmentDetails.length > 0 && (
-                <button
-                  onClick={() => { setSelectedOrderForInstallments(selectedOrderDetail); setIsInstallmentModalOpen(true); }}
-                  className="w-full mt-4 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-black transition-all shadow-lg flex items-center justify-center gap-2"
-                >
-                  💳 Gestão de Parcelas (Baixa Parcial)
-                </button>
-              )}
-            </div>
+</div>
             <h4 className="font-bold text-white mb-2">Itens</h4>
             <div className="space-y-2 mb-4">
               {selectedOrderDetail.items?.map((item, i) => (
