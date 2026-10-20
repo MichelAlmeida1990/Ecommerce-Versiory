@@ -194,6 +194,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // REFCOM226: Campo de pesquisa em Contas a Pagar e Receber
   const [receivableSearch, setReceivableSearch] = useState('');
   const [payableSearch, setPayableSearch] = useState('');
+  // REFCOM257: Campo de pesquisa em Transações Recentes
+  const [transactionsSearch, setTransactionsSearch] = useState('');
   // REFCOM236: Filtros por Status e Canal nos grids Contas a Receber e Contas a Pagar
   const [receivableStatusFilter, setReceivableStatusFilter] = useState<'all' | 'paid' | 'open'>('all');
   const [receivableChannelFilter, setReceivableChannelFilter] = useState<'all' | 'physical' | 'online' | 'avulso'>('all');
@@ -2743,7 +2745,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // REFCOM160: A lista "Transações Recentes" exibe exatamente o mesmo conjunto filtrado
   // dos cards de resumo (filteredTransactions), limitado a 100 itens para exibição.
-  const recentTransactions = useMemo(() => filteredTransactions.slice(0, 100), [filteredTransactions]);
+  // REFCOM257: Adiciona filtro de pesquisa por pedido, cliente, CPF/CNPJ, data
+  const recentTransactions = useMemo(() => {
+    let filtered = filteredTransactions;
+    
+    if (transactionsSearch.trim()) {
+      const searchLower = transactionsSearch.trim().toLowerCase();
+      filtered = filtered.filter(t => {
+        // Search by order ID
+        if (t.id && t.id.toLowerCase().includes(searchLower)) return true;
+        // Search by description (customer name)
+        if (t.description && t.description.toLowerCase().includes(searchLower)) return true;
+        // Search by date (sale date or paid date)
+        if (t.date) {
+          const dateStr = new Date(t.date).toLocaleDateString('pt-BR');
+          if (dateStr.includes(searchLower)) return true;
+        }
+        // Search by order ID in revenue transactions
+        if (t.type === 'revenue' && 'orderId' in t && t.orderId) {
+          if (t.orderId.toLowerCase().includes(searchLower)) return true;
+        }
+        // Search by customer CPF/CNPJ in linked orders
+        if (t.type === 'revenue' && 'orderId' in t) {
+          const order = orders.find(o => o.id === t.orderId);
+          if (order?.customerCpfCnpj && order.customerCpfCnpj.toLowerCase().includes(searchLower)) return true;
+        }
+        return false;
+      });
+    }
+    
+    return filtered.slice(0, 100);
+  }, [filteredTransactions, transactionsSearch, orders]);
 
   // ERRCOM033: Estatísticas de clientes
   const customerStats = useMemo(() => {
@@ -6687,12 +6719,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="credito">Crédito</option>
               </select>
 
-              {(financialDateFilter.from || financialDateFilter.to || financialTypeFilter !== 'all' || financialPaymentFilter !== 'all') && (
+              <span className="text-slate-100 text-sm font-bold ml-2">Pesquisar:</span>
+              <input
+                type="text"
+                placeholder="Pedido, cliente, CPF..."
+                value={transactionsSearch}
+                onChange={e => setTransactionsSearch(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-200 text-slate-900 rounded-lg text-sm focus:ring-2 focus:ring-versiory-coral outline-none w-48"
+              />
+
+              {(financialDateFilter.from || financialDateFilter.to || financialTypeFilter !== 'all' || financialPaymentFilter !== 'all' || transactionsSearch) && (
                 <button
                   onClick={() => {
                     setFinancialDateFilter({ from: '', to: '' });
                     setFinancialTypeFilter('all');
                     setFinancialPaymentFilter('all');
+                    setTransactionsSearch('');
                   }}
                   className="text-slate-100 hover:text-versiory-coral text-sm underline font-medium"
                 >
