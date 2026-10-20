@@ -1417,7 +1417,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     dueDate: string;
     receivedDate: string;
     notes: string;
-  }>({ paymentMethod: '', originalAmount: 0, addition: 0, deduction: 0, dueDate: '', receivedDate: new Date().toISOString().slice(0, 10), notes: '' });
+    // REFCOM253: Installment fields for Credit payment
+    installmentCount: number;
+    installmentPreviews: Array<{ number: string; amount: number; dueDate: string }>;
+  }>({ paymentMethod: '', originalAmount: 0, addition: 0, deduction: 0, dueDate: '', receivedDate: new Date().toISOString().slice(0, 10), notes: '', installmentCount: 1, installmentPreviews: [] });
 
   const openReceivableDetail = (item: AccountReceivable) => {
     setReceivableDetail(item);
@@ -1430,9 +1433,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       deduction: item.deduction ?? 0,
       dueDate: item.dueDate || '',
       receivedDate: item.receivedDate || new Date().toISOString().slice(0, 10),
-      notes: item.notes || ''
+      notes: item.notes || '',
+      // REFCOM253: Initialize installment fields
+      installmentCount: 1,
+      installmentPreviews: []
     });
   };
+
+  // REFCOM253: Auto-calculate installments when Credit payment is selected
+  useEffect(() => {
+    if (receivableEdit.paymentMethod === 'Crédito' && receivableEdit.installmentCount > 1) {
+      const finalAmount = receivableEdit.originalAmount + receivableEdit.addition - receivableEdit.deduction;
+      const amounts = splitInstallments(finalAmount, receivableEdit.installmentCount);
+      const baseDate = receivableEdit.dueDate ? new Date(receivableEdit.dueDate) : new Date();
+      const dueDates = installmentDueDates(receivableEdit.installmentCount, baseDate);
+      
+      const previews = amounts.map((amount, i) => ({
+        number: `${i + 1}/${receivableEdit.installmentCount}`,
+        amount,
+        dueDate: dueDates[i]
+      }));
+      
+      setReceivableEdit(prev => ({ ...prev, installmentPreviews: previews }));
+    } else {
+      setReceivableEdit(prev => ({ ...prev, installmentPreviews: [] }));
+    }
+  }, [receivableEdit.paymentMethod, receivableEdit.installmentCount, receivableEdit.originalAmount, receivableEdit.addition, receivableEdit.deduction, receivableEdit.dueDate]);
 
   const handleReceivablePay = async (id: string, override?: AccountReceivable) => {
     const item = override || accountsReceivable.find(i => i.id === id);
@@ -1634,17 +1660,61 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const saveReceivableEdit = () => {
     if (!receivableDetail) return;
-    const updates = buildReceivableEdits();
-    updateAccountReceivable(receivableDetail.id, updates);
-    setAccountsReceivable(prev => prev.map(i => i.id === receivableDetail.id ? { ...i, ...updates } : i));
-    setReceivableDetail(null);
-    alert('✅ Alterações salvas com sucesso!');
+    
+    // REFCOM253: Handle installment creation for Credit payment
+    if (receivableEdit.paymentMethod === 'Crédito' && receivableEdit.installmentCount > 1 && receivableEdit.installmentPreviews.length > 0) {
+      if (!window.confirm(`Confirmar parcelamento em ${receivableEdit.installmentCount}x? O lançamento original será substituído pelas parcelas.`)) return;
+      
+      // Delete original receivable
+      deleteAccountReceivable(receivableDetail.id);
+      
+      // Create new installment receivables
+      const finalAmount = +(receivableEdit.originalAmount + receivableEdit.addition - receivableEdit.deduction).toFixed(2);
+      const newReceivables: AccountReceivable[] = receivableEdit.installmentPreviews.map((installment, idx) => ({
+        id: `AR-${Date.now()}-${idx}`,
+        description: `${receivableDetail.description} - Parcela ${installment.number}`,
+        amount: installment.amount,
+        originalAmount: installment.amount,
+        dueDate: installment.dueDate,
+        status: 'open' as const,
+        paymentMethod: 'Crédito',
+        channel: receivableDetail.channel,
+        orderId: receivableDetail.orderId,
+        revenueId: receivableDetail.revenueId,
+        createdAt: receivableDetail.createdAt,
+        notes: receivableEdit.notes
+      }));
+      
+      // Add all new receivables
+      newReceivables.forEach(ar => addAccountReceivable(ar));
+      setAccountsReceivable(prev => {
+        const filtered = prev.filter(i => i.id !== receivableDetail.id);
+        return [...filtered, ...newReceivables];
+      });
+      
+      setReceivableDetail(null);
+      alert(`✅ Lançamento parcelado em ${receivableEdit.installmentCount}x com sucesso!`);
+    } else {
+      // Normal update for non-installment cases
+      const updates = buildReceivableEdits();
+      updateAccountReceivable(receivableDetail.id, updates);
+      setAccountsReceivable(prev => prev.map(i => i.id === receivableDetail.id ? { ...i, ...updates } : i));
+      setReceivableDetail(null);
+      alert('✅ Alterações salvas com sucesso!');
+    }
   };
 
   // Salva as alterações e em seguida dá a baixa já usando os valores recém-editados
   // (evita o problema de ler um estado antigo ao baixar direto do modal de detalhes).
   const saveReceivableEditAndPay = async () => {
     if (!receivableDetail) return;
+    
+    // REFCOM253: Prevent installment creation when using "Dar Baixa"
+    if (receivableEdit.paymentMethod === 'Crédito' && receivableEdit.installmentCount > 1) {
+      window.alert('⚠️ Para parcelamentos em Crédito, use o botão "Salvar Alterações" para criar as parcelas. Depois, dê baixa em cada parcela individualmente.');
+      return;
+    }
+    
     const updates = buildReceivableEdits();
     if (!updates.paymentMethod || !(FINALIZADORAS as readonly string[]).includes(updates.paymentMethod)) {
       window.alert('⚠️ Selecione uma Forma de Pagamento válida (Dinheiro, PIX, Débito ou Crédito) antes de dar baixa.');
@@ -8584,6 +8654,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option>Crédito</option>
                   </select>
                 </div>
+                {/* REFCOM253: Installment count field for Credit payment */}
+                {receivableEdit.paymentMethod === 'Crédito' && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Quantidade de Parcelas</label>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="12" 
+                      value={receivableEdit.installmentCount} 
+                      onChange={e => setReceivableEdit({ ...receivableEdit, installmentCount: Math.max(1, Math.min(12, parseInt(e.target.value) || 1)) })} 
+                      className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" 
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Valor da Parcela Original</label>
                   <input type="number" step="0.01" value={receivableEdit.originalAmount} onChange={e => setReceivableEdit({ ...receivableEdit, originalAmount: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
@@ -8613,6 +8697,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <label className="block text-xs font-black text-slate-700 mb-1 uppercase">Observações</label>
                 <textarea rows={2} value={receivableEdit.notes} onChange={e => setReceivableEdit({ ...receivableEdit, notes: e.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400" />
               </div>
+
+              {/* REFCOM253: Installment preview with editable due dates */}
+              {receivableEdit.paymentMethod === 'Crédito' && receivableEdit.installmentCount > 1 && receivableEdit.installmentPreviews.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4">
+                  <h4 className="text-sm font-black text-blue-900 mb-3 uppercase">Prévia das Parcelas</h4>
+                  <div className="space-y-2">
+                    {receivableEdit.installmentPreviews.map((installment, idx) => (
+                      <div key={idx} className="grid grid-cols-3 gap-2 items-center bg-white rounded-lg p-2 border border-blue-100">
+                        <div className="text-xs font-bold text-slate-700">{installment.number}</div>
+                        <div className="text-xs font-bold text-slate-900">R$ {installment.amount.toFixed(2)}</div>
+                        <input
+                          type="date"
+                          value={installment.dueDate}
+                          onChange={e => {
+                            const updated = [...receivableEdit.installmentPreviews];
+                            updated[idx].dueDate = e.target.value;
+                            setReceivableEdit({ ...receivableEdit, installmentPreviews: updated });
+                          }}
+                          className="text-xs px-2 py-1 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-600 mt-2">💡 Você pode ajustar as datas de vencimento antes de salvar.</p>
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
                 {/* REFCOM223: Botões Notificar Cliente e Imprimir Pedido */}

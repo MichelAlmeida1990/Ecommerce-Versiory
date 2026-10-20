@@ -447,24 +447,6 @@ const App: React.FC = () => {
                             }}
                             style={{ cursor: banner.linkCategory ? 'pointer' : 'default' }}
                           />
-                          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent"></div>
-                          <div className="relative h-full flex items-center px-8 md:px-12">
-                            <div className="max-w-2xl">
-                              <h1 className="text-4xl md:text-6xl font-black mb-4 text-white drop-shadow-lg">Versiory Store</h1>
-                              <p className="text-xl md:text-2xl font-medium mb-6 text-white drop-shadow-md">Transformando ideias em sucesso.</p>
-                              <div className="flex gap-4 flex-wrap">
-                                <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                                  🚀 Frete Grátis Brasil
-                                </div>
-                                <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                                  🔒 Pagamento Seguro
-                                </div>
-                                <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                                  ⚡ Entrega Rápida
-                                </div>
-                              </div>
-                            </div>
-                          </div>
                         </div>
                       ))}
                       {/* REFCOM210: Navegação manual */}
@@ -507,24 +489,6 @@ const App: React.FC = () => {
                         alt="Banner"
                         className="absolute inset-0 w-full h-full object-cover"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent"></div>
-                      <div className="relative h-full flex items-center px-8 md:px-12">
-                        <div className="max-w-2xl">
-                          <h1 className="text-4xl md:text-6xl font-black mb-4 text-white drop-shadow-lg">Versiory Store</h1>
-                          <p className="text-xl md:text-2xl font-medium mb-6 text-white drop-shadow-md">Transformando ideias em sucesso.</p>
-                          <div className="flex gap-4 flex-wrap">
-                            <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                              🚀 Frete Grátis Brasil
-                            </div>
-                            <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                              🔒 Pagamento Seguro
-                            </div>
-                            <div className="bg-white px-6 py-3 rounded-full text-sm font-bold text-slate-900 shadow-lg hover:scale-105 transition-transform">
-                              ⚡ Entrega Rápida
-                            </div>
-                          </div>
-                        </div>
-                      </div>
                     </section>
                   )}
 
