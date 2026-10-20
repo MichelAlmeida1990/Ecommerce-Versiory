@@ -8623,6 +8623,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ) : <span className="font-bold text-slate-900"> -</span>}
                 </div>
                 <div><span className="text-slate-500">Valor Original do Pedido:</span> <span className="font-black text-slate-900">{linkedOrder ? formatCurrency(linkedOrder.total) : '-'}</span></div>
+                {/* REFCOM256: Display discount information */}
+                {linkedOrder?.discountAmount && linkedOrder.discountAmount > 0 && (
+                  <>
+                    <div><span className="text-slate-500">Cupom Utilizado:</span> <span className="font-black text-emerald-600">{linkedOrder.couponCode || '-'}</span></div>
+                    <div><span className="text-slate-500">Desconto Aplicado:</span> <span className="font-black text-red-600">- {formatCurrency(linkedOrder.discountAmount)}</span></div>
+                    <div><span className="text-slate-500">Valor Final do Pedido:</span> <span className="font-black text-slate-900">{formatCurrency(linkedOrder.total - linkedOrder.discountAmount)}</span></div>
+                  </>
+                )}
                 <div><span className="text-slate-500">Parcela:</span> <span className="font-black text-versiory-coral">{installmentLabel}</span></div>
                 <div className="sm:col-span-2"><span className="text-slate-500">Valor da Parcela:</span> <span className="font-black text-emerald-600 text-lg">{formatCurrency(receivableDetail.amount)}</span></div>
               </div>
