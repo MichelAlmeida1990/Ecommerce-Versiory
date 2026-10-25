@@ -245,6 +245,10 @@ export interface UserSession {
     cpfCnpj?: string;
     address?: string;
     loginTime: number;
+    // REFCOM252: Assinatura por Plano
+    planId?: string;
+    subscriptionStatus?: 'pending' | 'active' | 'expired' | 'cancelled';
+    subscriptionExpiresAt?: string | null;
 }
 
 export const saveUserSession = async (session: UserSession) => {
