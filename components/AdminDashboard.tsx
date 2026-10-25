@@ -4743,6 +4743,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
 
+        {/* REFCOM252: Aviso de assinatura vencendo */}
+        {(() => {
+          try {
+            const lastUser = localStorage.getItem('versiory_last_user');
+            if (!lastUser) return null;
+            const sessionData = localStorage.getItem('versiory_user_' + lastUser);
+            if (!sessionData) return null;
+            const session = JSON.parse(sessionData);
+            const expiresAt = session.subscriptionExpiresAt;
+            if (!expiresAt) return null;
+            const daysLeft = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000*60*60*24));
+            if (daysLeft > 7) return null;
+            const expired = daysLeft <= 0;
+            const tone = expired ? 'bg-red-600/90 border-red-400' : 'bg-amber-500/90 border-amber-200';
+            return (
+              <div className={`fixed bottom-3 right-3 z-[90] flex items-center gap-2.5 ${tone} border-2 text-white px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-xl max-w-[calc(100vw-1.5rem)]`}>
+                <span className="text-xl leading-none shrink-0">{expired ? '🔒' : '📅'}</span>
+                <span className="text-left leading-tight min-w-0">
+                  <span className="block text-[10px] font-black uppercase tracking-wider opacity-90">Assinatura Versiory</span>
+                  <span className="block text-xs font-black whitespace-nowrap truncate">
+                    {expired ? 'Expirada - Renove agora' : `Vence em ${daysLeft} dia${daysLeft === 1 ? '' : 's'}`}
+                  </span>
+                </span>
+              </div>
+            );
+          } catch (e) { return null; }
+        })()}
+
         {/* REFCOM198: Selo de faturamento com contador regressivo (canto superior direito) */}
         {(() => {
           const status = getBillingStatus(getBillingConfig());
