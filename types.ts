@@ -477,3 +477,61 @@ export interface BillingConfig {
   paymentConfirmed?: boolean; // pagamento confirmado aguardando liberação (24h)
   paymentConfirmedAt?: string; // timestamp da confirmação
 }
+
+
+// REFCOM252: Sistema de Assinaturas por Plano
+export type PlanId = 'start' | 'go' | 'max';
+
+export interface Subscription {
+  id: string;
+  userId: string;
+  planId: PlanId;
+  status: 'pending' | 'active' | 'expired' | 'cancelled';
+  amount: number;
+  paymentMethod: 'pix' | 'credit_card' | 'boleto';
+  proofUrl?: string;
+  requestedAt?: string;
+  paidAt?: string;
+  startsAt?: string;
+  expiresAt?: string;
+  approvedBy?: string;
+  notes?: string;
+}
+
+export interface Plan {
+  id: PlanId;
+  name: string;
+  price: number;
+  description: string;
+  modules: string[];
+  features: string[];
+}
+
+
+// REFCOM252: Sistema de Assinaturas por Plano
+export type PlanId = 'start' | 'go' | 'max';
+
+export interface Subscription {
+  id: string;
+  userId: string;
+  planId: PlanId;
+  status: 'pending' | 'active' | 'expired' | 'cancelled';
+  amount: number;
+  paymentMethod: 'pix' | 'credit_card' | 'boleto';
+  proofUrl?: string;
+  requestedAt?: string;
+  paidAt?: string;
+  startsAt?: string;
+  expiresAt?: string;
+  approvedBy?: string;
+  notes?: string;
+}
+
+export interface Plan {
+  id: PlanId;
+  name: string;
+  price: number;
+  description: string;
+  modules: string[];
+  features: string[];
+}
