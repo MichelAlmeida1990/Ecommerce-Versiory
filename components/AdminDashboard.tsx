@@ -86,7 +86,8 @@ const TAB_MODULE_MAP = {
   payment: 'financeiro',
   coupons: 'cupons',
   settings: 'dashboard',
-  support: 'dashboard'
+  support: 'dashboard',
+  subscriptions: 'dashboard'
 };
 
 type TabKey =
@@ -106,7 +107,8 @@ type TabKey =
   | 'marketplaces'
   | 'payment'
   | 'coupons' // REFCOM204: Módulo Cupom Desconto
-  | 'labels'; // REFCOM234: Geração de código de barras e etiquetas de preço
+  | 'labels' // REFCOM234
+  | 'subscriptions'; // REFCOM252: Assinaturas: Geração de código de barras e etiquetas de preço
 
 type StockFilter = 'all' | 'low' | 'out' | 'normal';
 
@@ -203,6 +205,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateExpenses
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>(userRole === 'seller' ? 'pdv' : 'dashboard');
+  const planAccess = usePlanAccess();
 
   // REFCOM198: Aplicar restrições de faturamento
   const billingStatus = getBillingStatus(getBillingConfig());
@@ -4712,6 +4715,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     ['marketplaces', 'Marketplaces'],
                     ['payment', 'Pagamento'],
                     ['coupons', 'Cupom Desconto'],
+                    ['subscriptions', 'Assinaturas'],
                     ['settings', 'Configuração']
                   ]
                 : [
@@ -7191,6 +7195,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         )}
+
+        {activeTab === 'subscriptions' && (
+          <div className="space-y-6">
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
+              <h2 className="text-2xl font-bold text-white mb-4">Assinaturas</h2>
+              <p className="text-slate-300 mb-4">
+                Gerencie as assinaturas dos clientes da plataforma Versiory.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                  <div className="text-2xl font-bold text-emerald-400">0</div>
+                  <div className="text-sm text-slate-300">Ativas</div>
+                </div>
+                <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                  <div className="text-2xl font-bold text-amber-400">0</div>
+                  <div className="text-sm text-slate-300">Aguardando</div>
+                </div>
+                <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                  <div className="text-2xl font-bold text-red-400">0</div>
+                  <div className="text-sm text-slate-300">Vencidas</div>
+                </div>
+              </div>
+              <div className="text-center text-slate-400 py-8">
+                Nenhuma assinatura cadastrada ainda.
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'abc' && (
           <div className="space-y-6">
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
