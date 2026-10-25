@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { usePlanAccess } from '../hooks/usePlanAccess';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import {
   Product,
@@ -66,6 +67,27 @@ interface AdminDashboardProps {
   onUpdateInventoryMovements: (movements: InventoryMovement[]) => void;
   onUpdateExpenses: (expenses: Expense[]) => void;
 }
+
+// REFCOM252: Mapeamento de abas para modulos de plano
+const TAB_MODULE_MAP = {
+  dashboard: 'dashboard',
+  pdv: 'pdv',
+  products: 'produtos',
+  categories: 'categorias',
+  orders: 'pedidos',
+  customers: 'clientes',
+  tracking: 'rastreamento',
+  inventory: 'estoque',
+  financial: 'financeiro',
+  abc: 'curva_abc',
+  fiscal: 'nfce',
+  labels: 'etiquetas',
+  marketplaces: 'marketplace',
+  payment: 'financeiro',
+  coupons: 'cupons',
+  settings: 'dashboard',
+  support: 'dashboard'
+};
 
 type TabKey =
   | 'dashboard'
@@ -4699,7 +4721,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     ['orders', 'Pedidos'],
                     ['fiscal', 'Fiscal/NF-e']
                   ]
-            ).map(([key, label]) => (
+            ).filter(([key]) => {
+              const module = TAB_MODULE_MAP[key] || 'dashboard';
+              return planAccess.hasModule(module);
+            }).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key as TabKey)}
