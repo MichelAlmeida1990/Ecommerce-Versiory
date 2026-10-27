@@ -260,14 +260,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
             >
               Mais Detalhes →
             </button>
-            {/* REFCOM244: Botão [+Detalhes] - acesso direto às guias de tamanhos, medidas e detalhes técnicos */}
-            <button
-              onClick={() => navigate(`/product/${product.id}#detalhes`)}
-              className="text-[10px] font-black uppercase tracking-widest text-versiory-coral hover:text-versiory-ink transition-colors text-right"
-            >
-              [+Detalhes]
-            </button>
-            <button
+                        <button
               onClick={handleAddToCart}
               disabled={(product.stock || 0) <= 0}
               className={`p-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-90 group/btn ${
