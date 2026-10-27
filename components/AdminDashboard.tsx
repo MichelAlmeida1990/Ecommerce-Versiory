@@ -2759,7 +2759,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const byMethod: Record<string, number> = {};
       filteredRevenueEntries.forEach(entry => {
         if (channel !== 'all' && entry.channel !== channel) return;
-        byMethod[entry.paymentMethod] = (byMethod[entry.paymentMethod] || 0) + entry.amount;
+        const pm = (entry.paymentMethod || '').trim().toLowerCase();
+const normalized = pm === 'credito' || pm === 'crédito' ? 'Crédito' : pm === 'debito' || pm === 'débito' ? 'Débito' : pm === 'pix' ? 'PIX' : pm === 'dinheiro' ? 'Dinheiro' : entry.paymentMethod || 'Outros';
+byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
       });
       return byMethod;
     };
@@ -8900,7 +8902,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         // REFCOM242: utiliza a Data de Vencimento (editável em tempo real) como vencimento na notificação.
                         // Não utiliza a Data da Venda (Data Emissão + hora).
                         const vencimento = receivableEdit.dueDate || receivableDetail.dueDate;
-                        const vencimentoFmt = vencimento ? new Date(vencimento).toLocaleDateString('pt-BR') : '-';
+                        const vencimentoFmt = vencimento ? new Date(vencimento + 'T00:00:00').toLocaleDateString('pt-BR') : '-';
                         const msg = `Olá ${linkedOrder.customerName}, sua parcela ${installmentLabel} do pedido ${formatOrderId(linkedOrder.id)} no valor de ${formatCurrency(receivableDetail.amount)} vence em ${vencimentoFmt}.`;
                         window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(msg)}`, '_blank');
                       }}
