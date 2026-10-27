@@ -11,8 +11,8 @@ export const normalizeGtin = (value?: string | null): string => (value || '').re
  */
 export const calculateCheckDigit = (value: string): number | null => {
   const digits = normalizeGtin(value);
-  if (digits.length < 11 || digits.length > 12) return null;
-  const base = digits.slice(0, -1);
+  if (digits.length < 12 || digits.length > 13) return null;
+  const base = digits.length === 13 ? digits.slice(0, 12) : digits;
   let sum = 0;
   for (let i = 0; i < base.length; i++) {
     const weight = (base.length - i) % 2 === 0 ? 3 : 1;
@@ -33,7 +33,9 @@ export const isValidEan13 = (value?: string | null): boolean => {
 export const withCheckDigit = (value: string): string => {
   const digits = normalizeGtin(value);
   const dv = calculateCheckDigit(digits);
-  return dv === null ? '' : `${digits.slice(0, -1)}${dv}`;
+  if (dv === null) return '';
+  const body = digits.length === 13 ? digits.slice(0, 12) : digits;
+  return `${body}${dv}`;
 };
 
 /** Gera um EAN-13 aleatorio usando o prefixo GS1 789 (Brasil). */
