@@ -321,8 +321,9 @@ export const getAdminSession = async (): Promise<AdminSession | null> => {
         const sessionData = localStorage.getItem(ADMIN_SESSION_KEY);
         if (sessionData) {
             const session = JSON.parse(sessionData) as AdminSession;
-            // Verificar se a sessão é válida (ex: menos de 24h)
-            const isExpired = Date.now() - session.loginTime > 24 * 60 * 60 * 1000;
+            // Verificar se a sessão é válida: dev 8h, demais 24h
+            const maxAge = session.role === 'dev' ? 8 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+            const isExpired = Date.now() - session.loginTime > maxAge;
             if (isExpired) {
                 localStorage.removeItem(ADMIN_SESSION_KEY);
                 return null;
