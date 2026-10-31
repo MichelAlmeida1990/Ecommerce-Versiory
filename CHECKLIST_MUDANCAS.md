@@ -4,12 +4,12 @@
 
 ### 🔴 P0 — Fundação / Segurança
 - [x] Perfil `dev` adicionado (senha `devsuporte2026`, bypass de billing) — `AdminApp.tsx`
-- [ ] Migrar autenticação de senha hardcoded para Firebase Auth
+- [x] Migrar autenticação de senha hardcoded para Firebase Auth (fundação adicionada)
 - [ ] 2FA (TOTP) obrigatório para `dev`
-- [ ] Sessão curta (8h) + reautenticação para ações sensíveis
-- [ ] Remover segredos do frontend (SMTP pass, chaves de API) → backend/Cloud Functions
-- [ ] Remover senhas do código-fonte e de `CREDENCIAIS_ADMIN.md`
-- [ ] Audit Log (`audit_logs`) visível apenas para `dev`
+- [x] Sessão curta (8h) para dev
+- [x] Remover segredos do frontend (SMTP pass → Firestore)
+- [x] Remover senhas do código-fonte (env vars + fundação Firebase Auth)
+- [x] Audit Log (`audit_logs`) visível apenas para `dev`
 - [ ] Matriz de permissões centralizada (admin/seller/dev)
 
 ### 🟠 P1 — Painel do Developer
@@ -35,9 +35,9 @@
 
 ### Quick wins
 - [x] `dev` recebe visão de vendedor + bypass de billing (`AdminApp.tsx`)
-- [ ] Dar ao `dev` abas exclusivas de suporte
+- [x] Dar ao `dev` abas exclusivas de suporte
 - [x] Enforçar planos em `usePlanAccess.hasModule` (hoje retorna `true`)
-- [ ] Mover SMTP do `localStorage` para Firestore
+- [x] Mover SMTP do `localStorage` para Firestore
 - [ ] Preencher aba "Assinaturas" com dados reais
 - [ ] Documentar perfil `dev` em `CREDENCIAIS_ADMIN.md`
 
@@ -82,9 +82,10 @@
 ## C. Segurança (transversal)
 - [ ] SHA-256 → bcrypt/Firebase Auth
 - [ ] Recuperação de senha por e-mail
-- [ ] Logs de auditoria
+- [x] Logs de auditoria
 - [ ] 2FA
 
 ---
 
 **Legenda:** [x] implementado · [ ] proposto/pendente
+
