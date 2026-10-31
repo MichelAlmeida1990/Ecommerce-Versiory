@@ -5,7 +5,7 @@ import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import { getBillingStatus, getBillingConfig, getBillingDueAmount } from '../services/billingConfig';
 
 interface AdminLoginProps {
-  onLogin: (password: string, role: 'admin' | 'seller' | 'dev') => void;
+  onLogin: (password: string, role: 'admin' | 'seller' | 'dev', totpCode?: string) => void;
   error: string;
 }
 
@@ -13,12 +13,13 @@ interface AdminLoginProps {
 const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [totpCode, setTotpCode] = useState("");
 
   const [role, setRole] = useState<'admin' | 'seller' | 'dev'>('seller');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin(password, role);
+    onLogin(password, role, role === 'dev' ? totpCode : undefined);
   };
 
   const billingConfig = getBillingConfig();
@@ -168,7 +169,26 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
               </div>
             </div>
 
-            {/* Error Message */}
+             {/* TOTP 2FA (apenas perfil dev) */}
+             {role === 'dev' && (
+               <div>
+                 <label htmlFor="totp" className="block text-sm font-bold text-white/90 mb-3">Código 2FA (6 dígitos)</label>
+                 <input
+                   className="w-full px-5 py-4 bg-slate-800/50 backdrop-blur-xl border border-white/30 rounded-2xl text-white placeholder:text-white/60 focus:bg-slate-800/70 focus:border-white/50 focus:ring-4 focus:ring-white/20 outline-none transition-all duration-300 text-base font-medium tracking-widest text-center"
+                   type="text"
+                   id="totp"
+                   name="totp"
+                   inputMode="numeric"
+                   maxLength={6}
+                   value={totpCode}
+                   onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                   placeholder="000000"
+                   autoComplete="one-time-code"
+                 />
+               </div>
+             )}
+
+             {/* Error Message */}
             {error && (
               <div className="bg-red-500/20 backdrop-blur-xl border border-red-300/30 text-white px-4 py-3 rounded-2xl text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="flex items-center gap-2">

@@ -185,7 +185,7 @@ const AdminApp: React.FC = () => {
     };
   }, [isAuthenticated]);
 
-  const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev') => {
+const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', totpCode?: string) => {
     if (role !== 'dev') {
       const billing = getBillingStatus(getBillingConfig());
       if (billing.blocked) {
@@ -199,24 +199,43 @@ const AdminApp: React.FC = () => {
       (role === 'seller' && password === SELLER_PASSWORD) ||
       (role === 'dev' && password === DEV_PASSWORD);
 
-    if (isValidPassword) {
-      try {
-        await saveAdminSession({
-          isAuthenticated: true,
-          role,
-          loginTime: Date.now(),
-          lastActivity: Date.now()
-        });
-        setIsAuthenticated(true);
-        setUserRole(role);
-        setError('');
-        logAudit({ action: 'login', userRole: role, details: 'Login no painel admin' });
-      } catch (error) {
-        console.error('Erro ao salvar sessão:', error);
-        setError('Erro ao fazer login.');
-      }
-    } else {
+    if (!isValidPassword) {
       setError('Senha incorreta para o perfil selecionado.');
+      return;
+    }
+
+    // 2FA para perfil dev
+    if (role === 'dev') {
+      const { generateTotpSecret, verifyTotp } = await import('./utils/totp');
+      let secret = localStorage.getItem('versiory_dev_totp_secret');
+      if (!secret) {
+        // Primeiro acesso: gerar segredo e solicitar configuração
+        secret = generateTotpSecret();
+        localStorage.setItem('versiory_dev_totp_secret', secret);
+        alert(`2FA configurado. Adicione este segredo no seu app autenticador (Google Authenticator/Authy):\n\n${secret}\n\nDepois faça login novamente informando o código de 6 dígitos.`);
+        return;
+      }
+      const ok = await verifyTotp(secret, totpCode || '');
+      if (!ok) {
+        setError('Código 2FA inválido ou expirado.');
+        return;
+      }
+    }
+
+    try {
+      await saveAdminSession({
+        isAuthenticated: true,
+        role,
+        loginTime: Date.now(),
+        lastActivity: Date.now()
+      });
+      setIsAuthenticated(true);
+      setUserRole(role);
+      setError('');
+      logAudit({ action: 'login', userRole: role, details: 'Login no painel admin' });
+    } catch (error) {
+      console.error('Erro ao salvar sessão:', error);
+      setError('Erro ao fazer login.');
     }
   };
 
