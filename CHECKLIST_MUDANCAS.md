@@ -5,7 +5,7 @@
 ### 🔴 P0 — Fundação / Segurança
 - [x] Perfil `dev` adicionado (senha `devsuporte2026`, bypass de billing) — `AdminApp.tsx`
 - [x] Migrar autenticação de senha hardcoded para Firebase Auth (fundação adicionada)
-- [ ] 2FA (TOTP) obrigatório para `dev`
+- [x] 2FA (TOTP) obrigatório para `dev`
 - [x] Sessão curta (8h) para dev
 - [x] Remover segredos do frontend (SMTP pass → Firestore)
 - [x] Remover senhas do código-fonte (env vars + fundação Firebase Auth)
