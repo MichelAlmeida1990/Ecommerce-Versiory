@@ -28,6 +28,7 @@ import ProductMediaShowcase from './ProductMediaShowcase';
 import CashRegisterReport from './CashRegisterReport';
 import { saveProduct, STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import { getBillingConfig, getBillingStatus, getBillingDueAmount } from '../services/billingConfig';
+import { getSubscriptions, approveSubscription, cancelSubscription, deleteSubscription } from '../services/subscriptionService';
 import { getAccountsReceivable, saveAccountsReceivable, addAccountReceivable, updateAccountReceivable, deleteAccountReceivable, getAccountsPayable, saveAccountsPayable, addAccountPayable, updateAccountPayable, deleteAccountPayable } from '../services/accountsPayableReceivable';
 import { getBannerConfig, getDefaultBannerConfig, saveBannerConfig, fileToDataUrl, BANNER_MAX, BANNER_UPDATE_EVENT } from '../services/bannerConfig';
 import { getSmtpConfigFromFirestore, saveSmtpConfigToFirestore } from '../services/smtpConfig';
@@ -788,6 +789,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { from: 'bot', text: 'Você pode perguntar sobre vendas, estoque, financeiro, clientes, e-commerce, Curva ABC, fiscal, marketplaces ou configurações.' },
   ]);
   const [supportInput, setSupportInput] = useState('');
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
 
   // REFCOM149: Lazy init — carrega SMTP do localStorage imediatamente, sem depender de useEffect
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>(() => {
@@ -802,6 +804,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     (async () => {
       const remote = await getSmtpConfigFromFirestore();
       if (remote) setSmtpSettings(remote);
+    })();
+  }, []);
+
+  // Carrega assinaturas
+  useEffect(() => {
+    (async () => {
+      const data = await getSubscriptions();
+      setSubscriptions(data);
     })();
   }, []);
 
@@ -7230,33 +7240,65 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
           </div>
         )}
 
-        {activeTab === 'subscriptions' && (
-          <div className="space-y-6">
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
-              <h2 className="text-2xl font-bold text-white mb-4">Assinaturas</h2>
-              <p className="text-slate-300 mb-4">
-                Gerencie as assinaturas dos clientes da plataforma Versiory.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                  <div className="text-2xl font-bold text-emerald-400">0</div>
-                  <div className="text-sm text-slate-300">Ativas</div>
-                </div>
-                <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                  <div className="text-2xl font-bold text-amber-400">0</div>
-                  <div className="text-sm text-slate-300">Aguardando</div>
-                </div>
-                <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-                  <div className="text-2xl font-bold text-red-400">0</div>
-                  <div className="text-sm text-slate-300">Vencidas</div>
-                </div>
-              </div>
-              <div className="text-center text-slate-400 py-8">
-                Nenhuma assinatura cadastrada ainda.
-              </div>
-            </div>
-          </div>
-        )}
+         {activeTab === 'subscriptions' && (
+           <div className='space-y-6'>
+             <div className='bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6'>
+               <h2 className='text-2xl font-bold text-white mb-4'>Assinaturas</h2>
+               <p className='text-slate-300 mb-4'>Gerencie as assinaturas dos clientes da plataforma Versiory.</p>
+               <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-6'>
+                 <div className='bg-white/5 rounded-xl p-4 border border-white/10'>
+                   <div className='text-2xl font-bold text-emerald-400'>{subscriptions.filter(s=>s.status==='active').length}</div>
+                   <div className='text-sm text-slate-300'>Ativas</div>
+                 </div>
+                 <div className='bg-white/5 rounded-xl p-4 border border-white/10'>
+                   <div className='text-2xl font-bold text-amber-400'>{subscriptions.filter(s=>s.status==='pending').length}</div>
+                   <div className='text-sm text-slate-300'>Aguardando</div>
+                 </div>
+                 <div className='bg-white/5 rounded-xl p-4 border border-white/10'>
+                   <div className='text-2xl font-bold text-red-400'>{subscriptions.filter(s=>s.status==='expired'||s.status==='cancelled').length}</div>
+                   <div className='text-sm text-slate-300'>Vencidas/Canceladas</div>
+                 </div>
+               </div>
+               {subscriptions.length === 0 ? (
+                 <div className='text-center text-slate-400 py-8'>Nenhuma assinatura cadastrada ainda.</div>
+               ) : (
+                 <div className='overflow-x-auto'>
+                   <table className='w-full text-sm text-left text-slate-200'>
+                     <thead className='text-xs uppercase text-slate-400 border-b border-white/10'>
+                       <tr>
+                         <th className='px-3 py-2'>Usuário</th>
+                         <th className='px-3 py-2'>Plano</th>
+                         <th className='px-3 py-2'>Status</th>
+                         <th className='px-3 py-2'>Valor</th>
+                         <th className='px-3 py-2'>Solicitado em</th>
+                         <th className='px-3 py-2'>Ações</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                     {subscriptions.map(s => (
+                       <tr key={s.id} className='border-b border-white/5'>
+                         <td className='px-3 py-2'>{s.userId}</td>
+                         <td className='px-3 py-2'>{s.planId}</td>
+                         <td className='px-3 py-2'>{s.status}</td>
+                         <td className='px-3 py-2'>R$ {(s.amount||0).toFixed(2)}</td>
+                         <td className='px-3 py-2'>{s.requestedAt ? new Date(s.requestedAt).toLocaleDateString('pt-BR') : '-'}</td>
+                         <td className='px-3 py-2 flex gap-2'>
+                           {s.status === 'pending' && (
+                             <button onClick={async()=>{await approveSubscription(s.id, userRole); const d=await getSubscriptions(); setSubscriptions(d);}} className='bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded text-xs'>Aprovar</button>
+                           )}
+                           {s.status !== 'cancelled' && (
+                             <button onClick={async()=>{await cancelSubscription(s.id); const d=await getSubscriptions(); setSubscriptions(d);}} className='bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs'>Cancelar</button>
+                           )}
+                         </td>
+                       </tr>
+                     ))}
+                     </tbody>
+                   </table>
+                 </div>
+               )}
+             </div>
+           </div>
+         )}
 
         {activeTab === 'abc' && (
           <div className="space-y-6">
