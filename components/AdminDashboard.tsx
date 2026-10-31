@@ -1389,7 +1389,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           amount: item.amount,
           date: now,
           notes: `Recebimento de parcela do pedido ${item.orderId || ''}`,
-          user: userRole === 'admin' ? 'Admin' : 'Vendedor',
+          user: userRole === 'admin' ? 'Admin' : userRole === 'dev' ? 'Dev' : 'Vendedor',
           paymentMethod: item.paymentMethod,
           sourceReceivableId: item.id,
           sourceChannel: item.channel,
@@ -1529,7 +1529,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         amount: item.amount,
         date: now,
         notes: `Recebimento de parcela do pedido ${item.orderId || ''}`,
-        user: userRole === 'admin' ? 'Admin' : 'Vendedor',
+        user: userRole === 'admin' ? 'Admin' : userRole === 'dev' ? 'Dev' : 'Vendedor',
         paymentMethod: item.paymentMethod,
         sourceReceivableId: item.id,
         sourceChannel: item.channel,
@@ -1651,7 +1651,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             ...(order.installmentDeletionLogs || []),
             {
               installmentNumber,
-              user: userRole === 'admin' ? 'Admin' : 'Vendedor',
+              user: userRole === 'admin' ? 'Admin' : userRole === 'dev' ? 'Dev' : 'Vendedor',
               date: new Date().toISOString(),
               reason: reason.trim()
             }
@@ -4686,7 +4686,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl sm:text-2xl font-black truncate max-w-[200px] sm:max-w-none">{userRole === 'admin' && !isBillingRestricted ? 'Painel Administrativo' : 'Painel do Vendedor'}</h1>
+<h1 className="text-xl sm:text-2xl font-black truncate max-w-[200px] sm:max-w-none">{userRole === 'dev' ? 'Painel do Desenvolvedor' : (userRole === 'admin' && !isBillingRestricted) ? 'Painel Administrativo' : 'Painel do Vendedor'}</h1>
                 <p className="text-gray-400 text-sm">Versiory Store</p>
               </div>
             </div>
@@ -4700,7 +4700,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
           {/* REFCOM_mobile: no mobile a barra vira uma única linha com rolagem horizontal (em vez de empilhar e cobrir a tela) */}
           <div className="flex flex-nowrap lg:flex-wrap gap-1 p-2 overflow-x-auto lg:overflow-visible [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {(
-              userRole === 'admin' && !billingStatus.blockAdmin
+              userRole === 'dev' || (userRole === 'admin' && !billingStatus.blockAdmin)
                 ? [
                     ['dashboard', 'Dashboard'],
                     ['pdv', 'PDV Loja'],
@@ -5475,7 +5475,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                     </button>
                   )}
                 </div>
-                {userRole === 'admin' && !isBillingRestricted && (
+                {(userRole === 'admin' || userRole === 'dev') && (userRole === 'dev' || !isBillingRestricted) && (
                   <button
                     onClick={() => openProductModal()}
                     className="flex-1 sm:flex-none bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg text-sm"
@@ -5665,7 +5665,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                       <span className="text-xs text-slate-400">({product.reviews} avaliações)</span>
                     </div>
 
-                    {userRole === 'admin' && !isBillingRestricted && (
+                    {(userRole === 'admin' || userRole === 'dev') && (userRole === 'dev' || !isBillingRestricted) && (
                       <div className="flex gap-2">
                         <button
                           onClick={() => openProductModal(product)}
@@ -5716,7 +5716,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                 <div className="text-6xl mb-4">📦</div>
                 <h3 className="text-xl font-bold text-white mb-2">Nenhum produto cadastrado</h3>
                 <p className="text-slate-300 mb-6">Comece adicionando seu primeiro produto</p>
-                {userRole === 'admin' && !isBillingRestricted && (
+                {(userRole === 'admin' || userRole === 'dev') && (userRole === 'dev' || !isBillingRestricted) && (
                   <button
                     onClick={() => openProductModal()}
                     className="bg-versiory-coral text-white px-6 py-3 rounded-xl font-black transition-all shadow-lg"
@@ -7490,7 +7490,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-black text-white">Configurações Fiscais e NF-e</h2>
-              {userRole === 'admin' && !isBillingRestricted && (
+              {(userRole === 'admin' || userRole === 'dev') && (userRole === 'dev' || !isBillingRestricted) && (
                 <button
                   onClick={() => setIsFiscalConfigOpen(true)}
                   className="bg-versiory-coral hover:bg-[#ff8368] text-white px-6 py-3 rounded-xl font-black transition-all"
