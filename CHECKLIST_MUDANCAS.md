@@ -36,7 +36,7 @@
 ### Quick wins
 - [x] `dev` recebe visão de vendedor + bypass de billing (`AdminApp.tsx`)
 - [ ] Dar ao `dev` abas exclusivas de suporte
-- [ ] Enforçar planos em `usePlanAccess.hasModule` (hoje retorna `true`)
+- [x] Enforçar planos em `usePlanAccess.hasModule` (hoje retorna `true`)
 - [ ] Mover SMTP do `localStorage` para Firestore
 - [ ] Preencher aba "Assinaturas" com dados reais
 - [ ] Documentar perfil `dev` em `CREDENCIAIS_ADMIN.md`
