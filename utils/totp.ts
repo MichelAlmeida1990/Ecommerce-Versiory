@@ -1,7 +1,7 @@
-// TOTP (RFC 6238) - implementação leve para 2FA do perfil dev
+// TOTP (RFC 6238) - implementacao leve para 2FA do perfil dev (SHA-1 puro, sem Web Crypto)
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
-function base32Decode(input: string): Uint8Array {
+function base32Decode(input) {
   const clean = input.replace(/=+$/, '').toUpperCase().replace(/[^A-Z2-7]/g, '');
   let bits = 0;
   let value = 0;
@@ -20,7 +20,7 @@ function base32Decode(input: string): Uint8Array {
   return output;
 }
 
-function base32Encode(bytes: Uint8Array): string {
+function base32Encode(bytes) {
   let bits = 0;
   let value = 0;
   let output = '';
@@ -38,80 +38,53 @@ function base32Encode(bytes: Uint8Array): string {
   return output;
 }
 
-export function generateTotpSecret(length = 20): string {
+export function generateTotpSecret(length = 20) {
   const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
   return base32Encode(bytes);
 }
 
-function hmacSha1(key: Uint8Array, message: Uint8Array): Uint8Array {
-  // Implementação pura (sem Web Crypto) para funcionar em contextos não seguros
-  const blockSize = 64;
-  let k = key;
-  if (k.length > blockSize) {
-    // hash SHA-1 da chave
-    k = sha1(k);
-  }
-  if (k.length < blockSize) {
-    const padded = new Uint8Array(blockSize);
-    padded.set(k);
-    k = padded;
-  }
-  const ipad = new Uint8Array(blockSize);
-  const opad = new Uint8Array(blockSize);
-  for (let i = 0; i < blockSize; i++) {
-    ipad[i] = k[i] ^ 0x36;
-    opad[i] = k[i] ^ 0x5c;
-  }
-  // inner hash
-  const inner = new Uint8Array(blockSize + message.length);
-  inner.set(ipad);
-  inner.set(message, blockSize);
-  const innerHash = sha1(inner);
-  // outer hash
-  const outer = new Uint8Array(blockSize + 20);
-  outer.set(opad);
-  outer.set(innerHash, blockSize);
-  return sha1(outer);
-}
-
-function sha1(data: Uint8Array): Uint8Array {
-  // SHA-1 puro (RFC 3174)
-  const h = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
-  // padding
-  const msgLen = data.length;
-  const totalLen = msgLen + 1 + ((56 - (msgLen + 1) % 64) + 64) % 64 + 8;
+function sha1(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const bitLen = data.length * 8;
+  const padLen = (55 - (data.length % 64) + 64) % 64;
+  const totalLen = data.length + 1 + padLen + 8;
   const padded = new Uint8Array(totalLen);
   padded.set(data);
-  padded[msgLen] = 0x80;
-  // length in bits as 64-bit big-endian
-  const bitLen = msgLen * 8;
+  padded[data.length] = 0x80;
+  let l = bitLen;
   for (let i = 0; i < 8; i++) {
-    padded[totalLen - 8 + i] = (bitLen >>> (56 - i * 8)) & 0xff;
+    padded[totalLen - 8 + (7 - i)] = l & 0xff;
+    l = Math.floor(l / 256);
   }
-  // process blocks
+  const h = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
   const w = new Array(80);
-  for (let offset = 0; offset < totalLen; offset += 64) {
+  for (let off = 0; off < totalLen; off += 64) {
     for (let i = 0; i < 16; i++) {
-      const j = offset + i * 4;
-      w[i] = (padded[j] << 24) | (padded[j + 1] << 16) | (padded[j + 2] << 8) | padded[j + 3];
+      const j = off + i * 4;
+      w[i] = (((padded[j] << 24) >>> 0) + (padded[j + 1] << 16) + (padded[j + 2] << 8) + padded[j + 3]) >>> 0;
     }
     for (let i = 16; i < 80; i++) {
       const x = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
-      w[i] = (x << 1) | (x >>> 31);
+      w[i] = ((x << 1) | (x >>> 31)) >>> 0;
     }
     let a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
     for (let i = 0; i < 80; i++) {
-      let f: number, k: number;
-      if (i < 20) { f = (b & c) | (~b & d); k = 0x5a827999; }
+      let f, k;
+      if (i < 20) { f = (b & c) | ((~b) & d); k = 0x5a827999; }
       else if (i < 40) { f = b ^ c ^ d; k = 0x6ed9eba1; }
       else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdc; }
       else { f = b ^ c ^ d; k = 0xca62c1d6; }
-      const temp = (((a << 5) | (a >>> 27)) + f + e + k + w[i]) >>> 0;
-      e = d;
-      d = c;
-      c = (b << 30) | (b >>> 2);
-      b = a;
+      const rotl = ((a << 5) | (a >>> 27)) >>> 0;
+      const temp = (rotl + (f >>> 0) + (e >>> 0) + (k >>> 0) + (w[i] >>> 0)) >>> 0;
+      e = d >>> 0;
+      d = c >>> 0;
+      c = ((b << 30) | (b >>> 2)) >>> 0;
+      b = a >>> 0;
       a = temp;
     }
     h[0] = (h[0] + a) >>> 0;
@@ -130,7 +103,32 @@ function sha1(data: Uint8Array): Uint8Array {
   return out;
 }
 
-function intToBytes(num: number): Uint8Array {
+function hmacSha1(key, message) {
+  const blockSize = 64;
+  let k = key;
+  if (k.length > blockSize) k = sha1(k);
+  if (k.length < blockSize) {
+    const padded = new Uint8Array(blockSize);
+    padded.set(k);
+    k = padded;
+  }
+  const ipad = new Uint8Array(blockSize);
+  const opad = new Uint8Array(blockSize);
+  for (let i = 0; i < blockSize; i++) {
+    ipad[i] = k[i] ^ 0x36;
+    opad[i] = k[i] ^ 0x5c;
+  }
+  const inner = new Uint8Array(blockSize + message.length);
+  inner.set(ipad);
+  inner.set(message, blockSize);
+  const innerHash = sha1(inner);
+  const outer = new Uint8Array(blockSize + 20);
+  outer.set(opad);
+  outer.set(innerHash, blockSize);
+  return sha1(outer);
+}
+
+function intToBytes(num) {
   const bytes = new Uint8Array(8);
   for (let i = 7; i >= 0; i--) {
     bytes[i] = num & 0xff;
@@ -139,11 +137,11 @@ function intToBytes(num: number): Uint8Array {
   return bytes;
 }
 
-export async function generateTotp(secret: string, window = 0): Promise<string> {
+export async function generateTotp(secret, window = 0) {
   const key = base32Decode(secret);
   const counter = Math.floor(Date.now() / 1000 / 30) + window;
   const msg = intToBytes(counter);
-  const hash = await hmacSha1(key, msg);
+  const hash = hmacSha1(key, msg);
   const offset = hash[hash.length - 1] & 0x0f;
   const code =
     ((hash[offset] & 0x7f) << 24) |
@@ -153,10 +151,9 @@ export async function generateTotp(secret: string, window = 0): Promise<string> 
   return (code % 1000000).toString().padStart(6, '0');
 }
 
-export async function verifyTotp(secret: string, code: string): Promise<boolean> {
+export async function verifyTotp(secret, code) {
   const clean = code.replace(/\s/g, '');
   if (!/^\d{6}$/.test(clean)) return false;
-  // janela de -1, 0, +1 (90s de tolerância)
   for (const w of [-1, 0, 1]) {
     const expected = await generateTotp(secret, w);
     if (expected === clean) return true;
@@ -164,6 +161,6 @@ export async function verifyTotp(secret: string, code: string): Promise<boolean>
   return false;
 }
 
-export function totpOtpAuthUrl(secret: string, account = 'dev@versiory', issuer = 'Versiory') {
+export function totpOtpAuthUrl(secret, account = 'dev@versiory', issuer = 'Versiory') {
   return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&digits=6&period=30`;
 }
