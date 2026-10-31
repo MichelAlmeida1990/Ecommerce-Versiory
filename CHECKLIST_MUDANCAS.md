@@ -19,7 +19,7 @@
 - [ ] Configurações da Loja (dados, logo, tema, domínio, fuso, moeda, fiscal, certificado A1, CSC, série)
 - [ ] Backups (export/import, agendamento, restore com confirmação)
 - [ ] Feature Flags / Plan Gating (ligar/desligar módulos por loja/plano, override, tela de upgrade)
-- [ ] Abas exclusivas para `dev` (Assinaturas, Usuários, Logs, Config. Técnicas)
+- [x] Abas exclusivas para `dev` (Assinaturas, Usuários, Logs, Config. Técnicas)
 
 ### 🟡 P2 — Operação e Observabilidade
 - [ ] Logs de erro do frontend + API
