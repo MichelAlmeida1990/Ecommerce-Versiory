@@ -30,6 +30,7 @@ import { saveProduct, STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import { getBillingConfig, getBillingStatus, getBillingDueAmount } from '../services/billingConfig';
 import { getAccountsReceivable, saveAccountsReceivable, addAccountReceivable, updateAccountReceivable, deleteAccountReceivable, getAccountsPayable, saveAccountsPayable, addAccountPayable, updateAccountPayable, deleteAccountPayable } from '../services/accountsPayableReceivable';
 import { getBannerConfig, getDefaultBannerConfig, saveBannerConfig, fileToDataUrl, BANNER_MAX, BANNER_UPDATE_EVENT } from '../services/bannerConfig';
+import { getSmtpConfigFromFirestore, saveSmtpConfigToFirestore } from '../services/smtpConfig';
 import CouponManagement from './CouponManagement';
 import LabelGenerator from './LabelGenerator'; // REFCOM234
 import { normalizeGtin, isValidEan13 } from '../utils/barcode'; // REFCOM234/235
@@ -796,6 +797,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } catch {}
     return { host: 'smtp.gmail.com', port: 587, user: '', pass: '', encryption: 'tls', authRequired: true, fromEmail: '', fromName: 'Equipe Versiory' };
   });
+  // Carrega SMTP do Firestore (segredo fora do navegador) ao montar
+  useEffect(() => {
+    (async () => {
+      const remote = await getSmtpConfigFromFirestore();
+      if (remote) setSmtpSettings(remote);
+    })();
+  }, []);
 
   // REFCOM175: Configuração de Condições de Pagamento
   const [paymentConfig, setPaymentConfig] = useState(() => {
@@ -995,15 +1003,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     try {
-      // Salvar no localStorage
+      // Salvar no localStorage (cache local)
       localStorage.setItem('versiory_smtp', JSON.stringify(smtpSettings));
-      
-      // Em produção, aqui seria uma chamada para o backend salvar as configurações
-      // await fetch('/api/smtp/settings', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(smtpSettings)
-      // });
+
+      // Salvar no Firestore (segredo nao fica apenas no navegador)
+      await saveSmtpConfigToFirestore(smtpSettings);
 
       alert('✅ Configurações SMTP salvas com sucesso!');
     } catch (error) {
