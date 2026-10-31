@@ -28,6 +28,7 @@ import {
   saveCategory
 } from './services/firebase';
 import { getBillingStatus, getBillingConfig } from './services/billingConfig';
+import { logAudit } from './services/firebase';
 import { STORE_WHATSAPP_NUMBER } from './utils/constants';
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'versiory2024';
@@ -209,6 +210,7 @@ const AdminApp: React.FC = () => {
         setIsAuthenticated(true);
         setUserRole(role);
         setError('');
+        logAudit({ action: 'login', userRole: role, details: 'Login no painel admin' });
       } catch (error) {
         console.error('Erro ao salvar sessão:', error);
         setError('Erro ao fazer login.');

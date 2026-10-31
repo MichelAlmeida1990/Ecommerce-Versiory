@@ -355,6 +355,30 @@ export const clearAdminSession = async () => {
     localStorage.removeItem(ADMIN_SESSION_KEY);
 };
 
+// ---- Audit Log (fundacao) ----
+export interface AuditLogEntry {
+    id?: string;
+    userId?: string;
+    userRole?: string;
+    action: string;
+    entity?: string;
+    entityId?: string;
+    details?: string;
+    createdAt: number;
+}
+
+export const logAudit = async (entry: Omit<AuditLogEntry, 'id' | 'createdAt'>) => {
+    try {
+        const ref = doc(collection(db, 'audit_logs'));
+        await setDoc(ref, {
+            ...entry,
+            createdAt: Date.now()
+        });
+    } catch (error) {
+        console.error('Erro ao registrar audit log:', error);
+    }
+};
+
 // ---- Coupons (ERRCOM124) ----
 import { Coupon } from '../types';
 
