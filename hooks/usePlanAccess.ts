@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { PLAN_MODULES } from '../config/planConfig';
 
 export interface SubscriptionData {
   status?: 'pending' | 'active' | 'expired' | 'cancelled';
@@ -44,11 +45,13 @@ export const usePlanAccess = () => {
 
   const hasModule = (module: string): boolean => {
     if (!loaded) return true; // ainda carregando, libera tudo
-    const planId = user?.planId || subscription?.planId;
+    const planId = (user?.planId || subscription?.planId) as keyof typeof PLAN_MODULES | undefined;
     if (!planId) return true; // sem plano, libera tudo (compatibilidade)
     if (subscription?.status !== 'active') return true; // sem assinatura ativa, libera tudo (compatibilidade)
     if (isExpired()) return true; // expirado, libera tudo (compatibilidade)
-    return true; // por enquanto libera tudo ate implementar completo
+    const modules = PLAN_MODULES[planId];
+    if (!modules) return true; // plano desconhecido, libera tudo (compatibilidade)
+    return modules.includes(module);
   };
 
   const needsUpgrade = (): boolean => {
