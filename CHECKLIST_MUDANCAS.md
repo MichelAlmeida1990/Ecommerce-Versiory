@@ -38,7 +38,7 @@
 - [x] Dar ao `dev` abas exclusivas de suporte
 - [x] Enforçar planos em `usePlanAccess.hasModule` (hoje retorna `true`)
 - [x] Mover SMTP do `localStorage` para Firestore
-- [ ] Preencher aba "Assinaturas" com dados reais
+- [x] Preencher aba "Assinaturas" com dados reais
 - [ ] Documentar perfil `dev` em `CREDENCIAIS_ADMIN.md`
 
 ---
