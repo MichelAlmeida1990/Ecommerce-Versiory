@@ -30,9 +30,9 @@ import {
 import { getBillingStatus, getBillingConfig } from './services/billingConfig';
 import { STORE_WHATSAPP_NUMBER } from './utils/constants';
 
-const ADMIN_PASSWORD = 'versiory2024';
-const SELLER_PASSWORD = 'vendedor2024';
-const DEV_PASSWORD = 'devsuporte2026';
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'versiory2024';
+const SELLER_PASSWORD = import.meta.env.VITE_SELLER_PASSWORD || 'vendedor2024';
+const DEV_PASSWORD = import.meta.env.VITE_DEV_PASSWORD || 'devsuporte2026';
 const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes'];
 
 const AdminApp: React.FC = () => {
