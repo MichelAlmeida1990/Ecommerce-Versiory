@@ -5,7 +5,7 @@ import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import { getBillingStatus, getBillingConfig, getBillingDueAmount } from '../services/billingConfig';
 
 interface AdminLoginProps {
-  onLogin: (password: string, role: 'admin' | 'seller') => void;
+  onLogin: (password: string, role: 'admin' | 'seller' | 'dev') => void;
   error: string;
 }
 
@@ -14,7 +14,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const [role, setRole] = useState<'admin' | 'seller'>('seller');
+  const [role, setRole] = useState<'admin' | 'seller' | 'dev'>('seller');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +74,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
             {/* Profile Selection */}
             <div>
               <label className="block text-sm font-bold text-white/90 mb-3">Selecione seu perfil</label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={() => setRole('seller')}
@@ -109,7 +109,23 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
                     </svg>
                     <span className="text-sm">Admin</span>
                   </div>
-                  {role === 'admin' && (
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('dev')}
+                  className={`relative group px-4 py-4 rounded-2xl font-bold transition-all duration-300 ${
+                    role === 'dev'
+                      ? 'bg-gradient-to-br from-emerald-600 to-teal-600 text-white shadow-lg scale-105'
+                      : 'bg-white/10 text-white/90 hover:bg-white/20 hover:scale-105'
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                    <span className="text-sm">Dev</span>
+                  </div>
+                  {role === 'dev' && (
                     <div className="absolute inset-0 rounded-2xl border-2 border-white/50 animate-pulse"></div>
                   )}
                 </button>

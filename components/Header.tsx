@@ -25,9 +25,11 @@ const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const navigate = useNavigate();
 
   return (
+    <>
     <header className="fixed top-0 left-0 right-0 z-40 bg-[#fff7ef]/90 backdrop-blur-xl border-b border-[#eadfce] h-20 flex items-center">
       <div className="max-w-7xl mx-auto w-full px-4 md:px-8 flex items-center justify-between gap-8">
         {/* Logo Section */}
@@ -118,6 +120,17 @@ const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
+          {/* Busca mobile */}
+          <button
+            onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+            className="md:hidden p-2 text-slate-500 hover:bg-[#fff1e5] rounded-2xl transition-colors"
+            aria-label="Buscar"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
+
           <button
             onClick={onCartClick}
             className="relative p-3.5 sm:p-3 bg-versiory-ink text-white rounded-2xl shadow-lg hover:shadow-black/20 transition-all active:scale-95 flex items-center gap-2 group shrink-0 mr-1 sm:mr-0"
@@ -135,6 +148,26 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
+    {isMobileSearchOpen && (
+      <div className="fixed top-20 left-0 right-0 z-30 bg-[#fff7ef]/95 backdrop-blur-xl border-b border-[#eadfce] p-4 md:hidden shadow-lg">
+        <div className="relative">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <input
+            type="text"
+            autoFocus
+            placeholder="Buscar produtos..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="w-full bg-blue-50/70 border border-blue-200 rounded-2xl py-3 pl-12 pr-4 focus:bg-blue-50 focus:ring-4 ring-[#ffe1d2] outline-none transition-all placeholder:text-slate-400 text-slate-900 font-medium"
+          />
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

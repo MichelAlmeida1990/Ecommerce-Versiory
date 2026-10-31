@@ -57,7 +57,7 @@ interface AdminDashboardProps {
   tracking: TrackingItem[];
   inventoryMovements: InventoryMovement[];
   expenses: Expense[];
-  userRole: 'admin' | 'seller';
+  userRole: 'admin' | 'seller' | 'dev';
   onLogout: () => void;
   onUpdateProducts: (products: Product[]) => void;
   onUpdateCategories: (categories: CategoryItem[]) => void;

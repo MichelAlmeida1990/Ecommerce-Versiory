@@ -148,7 +148,7 @@ const ProductDetail: React.FC = () => {
           </ol>
         </nav>
 
-        <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-100">
+        <div className="bg-blue-100 rounded-3xl shadow-xl shadow-slate-200/50 overflow-hidden border border-blue-200">
           <div className="lg:grid lg:grid-cols-2 lg:gap-8 p-6 lg:p-12">
 
             {/* Left Column: Images */}
@@ -452,7 +452,7 @@ const ProductDetail: React.FC = () => {
         </div>
 
         {/* REFCOM244: Product Specs / About */}
-        <div id="detalhes" className="mt-12 bg-white rounded-3xl p-8 lg:p-12 shadow-sm border border-slate-100">
+        <div id="detalhes" className="mt-12 bg-blue-100 rounded-3xl p-8 lg:p-12 shadow-sm border border-blue-200">
           <h2 className="text-2xl font-bold text-slate-900 mb-6">Sobre este item</h2>
           <div className="prose prose-slate max-w-none prose-p:text-slate-600 prose-li:text-slate-600 prose-li:marker:text-versiory-coral whitespace-pre-wrap">
             <p>{product.description}</p>

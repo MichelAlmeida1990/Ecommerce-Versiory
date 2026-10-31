@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Product } from '../types';
 import ProductMediaShowcase from './ProductMediaShowcase';
+import { useIsFavorite } from '../utils/favorites';
 
 interface ProductModalProps {
   product: Product | null;
@@ -14,6 +15,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [sizeError, setSizeError] = useState(false);
   const [colorError, setColorError] = useState(false);
+  const [isFavorited, toggleFavorite] = useIsFavorite(product ? product.id : 0);
 
   if (!product) return null;
 
@@ -84,10 +86,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
 
-      <div className="relative bg-blue-50 border border-blue-200 w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[85vh] sm:max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white border border-slate-200 w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[90vh] lg:max-h-[85vh] lg:overflow-hidden">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-20 bg-blue-50/80 p-2 rounded-full hover:bg-blue-100 shadow-sm transition-colors"
+          className="absolute top-4 right-4 z-20 bg-white/90 p-2 rounded-full hover:bg-slate-100 shadow-sm transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -103,7 +105,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
         </div>
 
 
-        <div className="lg:w-1/2 p-6 sm:p-8 lg:p-10">
+        <div className="lg:w-1/2 p-6 sm:p-8 lg:p-10 lg:max-h-[85vh] lg:overflow-y-auto">
           <div className="flex items-center gap-2 mb-2">
             <span className="px-3 py-1 bg-[#fff1e7] text-versiory-coral text-sm font-bold rounded-full uppercase tracking-widest">
               {product.category}
@@ -115,9 +117,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
             </div>
           </div>
 
-          <h2 className="text-4xl font-black text-slate-800 mb-4">{product.name}</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-800 mb-4 leading-tight">{product.name}</h2>
 
-          <div className="text-5xl font-black text-versiory-coral mb-6">
+          <div className="text-3xl sm:text-4xl font-black text-versiory-coral mb-6">
             {/* ERRCOM138: Usar priceEcommerce para e-commerce */}
             R$ {(product.priceEcommerce || product.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
@@ -244,15 +246,19 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
             </div>
           )}
 
-          <div className="flex gap-4 sticky bottom-0 bg-blue-50 pt-4">
+          <div className="flex gap-4 sticky bottom-0 bg-white pt-4">
             <button
               onClick={handleAddToCart}
               className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-bold py-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-[0.98] text-base"
             >
               Adicionar ao Carrinho
             </button>
-            <button className="p-4 border-2 border-[#f1e2d5] rounded-2xl hover:bg-[#fff1e7] transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button
+              onClick={() => toggleFavorite()}
+              className={`p-4 border-2 rounded-2xl transition-colors ${isFavorited ? 'border-versiory-coral bg-[#fff1e7] text-versiory-coral' : 'border-[#f1e2d5] hover:bg-[#fff1e7] text-slate-400'}`}
+              aria-label={isFavorited ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill={isFavorited ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
             </button>

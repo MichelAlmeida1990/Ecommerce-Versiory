@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Product } from '../types';
+import { useIsFavorite } from '../utils/favorites';
 
 interface ProductCardProps {
   product: Product;
@@ -17,6 +18,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
   const [showColorError, setShowColorError] = useState(false);
   // REFCOM214: Estado para controlar expansão das características do serviço
   const [showServiceDetails, setShowServiceDetails] = useState(false);
+  const [isFavorited, toggleFavorite] = useIsFavorite(product.id);
 
   const handleAddToCart = () => {
     const isService = product.category === 'Serviços';
@@ -83,146 +85,66 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
   };
 
   return (
-    <div className="group relative bg-blue-50 rounded-[2rem] shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden border border-blue-200 flex flex-col h-full">
+    <div className="group relative bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-100 hover:border-slate-200 flex flex-col h-full">
       <div
-        className="aspect-[4/5] overflow-hidden cursor-pointer relative"
+        className="aspect-square overflow-hidden cursor-pointer relative bg-slate-50"
         onClick={() => onViewDetails(product)}
       >
         <img
           src={product.image}
           alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[1.5s]"
+          loading="lazy"
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
-        <div className="absolute top-4 left-4">
-          <div className="bg-[#fff6ed]/85 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black text-slate-900 shadow-sm uppercase tracking-tighter">
+        {/* Badge de desconto */}
+        {(() => {
+          const price = product.priceEcommerce || product.price;
+          if (product.priceEcommerce && product.priceEcommerce < product.price) {
+            const pct = Math.round((1 - product.priceEcommerce / product.price) * 100);
+            return (
+              <span className="absolute top-3 left-3 bg-versiory-coral text-white text-[11px] font-black px-2.5 py-1 rounded-full shadow-md">
+                -{pct}%
+              </span>
+            );
+          }
+          return null;
+        })()}
+        <div className="absolute top-3 right-3">
+          <div className="bg-white/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-slate-700 shadow-sm uppercase tracking-wide">
             {product.category}
           </div>
         </div>
-        <div className="absolute top-4 right-4">
-          <div className="bg-versiory-ink text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm">
-            Frete Gratis
-          </div>
-        </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+        {/* Favorito */}
+        <button
+          type="button"
+          aria-label={isFavorited ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+          className={`absolute bottom-3 right-3 w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md flex items-center justify-center transition-all ${isFavorited ? 'text-versiory-coral opacity-100' : 'text-slate-400 opacity-0 group-hover:opacity-100 hover:text-versiory-coral'}`}
+          onClick={(e) => { e.stopPropagation(); toggleFavorite(); }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill={isFavorited ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+        </button>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
       </div>
 
-      <div className="p-6 flex flex-col flex-1">
-        <div className="flex justify-between items-start mb-3">
-          <h3
-            className="text-xl font-black text-slate-900 leading-tight cursor-pointer hover:text-versiory-coral transition-colors"
-            onClick={() => onViewDetails(product)}
-          >
-            {product.name}
-          </h3>
+      <div className="p-4 flex flex-col flex-1">
+        <h3
+          className="text-base font-bold text-slate-900 leading-snug cursor-pointer hover:text-versiory-coral transition-colors line-clamp-2 min-h-[2.5rem]"
+          onClick={() => onViewDetails(product)}
+        >
+          {product.name}
+        </h3>
+
+        <div className="flex items-center gap-1 mt-1.5 mb-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <span key={i} className={`text-xs ${i < Math.round(product.rating || 0) ? 'text-amber-400' : 'text-slate-200'}`}>★</span>
+          ))}
+          <span className="text-[11px] text-slate-400 font-medium ml-1">({product.reviews})</span>
         </div>
-
-        <div className="flex items-center text-amber-500 text-xs font-black mb-4 gap-1">
-          <span>★</span>
-          <span className="text-slate-500">{product.rating}</span>
-          <span className="text-slate-300 ml-1 font-medium">({product.reviews})</span>
-        </div>
-
-        <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-md cursor-pointer">
-          <p className="text-sm line-clamp-2 font-medium leading-relaxed text-white whitespace-pre-line hover:bg-slate-700 hover:shadow-lg -mx-4 -my-4 px-4 py-4 rounded-2xl transition-all duration-300 ease-in-out">
-            {product.description}
-          </p>
-        </div>
-
-        {(product.category === 'Serviços' ? true : product.sizes && product.category !== 'Serviços') && (
-          <div className="mb-4">
-            <label className="text-xs font-bold text-slate-700 mb-2 block">
-              {product.category === 'Serviços' ? 'Tipo de Serviço:' : 'Tamanho:'}
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {product.sizes.split(',').map(size => {
-                const trimmedSize = size.trim();
-                let sizeStock = 0;
-
-                if (product.colors && product.stockBySizeColor) {
-                  product.colors.split(',').forEach(color => {
-                    sizeStock += getStockForSizeColor(trimmedSize, color.trim());
-                  });
-                } else {
-                  sizeStock = product.stockBySize?.[trimmedSize] || 0;
-                }
-
-                const isAvailable = sizeStock > 0;
-                const isSelected = selectedSize === trimmedSize;
-
-                return (
-                  <button
-                    key={trimmedSize}
-                    onClick={() => isAvailable && setSelectedSize(trimmedSize)}
-                    disabled={!isAvailable}
-                    className={`px-3 py-2 rounded-lg text-sm font-bold transition-all ${isSelected
-                      ? 'bg-versiory-coral text-white ring-2 ring-versiory-coral ring-offset-2'
-                      : isAvailable
-                        ? 'bg-white text-slate-900 hover:bg-slate-100 border-2 border-slate-200'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed line-through'
-                      }`}
-                  >
-                    {trimmedSize}
-                  </button>
-                );
-              })}
-            </div>
-            {showSizeError && (
-              <p className="text-xs text-red-600 font-bold mt-2 animate-pulse">
-                ⚠️ {product.category === 'Serviços' ? 'Selecione o tipo de serviço' : 'Selecione um tamanho'}
-              </p>
-            )}
-          </div>
-        )}
-
-        {(product.category === 'Serviços' ? true : product.colors && product.category !== 'Serviços') && (
-          <div className="mb-4">
-            <label className="text-xs font-bold text-slate-700 mb-2 block">
-              {product.category === 'Serviços' ? 'Horário Disponível:' : 'Cor:'}
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {product.colors.split(',').map(color => {
-                const trimmedColor = color.trim();
-                let colorStock = 0;
-
-                if (selectedSize && product.stockBySizeColor) {
-                  colorStock = getStockForSizeColor(selectedSize, trimmedColor);
-                } else if (product.sizes && product.stockBySizeColor) {
-                  product.sizes.split(',').forEach(size => {
-                    colorStock += getStockForSizeColor(size.trim(), trimmedColor);
-                  });
-                }
-
-                const isAvailable = colorStock > 0;
-                const isSelected = selectedColor === trimmedColor;
-
-                return (
-                  <button
-                    key={trimmedColor}
-                    onClick={() => isAvailable && setSelectedColor(trimmedColor)}
-                    disabled={!isAvailable}
-                    className={`px-3 py-2 rounded-lg text-sm font-bold transition-all ${isSelected
-                      ? 'bg-versiory-coral text-white ring-2 ring-versiory-coral ring-offset-2'
-                      : isAvailable
-                        ? 'bg-white text-slate-900 hover:bg-slate-100 border-2 border-slate-200'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed line-through'
-                      }`}
-                  >
-                    {trimmedColor}
-                    {isAvailable && <span className="text-[10px] ml-1 opacity-70">({colorStock})</span>}
-                  </button>
-                );
-              })}
-            </div>
-            {showColorError && (
-              <p className="text-xs text-red-600 font-bold mt-2 animate-pulse">
-                ⚠️ {product.category === 'Serviços' ? 'Selecione o horário disponível' : 'Selecione uma cor'}
-              </p>
-            )}
-          </div>
-        )}
 
         {product.category === 'Serviços' && product.serviceAttributes && (
-          <div className="mb-4">
+          <div className="mb-3">
             <button
               onClick={() => setShowServiceDetails(!showServiceDetails)}
               className="text-[10px] font-bold uppercase tracking-widest text-versiory-coral hover:text-versiory-ink transition-colors text-left"
@@ -237,41 +159,35 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
           </div>
         )}
 
-        <div className="mt-auto flex items-center justify-between">
-          <div className="flex flex-col">
-            <span className="text-[10px] text-slate-400 uppercase font-black tracking-[0.2em] mb-1">Preço Premium</span>
-            <span className="text-2xl font-black text-slate-900">
-              {/* REFCOM138: Usar priceEcommerce para e-commerce */}
+        <div className="mt-auto">
+          <div className="flex items-baseline gap-2">
+            <span className="text-xl font-black text-slate-900">
               R$ {(product.priceEcommerce || product.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </span>
-            {product.installments && product.installments > 1 && (
-              <span className="text-[10px] text-slate-500 font-bold mt-1">
-                {/* REFCOM138: Usar priceEcommerce para parcelamento */}
-                ou {product.installments}x de R$ {((product.priceEcommerce || product.price) / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            {product.priceEcommerce && product.priceEcommerce < product.price && (
+              <span className="text-xs text-slate-400 line-through">
+                R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </span>
             )}
           </div>
+          {product.installments && product.installments > 1 && (
+            <span className="text-[11px] text-slate-500 font-medium mt-0.5 block">
+              ou {product.installments}x de R$ {((product.priceEcommerce || product.price) / product.installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          )}
 
-          <div className="flex flex-col gap-2">
-            {/* ERRCOM044: Botão Mais Detalhes */}
+          <div className="flex gap-2 mt-3">
             <button
               onClick={() => onViewDetails(product)}
-              className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-versiory-coral transition-colors text-right"
+              className="flex-1 text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:text-versiory-coral transition-colors text-center py-2"
             >
-              Mais Detalhes →
+              Ver detalhes
             </button>
-                        <button
-              onClick={handleAddToCart}
-              disabled={(product.stock || 0) <= 0}
-              className={`p-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-90 group/btn ${
-                (product.stock || 0) <= 0 
-                  ? 'bg-slate-300 cursor-not-allowed' 
-                  : 'bg-versiory-ink hover:bg-versiory-coral text-white'
-              }`}
+            <button
+              onClick={() => onViewDetails(product)}
+              className="flex-1 bg-versiory-ink hover:bg-versiory-coral text-white text-[11px] font-black uppercase tracking-widest py-2.5 rounded-xl transition-all active:scale-95 shadow-md"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover/btn:rotate-90 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-              </svg>
+              Adicionar
             </button>
           </div>
         </div>

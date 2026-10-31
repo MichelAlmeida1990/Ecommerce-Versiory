@@ -291,7 +291,7 @@ const ADMIN_SESSION_KEY = "versiory_admin_session";
 
 export interface AdminSession {
     isAuthenticated: boolean;
-    role?: 'admin' | 'seller';
+    role?: 'admin' | 'seller' | 'dev';
     loginTime: number;
     lastActivity: number;
 }

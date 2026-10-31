@@ -422,6 +422,10 @@ const App: React.FC = () => {
               path="/"
               element={
                 <>
+                  {/* Announcement bar */}
+                  <div className="mb-6 bg-gradient-to-r from-versiory-ink to-slate-900 text-white text-center text-xs sm:text-sm font-bold py-2.5 px-4 rounded-xl shadow-sm">
+                    🚚 Frete grátis acima de R$ 199 &nbsp;•&nbsp; Use o cupom <span className="text-versiory-coral">PRIMEIRACOMPRA</span> e ganhe 10% off
+                  </div>
                   {/* REFCOM210: Hero Banner Dinâmico */}
                   {bannerConfig.banners.length > 0 ? (
                     <section className="mb-12 relative rounded-3xl overflow-hidden shadow-2xl h-[400px]">
@@ -535,10 +539,28 @@ const App: React.FC = () => {
                     </div>
                   </section>
 
-                  <div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {filteredProducts.map(p => (
-                      <ProductCard key={p.id} product={p} onAddToCart={addToCart} onViewDetails={setSelectedProduct} />
-                    ))}
+<div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+                    {filteredProducts.length > 0 ? (
+                      filteredProducts.map(p => (
+                        <ProductCard key={p.id} product={p} onAddToCart={addToCart} onViewDetails={setSelectedProduct} />
+                      ))
+                    ) : (
+                      <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
+                        <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900 mb-2">Nenhum produto encontrado</h3>
+                        <p className="text-slate-500 max-w-md">Tente ajustar os filtros ou a busca. Explore outras categorias para encontrar o que procura.</p>
+                        <button
+                          onClick={() => { setActiveCategory('Todos'); setSearchQuery(''); }}
+                          className="mt-6 bg-versiory-ink hover:bg-versiory-coral text-white font-bold px-6 py-3 rounded-xl transition-all"
+                        >
+                          Limpar filtros
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </>
               }

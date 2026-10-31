@@ -32,11 +32,12 @@ import { STORE_WHATSAPP_NUMBER } from './utils/constants';
 
 const ADMIN_PASSWORD = 'versiory2024';
 const SELLER_PASSWORD = 'vendedor2024';
+const DEV_PASSWORD = 'devsuporte2026';
 const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes'];
 
 const AdminApp: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState<'admin' | 'seller'>('seller');
+  const [userRole, setUserRole] = useState<'admin' | 'seller' | 'dev'>('seller');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
@@ -183,16 +184,19 @@ const AdminApp: React.FC = () => {
     };
   }, [isAuthenticated]);
 
-  const handleLogin = async (password: string, role: 'admin' | 'seller') => {
-    const billing = getBillingStatus(getBillingConfig());
-    if (billing.blocked) {
-      setError('🔒 Acesso bloqueado por inadimplência. Regularize o pagamento para continuar.');
-      return;
+  const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev') => {
+    if (role !== 'dev') {
+      const billing = getBillingStatus(getBillingConfig());
+      if (billing.blocked) {
+        setError('🔒 Acesso bloqueado por inadimplência. Regularize o pagamento para continuar.');
+        return;
+      }
     }
 
     const isValidPassword =
       (role === 'admin' && password === ADMIN_PASSWORD) ||
-      (role === 'seller' && password === SELLER_PASSWORD);
+      (role === 'seller' && password === SELLER_PASSWORD) ||
+      (role === 'dev' && password === DEV_PASSWORD);
 
     if (isValidPassword) {
       try {
