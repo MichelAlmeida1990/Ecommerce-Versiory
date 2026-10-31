@@ -154,7 +154,7 @@ export async function generateTotp(secret, window = 0) {
 export async function verifyTotp(secret, code) {
   const clean = code.replace(/\s/g, '');
   if (!/^\d{6}$/.test(clean)) return false;
-  for (const w of [-1, 0, 1]) {
+  for (let w = -6; w <= 6; w++) {
     const expected = await generateTotp(secret, w);
     if (expected === clean) return true;
   }
