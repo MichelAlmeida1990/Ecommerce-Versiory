@@ -12,6 +12,7 @@ import {
     getDoc,
     onSnapshot
 } from "firebase/firestore";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
     Product,
     Order,
@@ -36,6 +37,21 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+
+// ---- Firebase Auth helpers (fundacao para migracao do login admin) ----
+export const signInAdmin = async (email: string, password: string) => {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    return cred.user;
+};
+
+export const signOutAdmin = async () => {
+    await signOut(auth);
+};
+
+export const onAdminAuthChanged = (callback: (user: FirebaseUser | null) => void) => {
+    return onAuthStateChanged(auth, callback);
+};
 
 // ---- Cloudinary Setup ----
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dq1hw3zyq/image/upload";
