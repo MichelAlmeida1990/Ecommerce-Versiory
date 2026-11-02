@@ -20,10 +20,10 @@ const ChatWidget: React.FC = () => {
   };
 
   return (
-    <div className="fixed right-4 bottom-4 sm:right-6 sm:bottom-6 z-[100] flex flex-col items-end gap-3 animate-in fade-in duration-700 max-w-[calc(100vw-2rem)]">
+    <div className="fixed inset-x-0 bottom-0 sm:inset-auto sm:right-6 sm:bottom-6 z-[100] flex flex-col items-stretch sm:items-end gap-3 animate-in fade-in duration-700">
       {isOpen && (
-        <div className="w-[calc(100vw-2rem)] max-w-[360px] max-h-[85vh] bg-white rounded-[2rem] shadow-2xl border border-white/20 overflow-hidden flex flex-col animate-in slide-in-from-bottom-5 duration-300">
-          <div className="bg-[#075e54] p-6 text-white relative overflow-hidden">
+        <div className="w-full sm:w-[calc(100vw-2rem)] sm:max-w-[360px] max-h-[85vh] bg-white rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl border border-white/20 overflow-hidden flex flex-col animate-in slide-in-from-bottom-5 duration-300">
+          <div className="bg-[#075e54] p-4 sm:p-6 text-white relative overflow-hidden shrink-0">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
             <div className="relative flex items-center gap-4">
               <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-2xl relative">
@@ -51,11 +51,11 @@ const ChatWidget: React.FC = () => {
             </div>
           </div>
 
-          <div className="p-6 bg-white border-t border-slate-100 italic text-slate-400 text-xs text-center">
+          <div className="p-4 sm:p-6 bg-white border-t border-slate-100 italic text-slate-400 text-xs text-center shrink-0">
             Atendimento disponível: {supportHours}
           </div>
 
-          <div className="p-4 bg-white">
+          <div className="p-4 bg-white shrink-0">
             <button
               onClick={handleWhatsAppSupport}
               className="w-full bg-[#25d366] hover:bg-[#128c7e] text-white py-4 rounded-2xl font-black text-base shadow-xl shadow-green-500/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
