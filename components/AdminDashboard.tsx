@@ -10445,7 +10445,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                   <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm break-words ${
                     msg.from === 'user'
                       ? 'bg-blue-600 text-white rounded-br-md'
-                      : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md'
+                      : 'bg-white border border-slate-200 text-slate-900 rounded-bl-md'
                   }`}>
                     {msg.text}
                   </div>
@@ -10485,7 +10485,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                     type="button"
                     key={suggestion}
                     onClick={() => { setSupportInput(suggestion); }}
-                    className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 transition-all"
+                    className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-900 px-2 py-1 rounded-lg border border-slate-200 transition-all"
                   >
                     {suggestion}
                   </button>
