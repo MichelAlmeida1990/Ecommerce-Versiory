@@ -39,6 +39,7 @@ const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes'];
 const AdminApp: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<'admin' | 'seller' | 'dev'>('seller');
+  const [devSetupSecret, setDevSetupSecret] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
@@ -206,13 +207,12 @@ const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', t
 
     // 2FA para perfil dev
     if (role === 'dev') {
-      const { generateTotpSecret, verifyTotp } = await import('./utils/totp');
+      const { generateTotpSecret, verifyTotp, totpOtpAuthUrl } = await import('./utils/totp');
       let secret = localStorage.getItem('versiory_dev_totp_secret');
       if (!secret) {
-        // Primeiro acesso: gerar segredo e solicitar configuração
         secret = generateTotpSecret();
         localStorage.setItem('versiory_dev_totp_secret', secret);
-        alert(`2FA configurado. No app autenticador, adicione conta manualmente:\n\nNome da conta: Dev Versiory\nSegredo: ${secret}\nTipo: baseado em tempo (TOTP)\nDígitos: 6\nPeríodo: 30s\n\nDepois faça login novamente informando o código de 6 dígitos.`);
+        setDevSetupSecret(secret);
         return;
       }
       const ok = await verifyTotp(secret, totpCode || '');
@@ -289,6 +289,22 @@ const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', t
   }
 
   if (!isAuthenticated) {
+    if (devSetupSecret) {
+      const url = `otpauth://totp/Versiory:Dev%20Versiory?secret=${devSetupSecret}&issuer=Versiory&digits=6&period=30`;
+      const qr = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white p-6">
+          <div className="bg-slate-800 rounded-2xl p-6 max-w-sm w-full text-center space-y-4">
+            <h2 className="text-xl font-bold">Configurar 2FA (Dev)</h2>
+            <p className="text-sm text-slate-300">Escaneie o QR no app autenticador ou adicione manualmente:</p>
+            <img src={qr} alt="QR 2FA" className="mx-auto rounded-lg bg-white p-2" />
+            <div className="text-xs break-all bg-slate-700 p-2 rounded font-mono">{devSetupSecret}</div>
+            <p className="text-xs text-slate-400">Depois faça login novamente informando o código de 6 dígitos.</p>
+            <button onClick={() => setDevSetupSecret(null)} className="w-full py-2 bg-blue-600 rounded-lg font-bold">Continuar</button>
+          </div>
+        </div>
+      );
+    }
     return <AdminLogin onLogin={handleLogin} error={error} />;
   }
 
