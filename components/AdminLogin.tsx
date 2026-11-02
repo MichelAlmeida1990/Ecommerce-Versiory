@@ -13,10 +13,10 @@ interface AdminLoginProps {
 const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [totpCode, setTotpCode] = useState("");
 
   const [role, setRole] = useState<'admin' | 'seller' | 'dev'>('seller');
   const [bannerDismissed, setBannerDismissed] = useState(() => localStorage.getItem('billingBannerDismissed') === '1');
+  const [totpCode, setTotpCode] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,7 +189,24 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
                </div>
              )}
 
-             {/* Error Message */}
+             {/* TOTP 2FA para dev */}
+            {role === 'dev' && (
+              <div>
+                <label htmlFor="totp" className="block text-sm font-bold text-white/90 mb-3">Código 2FA (TOTP)</label>
+                <input
+                  className="w-full px-5 py-4 bg-slate-800/50 backdrop-blur-xl border border-white/30 rounded-2xl text-white placeholder:text-white/60 focus:bg-slate-800/70 focus:border-white/50 focus:ring-4 focus:ring-white/20 outline-none transition-all duration-300 text-base font-medium"
+                  type="text"
+                  id="totp"
+                  value={totpCode}
+                  onChange={e => setTotpCode(e.target.value)}
+                  placeholder="000000"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                />
+              </div>
+            )}
+
+            {/* Error Message */}
             {error && (
               <div className="bg-red-500/20 backdrop-blur-xl border border-red-300/30 text-white px-4 py-3 rounded-2xl text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="flex items-center gap-2">
