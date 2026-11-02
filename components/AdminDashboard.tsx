@@ -10415,12 +10415,12 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
 
       {/* REFCOM224/REFCOM_support: Modal de Suporte - Chat Bot */}
       {isSupportOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsSupportOpen(false)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-versiory-coral to-pink-600">
+          <div className="relative bg-white w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-versiory-coral to-pink-600 shrink-0">
                   <img
                     src="https://drive.google.com/uc?export=download&id=1Vw7xZsP6Ngu-8ydnpDVP8283OOJrTTDp"
                     alt="Sabor IA"
@@ -10431,18 +10431,18 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                     }}
                   />
                 </div>
-                <div>
-                  <h2 className="text-base font-black text-slate-900">Sabor IA - Assistente Versiory</h2>
+                <div className="min-w-0">
+                  <h2 className="text-base font-black text-slate-900 truncate">Sabor IA - Assistente Versiory</h2>
                   <p className="text-[11px] text-slate-500">Online • Respostas automáticas</p>
                 </div>
               </div>
-              <button onClick={() => setIsSupportOpen(false)} className="text-slate-500 hover:text-slate-900 text-xl font-bold">✕</button>
+              <button onClick={() => setIsSupportOpen(false)} className="text-slate-500 hover:text-slate-900 text-xl font-bold shrink-0 ml-2">✕</button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50 min-h-0">
               {supportMessages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm break-words ${
                     msg.from === 'user'
                       ? 'bg-blue-600 text-white rounded-br-md'
                       : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md'
@@ -10453,8 +10453,8 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
               ))}
             </div>
 
-            <div className="p-4 border-t border-slate-200 bg-white">
-              <div className="flex gap-2">
+            <div className="p-3 sm:p-4 border-t border-slate-200 bg-white shrink-0">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   value={supportInput}
                   onChange={e => setSupportInput(e.target.value)}
@@ -10462,22 +10462,27 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                   placeholder="Digite sua dúvida..."
                   className="flex-1 bg-slate-100 border border-slate-200 text-slate-900 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <button
-                  onClick={handleSupportSend}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all"
-                >
-                  Enviar
-                </button>
-                <button
-                  onClick={() => { setIsSupportOpen(false); window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte no painel Versiory Store.`, '_blank'); }}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all"
-                >
-                  WhatsApp
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSupportSend}
+                    className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-bold text-sm transition-all"
+                  >
+                    Enviar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsSupportOpen(false); window.open(`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=Olá! Preciso de suporte no painel Versiory Store.`, '_blank'); }}
+                    className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl font-bold text-sm transition-all"
+                  >
+                    WhatsApp
+                  </button>
+                </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {['Como emitir NF-e?', 'Checkout com preço errado', 'Produto indisponível', 'Não recebo e-mails', 'Falar com atendente'].map(suggestion => (
                   <button
+                    type="button"
                     key={suggestion}
                     onClick={() => { setSupportInput(suggestion); }}
                     className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 transition-all"

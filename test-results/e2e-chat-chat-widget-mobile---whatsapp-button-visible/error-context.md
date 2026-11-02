@@ -1,0 +1,583 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: e2e\chat.spec.ts >> chat widget mobile - whatsapp button visible
+- Location: e2e\chat.spec.ts:3:1
+
+# Error details
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByText('Abrir WhatsApp')
+Expected: visible
+Timeout: 5000ms
+Error: element(s) not found
+
+Call log:
+  - Expect "toBeVisible" getByText('Abrir WhatsApp') with timeout 5000ms
+  - waiting for getByText('Abrir WhatsApp')
+
+```
+
+```yaml
+- banner:
+  - link "VersioryStore Premium Digital Store":
+    - /url: /
+    - img
+    - text: VersioryStore Premium Digital Store
+  - button "Perfil":
+    - img
+  - button "Buscar":
+    - img
+  - button:
+    - img
+- main:
+  - text: 🚚 Frete grátis acima de R$ 199 • Use o cupom PRIMEIRACOMPRA e ganhe 10% off
+  - img "Banner"
+  - heading "Categorias" [level=2]
+  - paragraph: Explore nossos produtos por categoria
+  - button "Todos"
+  - button "Auto"
+  - button "Calçados"
+  - button "Cama Mesa e Banho"
+  - button "Casa e Decoração"
+  - button "Cosméticos"
+  - button "Eletrônicos"
+  - button "Esportes"
+  - button "Acessórios"
+  - button "Moda"
+  - button "Pet Shop"
+  - button "Saúde e Bem‑Estar"
+  - button "Serviços"
+  - button "Suplementos"
+  - button "Vestuário"
+  - heading "Produtos em Destaque" [level=2]
+  - paragraph: 53 produtos encontrados
+  - text: "Ordenar por:"
+  - combobox:
+    - option "Padrão" [selected]
+    - option "Menor Preço"
+    - option "Maior Preço"
+    - option "Melhor Avaliação"
+  - img "Headphone Aguatc's ®"
+  - text: Eletrônicos
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Headphone Aguatc's ®" [level=3]
+  - text: ★ ★ ★ ★ ★ (124) R$ 350,50 ou 12x de R$ 29,208
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Calça Moletom Versiory Prime ®"
+  - text: Vestuário
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Calça Moletom Versiory Prime ®" [level=3]
+  - text: ★ ★ ★ ★ ★ (10) R$ 159,99
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Tenis Nike AIR"
+  - text: "-3% Calçados"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Tenis Nike AIR" [level=3]
+  - text: ★ ★ ★ ★ ★ (10) R$ 387,40 R$ 397,56 ou 5x de R$ 77,48
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Kit Capacete + Oculos"
+  - text: "-17% Auto"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Kit Capacete + Oculos" [level=3]
+  - text: ★ ★ ★ ★ ★ (1015) R$ 500,00 R$ 600,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Óleo 10W40 + Troca na loja (grátis)"
+  - text: "-25% Auto"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Óleo 10W40 + Troca na loja (grátis)" [level=3]
+  - text: ★ ★ ★ ★ ★ (299) R$ 149,99 R$ 200,00 ou 5x de R$ 29,998
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Toalha de Banho"
+  - text: "-1% Cama Mesa e Banho"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Toalha de Banho" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 149,00 R$ 150,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "HEADPHONE JBL TUNE 520BT"
+  - text: Eletrônicos
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "HEADPHONE JBL TUNE 520BT" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 299,55
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Peruca para cachorro"
+  - text: Pet Shop
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Peruca para cachorro" [level=3]
+  - text: ★ ★ ★ ★ ★ (100) R$ 325,99
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Pulseira Trevo de 4 folhas"
+  - text: Acessórios
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Pulseira Trevo de 4 folhas" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 120,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Relógio Inteligente S3"
+  - text: Joias
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Relógio Inteligente S3" [level=3]
+  - text: ★ ★ ★ ★ ★ (89) R$ 1.249,00 ou 6x de R$ 208,167
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Relogio Acelerator Versiory Design"
+  - text: Acessórios
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Relogio Acelerator Versiory Design" [level=3]
+  - text: ★ ★ ★ ★ ★ (10) R$ 398,58 ou 2x de R$ 199,29
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Blusa manga longa Versiory"
+  - text: Vestuário
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Blusa manga longa Versiory" [level=3]
+  - text: ★ ★ ★ ★ ★ (100) R$ 899,78
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Look Praia Elegante (Com 4 itens)"
+  - text: Vestuário
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Look Praia Elegante (Com 4 itens)" [level=3]
+  - text: ★ ★ ★ ★ ★ (987) R$ 495,99 ou 12x de R$ 41,333
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Consulta Veterinária (Check-up Preventivo)"
+  - text: Serviços
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Consulta Veterinária (Check-up Preventivo)" [level=3]
+  - text: ★ ★ ★ ★ ★ (1000)
+  - button "▶ Mais detalhes"
+  - text: R$ 250,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Pneu Michelin + Troca na loja"
+  - text: Auto
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Pneu Michelin + Troca na loja" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 1.250,00 ou 4x de R$ 312,50
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Camiseta Personalizada + Logo"
+  - text: Vestuário
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Camiseta Personalizada + Logo" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 948,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Pneu KPR Pro"
+  - text: Auto
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Pneu KPR Pro" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 795,23
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "KIT - WHEY PROTEIN VERSIORY ISOLADO"
+  - text: "-67% Suplementos"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "KIT - WHEY PROTEIN VERSIORY ISOLADO" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 100,00 R$ 300,00 ou 10x de R$ 10,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Sérum de vitamina C+"
+  - text: "-63% Cosméticos"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Sérum de vitamina C+" [level=3]
+  - text: ★ ★ ★ ★ ★ (150) R$ 55,00 R$ 150,00 ou 5x de R$ 11,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Glow Pink Essentials"
+  - text: "-14% Cosméticos"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Glow Pink Essentials" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 85,99 R$ 99,97 ou 2x de R$ 42,995
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Tênis Versiory Speed ®"
+  - text: "-36% Calçados"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Tênis Versiory Speed ®" [level=3]
+  - text: ★ ★ ★ ★ ★ (256) R$ 355,55 R$ 559,90 ou 5x de R$ 71,11
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Camiseta Lisa"
+  - text: "-50% Vestuário"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Camiseta Lisa" [level=3]
+  - text: ★ ★ ★ ★ ★ (5000) R$ 50,00 R$ 100,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Blusa Versiory Premium"
+  - text: Vestuário
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Blusa Versiory Premium" [level=3]
+  - text: ★ ★ ★ ★ ★ (1500) R$ 597,99 ou 10x de R$ 59,799
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Blusa Rubra di Mare"
+  - text: Moda
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Blusa Rubra di Mare" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 399,97 ou 12x de R$ 33,331
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Blusa Mediterrânea Flora"
+  - text: Moda
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Blusa Mediterrânea Flora" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 349,99 ou 12x de R$ 29,166
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Kit Therno e Camisa Versory Executive Luxe"
+  - text: Vestuário
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Kit Therno e Camisa Versory Executive Luxe" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 1.997,59 ou 12x de R$ 166,466
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Kit Luxo para Pet"
+  - text: Pet Shop
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Kit Luxo para Pet" [level=3]
+  - text: ★ ★ ★ ★ ★ (987) R$ 4.699,00 ou 12x de R$ 391,583
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Óculos Versiory DayMont Woman"
+  - text: "-6% Moda"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Óculos Versiory DayMont Woman" [level=3]
+  - text: ★ ★ ★ ★ ★ (5198) R$ 1.859,00 R$ 1.987,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Conjunto Fitness Premium"
+  - text: Vestuário
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Conjunto Fitness Premium" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 239,50
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Óculos Meta WatFarer"
+  - text: "-9% Eletrônicos"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Óculos Meta WatFarer" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 3.550,00 R$ 3.900,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Óculos R3 Versiory ® + Serviço (DNP) na Loja"
+  - text: Moda
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Óculos R3 Versiory ® + Serviço (DNP) na Loja" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 345,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Jaqueta Bomber Urbana"
+  - text: Moda
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Jaqueta Bomber Urbana" [level=3]
+  - text: ★ ★ ★ ★ ★ (42) R$ 299,90
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Sapato Scarpin Versiory® Collection"
+  - text: Moda
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Sapato Scarpin Versiory® Collection" [level=3]
+  - text: ★ ★ ★ ★ ★ (1000) R$ 705,99 ou 2x de R$ 352,995
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Sofa Premium"
+  - text: "-44% Casa e Decoração"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Sofa Premium" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 1.234,56 R$ 2.199,55 ou 6x de R$ 205,76
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Brinco Borboleta luxo"
+  - text: Moda
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Brinco Borboleta luxo" [level=3]
+  - text: ★ ★ ★ ★ ★ (2000) R$ 45,50 ou 10x de R$ 4,55
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Tenis Feminino Versiory® Collection"
+  - text: Calçados
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Tenis Feminino Versiory® Collection" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 270,00 ou 5x de R$ 54,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "SUPLEMENTO EM GOMA + MAGNESION"
+  - text: "-16% Suplementos"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "SUPLEMENTO EM GOMA + MAGNESION" [level=3]
+  - text: ★ ★ ★ ★ ★ (9002) R$ 499,00 R$ 595,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "GLOW SKIN LOREN (Hidratação-Profunda)"
+  - text: Cosméticos
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "GLOW SKIN LOREN (Hidratação-Profunda)" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 370,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Fone FhonEx ® 366d"
+  - text: Saúde e Bem‑Estar
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Fone FhonEx ® 366d" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 55,77
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "ASTRO HIALURÔNICO 90Cp"
+  - text: Suplementos
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "ASTRO HIALURÔNICO 90Cp" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 398,50
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Kit Moletom Nike Exclusive (Calça + Blusa+ Bone+ Tênis)"
+  - text: Moda
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Kit Moletom Nike Exclusive (Calça + Blusa+ Bone+ Tênis)" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 2.397,97 ou 5x de R$ 479,594
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Cobertor Infantil Versiory Kids ®"
+  - text: Cama Mesa e Banho
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Cobertor Infantil Versiory Kids ®" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 98,75
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Luminária de Mesa Nórdica"
+  - text: Casa e Decoração
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Luminária de Mesa Nórdica" [level=3]
+  - text: ★ ★ ★ ★ ★ (67) R$ 189,90
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Relógio V-Whotch ®"
+  - text: Eletrônicos
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Relógio V-Whotch ®" [level=3]
+  - text: ★ ★ ★ ★ ★ (50044) R$ 985,75
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Vestido Pink Majesty"
+  - text: "-0% Vestuário"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Vestido Pink Majesty" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 3.979,95 R$ 3.985,99
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Nobre Sovereign Cinza"
+  - text: Vestuário
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Nobre Sovereign Cinza" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 4.699,95
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Vacina (contra a raiva)"
+  - text: "-0% Serviços"
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Vacina (contra a raiva)" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 89,98 R$ 90,00 ou 2x de R$ 44,99
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Exame para raças de grande porte"
+  - text: Pet Shop
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Exame para raças de grande porte" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 19.899,99
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Banho especializado"
+  - text: Pet Shop
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Banho especializado" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 3.898,55
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Câmera Mirrorless X100"
+  - text: Eletrônicos
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Câmera Mirrorless X100" [level=3]
+  - text: ★ ★ ★ ★ ★ (31) R$ 4.500,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Mochila Tech Pro"
+  - text: Acessórios
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Mochila Tech Pro" [level=3]
+  - text: ★ ★ ★ ★ ★ (112) R$ 349,00
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Garrafa Térmica Versiory"
+  - text: Esportes
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Garrafa Térmica Versiory" [level=3]
+  - text: ★ ★ ★ ★ ★ (534) R$ 400,00 ou 12x de R$ 33,333
+  - button "Ver detalhes"
+  - button "Adicionar"
+  - img "Blusa de Malha Versiory"
+  - text: Vestuário
+  - button "Adicionar aos favoritos":
+    - img
+  - heading "Blusa de Malha Versiory" [level=3]
+  - text: ★ ★ ★ ★ ★ (0) R$ 359,99
+  - button "Ver detalhes"
+  - button "Adicionar"
+- contentinfo:
+  - heading "Versiory Store" [level=3]
+  - paragraph: Transformando ideias em sucesso. Sua loja de confiança para produtos de qualidade.
+  - link:
+    - /url: https://facebook.com
+    - img
+  - link:
+    - /url: https://instagram.com
+    - img
+  - link:
+    - /url: https://twitter.com
+    - img
+  - heading "Links Rápidos" [level=4]
+  - list:
+    - listitem:
+      - link "Sobre Nós":
+        - /url: "#"
+    - listitem:
+      - link "Contato":
+        - /url: https://wa.me/5511958540171
+    - listitem:
+      - link "Painel Admin":
+        - /url: /admin.html
+    - listitem:
+      - link "Política de Privacidade":
+        - /url: "#"
+    - listitem:
+      - link "Termos de Uso":
+        - /url: "#"
+  - heading "Atendimento" [level=4]
+  - list:
+    - listitem:
+      - link "FAQ":
+        - /url: "#"
+    - listitem:
+      - link "Trocas e Devoluções":
+        - /url: "#"
+    - listitem:
+      - link "Rastreamento":
+        - /url: /tracking
+    - listitem:
+      - link "Formas de Pagamento":
+        - /url: "#"
+  - heading "Segurança" [level=4]
+  - img
+  - paragraph: Site Seguro
+  - paragraph: Ambiente Criptografado
+  - paragraph: SSL 256-bit Certified
+  - img "Google"
+  - text: Safe Browsing
+  - paragraph: © 2026 Versiory Store. Todos os direitos reservados. | Versão 2.9.2 (Estável)
+- button "!":
+  - img
+  - text: "!"
+- button:
+  - img
+- img
+- heading "Bem-vindo" [level=2]
+- paragraph: Faça login para continuar
+- text: E-mail
+- textbox "seu@email.com"
+- text: Senha
+- textbox "••••••••"
+- button "Esqueceu a senha?"
+- button "Entrar"
+- button "Ainda não tem conta? Crie agora"
+```
+
+# Test source
+
+```ts
+  1  | import { test, expect } from '@playwright/test';
+  2  | 
+  3  | test('chat widget mobile - whatsapp button visible', async ({ page }) => {
+  4  |   await page.setViewportSize({ width: 375, height: 667 });
+  5  |   await page.goto('http://localhost:3002/');
+  6  |   await page.waitForTimeout(2000);
+  7  |   await page.screenshot({ path: 'C:\\temp\\before.png' });
+  8  |   const chatBtn = page.locator('button.group').first();
+  9  |   console.log('chatBtn count:', await chatBtn.count());
+  10 |   await chatBtn.click();
+  11 |   await page.waitForTimeout(1500);
+  12 |   await page.screenshot({ path: 'C:\\temp\\after.png' });
+  13 |   const waBtn = page.getByText('Abrir WhatsApp');
+  14 |   console.log('waBtn count:', await waBtn.count());
+> 15 |   await expect(waBtn).toBeVisible();
+     |                       ^ Error: expect(locator).toBeVisible() failed
+  16 | });
+  17 | 
+```
