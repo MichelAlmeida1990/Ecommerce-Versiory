@@ -29,7 +29,8 @@ import ProductMediaShowcase from './ProductMediaShowcase';
 import CashRegisterReport from './CashRegisterReport';
 import { saveProduct, STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import { getBillingConfig, getBillingStatus, getBillingDueAmount } from '../services/billingConfig';
-import { getSubscriptions, approveSubscription, cancelSubscription, deleteSubscription } from '../services/subscriptionService';
+import { getSubscriptions, approveSubscription, cancelSubscription, deleteSubscription, updateSubscription } from '../services/subscriptionService';
+import DevPanel from './DevPanel';
 import { getAccountsReceivable, saveAccountsReceivable, addAccountReceivable, updateAccountReceivable, deleteAccountReceivable, getAccountsPayable, saveAccountsPayable, addAccountPayable, updateAccountPayable, deleteAccountPayable } from '../services/accountsPayableReceivable';
 import { getBannerConfig, getDefaultBannerConfig, saveBannerConfig, fileToDataUrl, BANNER_MAX, BANNER_UPDATE_EVENT } from '../services/bannerConfig';
 import { getSmtpConfigFromFirestore, saveSmtpConfigToFirestore } from '../services/smtpConfig';
@@ -90,7 +91,8 @@ const TAB_MODULE_MAP = {
   coupons: 'cupons',
   settings: 'dashboard',
   support: 'dashboard',
-  subscriptions: 'dashboard'
+  subscriptions: 'dashboard',
+  dev: 'dashboard'
 };
 
 type TabKey =
@@ -111,7 +113,8 @@ type TabKey =
   | 'payment'
   | 'coupons' // REFCOM204: Módulo Cupom Desconto
   | 'labels' // REFCOM234
-  | 'subscriptions'; // REFCOM252: Assinaturas: Geração de código de barras e etiquetas de preço
+  | 'subscriptions' // REFCOM252: Assinaturas: Geração de código de barras e etiquetas de preço
+  | 'dev'; // Painel do Desenvolvedor
 
 type StockFilter = 'all' | 'low' | 'out' | 'normal';
 
@@ -207,7 +210,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateInventoryMovements,
   onUpdateExpenses
 }) => {
-  const [activeTab, setActiveTab] = useState<TabKey>(userRole === 'seller' ? 'pdv' : 'dashboard');
+  const [activeTab, setActiveTab] = useState<TabKey>(userRole === 'seller' ? 'pdv' : userRole === 'dev' ? 'dev' : 'dashboard');
   const planAccess = usePlanAccess();
 
   // REFCOM198: Aplicar restrições de faturamento
@@ -4717,6 +4720,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
             {(
               userRole === 'dev' || (userRole === 'admin' && !billingStatus.blockAdmin)
                 ? [
+                    userRole === 'dev' ? ['dev', '⚡ Dev'] as [TabKey, string] : null,
                     ['dashboard', 'Dashboard'],
                     ['pdv', 'PDV Loja'],
                     ['products', 'Produtos'],
@@ -4742,7 +4746,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                     ['orders', 'Pedidos'],
                     ['fiscal', 'Fiscal/NF-e']
                   ]
-            ).filter(([key]) => {
+            ).filter(Boolean).filter(([key]) => {
               const module = TAB_MODULE_MAP[key] || 'dashboard';
               return planAccess.hasModule(module);
             }).map(([key, label]) => (
@@ -7240,6 +7244,10 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
             </div>
           </div>
         )}
+
+         {activeTab === 'dev' && userRole === 'dev' && (
+           <DevPanel />
+         )}
 
          {activeTab === 'subscriptions' && (
            <div className='space-y-6'>
