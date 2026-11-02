@@ -708,6 +708,14 @@ const App: React.FC = () => {
 
         <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} onAddToCart={addToCart} />
 
+        <button
+          onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}
+          className="fixed right-4 bottom-24 sm:right-6 sm:bottom-28 z-[99] md:hidden bg-slate-800/80 text-white w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-lg"
+          aria-label="Rolar para o final"
+        >
+          ↓
+        </button>
+
         <ChatWidget />
 
         <CustomerOrders customerEmail={currentUserEmail} isOpen={isCustomerOrdersOpen} onClose={() => setIsCustomerOrdersOpen(false)} />
