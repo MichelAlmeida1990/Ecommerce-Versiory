@@ -20,9 +20,9 @@ const ChatWidget: React.FC = () => {
   };
 
   return (
-    <div className="fixed right-6 bottom-6 z-[100] flex flex-col items-end gap-4 animate-in fade-in duration-700">
+    <div className="fixed right-4 bottom-4 sm:right-6 sm:bottom-6 z-[100] flex flex-col items-end gap-3 animate-in fade-in duration-700 max-w-[calc(100vw-2rem)]">
       {isOpen && (
-        <div className="w-[320px] sm:w-[360px] bg-white rounded-[2rem] shadow-2xl border border-white/20 overflow-hidden flex flex-col animate-in slide-in-from-bottom-5 duration-300">
+        <div className="w-[calc(100vw-2rem)] max-w-[360px] bg-white rounded-[2rem] shadow-2xl border border-white/20 overflow-hidden flex flex-col animate-in slide-in-from-bottom-5 duration-300">
           <div className="bg-[#075e54] p-6 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
             <div className="relative flex items-center gap-4">
@@ -77,7 +77,7 @@ const ChatWidget: React.FC = () => {
           <div className="bg-white px-4 py-2 rounded-2xl shadow-xl border border-slate-100 opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden sm:block">
             <span className="text-slate-800 font-bold text-sm">Precisa de ajuda?</span>
           </div>
-          <div className="bg-versiory-coral text-white w-16 h-16 rounded-full shadow-2xl shadow-versiory-coral/20 flex items-center justify-center transition-all hover:scale-110 active:scale-95 relative">
+          <div className="bg-versiory-coral text-white w-14 h-14 sm:w-16 sm:h-16 rounded-full shadow-2xl shadow-versiory-coral/20 flex items-center justify-center transition-all hover:scale-110 active:scale-95 relative">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 10h8m-8 4h5m-9 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
