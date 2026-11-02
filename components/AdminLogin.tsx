@@ -170,25 +170,6 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
               </div>
             </div>
 
-             {/* TOTP 2FA (apenas perfil dev) */}
-             {role === 'dev' && (
-               <div>
-                 <label htmlFor="totp" className="block text-sm font-bold text-white/90 mb-3">Código 2FA (6 dígitos)</label>
-                 <input
-                   className="w-full px-5 py-4 bg-slate-800/50 backdrop-blur-xl border border-white/30 rounded-2xl text-white placeholder:text-white/60 focus:bg-slate-800/70 focus:border-white/50 focus:ring-4 focus:ring-white/20 outline-none transition-all duration-300 text-base font-medium tracking-widest text-center"
-                   type="text"
-                   id="totp"
-                   name="totp"
-                   inputMode="numeric"
-                   maxLength={6}
-                   value={totpCode}
-                   onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                   placeholder="000000"
-                   autoComplete="one-time-code"
-                 />
-               </div>
-             )}
-
              {/* TOTP 2FA para dev */}
             {role === 'dev' && (
               <div>
@@ -198,7 +179,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
                   type="text"
                   id="totp"
                   value={totpCode}
-                  onChange={e => setTotpCode(e.target.value)}
+                  onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
                   placeholder="000000"
                   inputMode="numeric"
                   autoComplete="one-time-code"
