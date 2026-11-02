@@ -7595,6 +7595,23 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
 
         {activeTab === 'settings' && (
           <div className="space-y-6">
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
+              <h3 className="text-lg font-bold text-white mb-4">Backup de Dados</h3>
+              <p className="text-slate-300 text-sm mb-4">Exporte os dados da loja (produtos, categorias, pedidos, clientes) em JSON.</p>
+              <button
+                onClick={() => {
+                  const dump = { products, categories, orders, customers, exportedAt: new Date().toISOString() };
+                  const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = `backup-versiory-${Date.now()}.json`; a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-all"
+              >
+                📥 Exportar Backup (JSON)
+              </button>
+            </div>
           </div>
         )}
 
