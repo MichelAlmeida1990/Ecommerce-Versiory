@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { usePlanAccess } from '../hooks/usePlanAccess';
+import { PLAN_PRICES } from '../config/planConfig';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import {
   Product,
@@ -7282,13 +7282,20 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                          <td className='px-3 py-2'>{s.status}</td>
                          <td className='px-3 py-2'>R$ {(s.amount||0).toFixed(2)}</td>
                          <td className='px-3 py-2'>{s.requestedAt ? new Date(s.requestedAt).toLocaleDateString('pt-BR') : '-'}</td>
-                         <td className='px-3 py-2 flex gap-2'>
+                         <td className='px-3 py-2 flex gap-2 flex-wrap'>
                            {s.status === 'pending' && (
                              <button onClick={async()=>{await approveSubscription(s.id, userRole); const d=await getSubscriptions(); setSubscriptions(d);}} className='bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded text-xs'>Aprovar</button>
                            )}
                            {s.status !== 'cancelled' && (
                              <button onClick={async()=>{await cancelSubscription(s.id); const d=await getSubscriptions(); setSubscriptions(d);}} className='bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs'>Cancelar</button>
                            )}
+                           <button onClick={async()=>{const now=new Date().toISOString(); await updateSubscription(s.id,{status:'active',paidAt:now,startsAt:now,amount: (PLAN_PRICES as any)[s.planId]||s.amount}); const d=await getSubscriptions(); setSubscriptions(d);}} className='bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs'>Renovar</button>
+                           <select onChange={async (e)=>{const p=e.target.value; if(!p) return; await updateSubscription(s.id,{planId:p as any, amount:(PLAN_PRICES as any)[p]}); const d=await getSubscriptions(); setSubscriptions(d);}} className='bg-white/10 text-white text-xs rounded px-2 py-1 border border-white/20'>
+                             <option value=''>Trocar plano</option>
+                             <option value='start'>Start</option>
+                             <option value='go'>Go</option>
+                             <option value='max'>Max</option>
+                           </select>
                          </td>
                        </tr>
                      ))}
