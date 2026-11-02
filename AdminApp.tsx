@@ -212,7 +212,7 @@ const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', t
         // Primeiro acesso: gerar segredo e solicitar configuração
         secret = generateTotpSecret();
         localStorage.setItem('versiory_dev_totp_secret', secret);
-        alert(`2FA configurado. Adicione este segredo no seu app autenticador (Google Authenticator/Authy):\n\n${secret}\n\nDepois faça login novamente informando o código de 6 dígitos.`);
+        alert(`2FA configurado. No app autenticador, adicione conta manualmente:\n\nNome da conta: Dev Versiory\nSegredo: ${secret}\nTipo: baseado em tempo (TOTP)\nDígitos: 6\nPeríodo: 30s\n\nDepois faça login novamente informando o código de 6 dígitos.`);
         return;
       }
       const ok = await verifyTotp(secret, totpCode || '');
