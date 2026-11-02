@@ -69,7 +69,7 @@
 - [ ] Breadcrumb na página de produto
 - [ ] Empty states ilustrados (carrinho vazio)
 - [ ] Busca com autocomplete/sugestões
-- [ ] Modal mobile: imagem com altura fixa + info scrollável
+- [x] Modal mobile: imagem com altura fixa + info scrollável
 
 ### 🟢 P2 — Visual
 - [ ] PWA / instalável

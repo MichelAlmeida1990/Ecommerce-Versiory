@@ -5680,7 +5680,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                     </div>
 
                     {(userRole === 'admin' || userRole === 'dev') && (userRole === 'dev' || !isBillingRestricted) && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 overflow-x-auto pb-2 cursor-grab active:cursor-grabbing select-none">
                         <button
                           onClick={() => openProductModal(product)}
                           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium transition-all"
@@ -6528,7 +6528,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
                 }
 
                 return (
-                  <div key={product.id} className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden hover:scale-[1.02] transition-transform">
+                <div key={product.id} className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 hover:scale-[1.02] transition-transform">
                     <div className="relative h-48 bg-white">
                       <img
                         src={product.image}
@@ -7634,7 +7634,7 @@ byMethod[normalized] = (byMethod[normalized] || 0) + entry.amount;
 
               <form
                 onSubmit={handleProductSubmit}
-                className="flex-1 overflow-y-auto p-6 md:p-8"
+                className="flex-1 overflow-y-auto overflow-x-auto p-6 md:p-8 min-h-0"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
                     e.preventDefault();

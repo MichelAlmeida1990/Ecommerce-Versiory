@@ -269,17 +269,18 @@ const CurvaAbcAnalysis: React.FC<CurvaAbcAnalysisProps> = ({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-xl p-4">
+          <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-xl p-4 hidden md:block">
             <h3 className="text-white font-bold mb-2">Pareto - Faturamento Total</h3>
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={paretoData} margin={{ top: 10, right: 10, left: 0, bottom: 80 }}>
+              <BarChart data={paretoData} margin={{ top: 10, right: 10, left: 0, bottom: 100 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                 <XAxis
                   dataKey="name"
-                  tick={{ fill: '#cbd5e1', fontSize: 11 }}
+                  tick={{ fill: '#cbd5e1', fontSize: 9 }}
                   interval={0}
                   angle={-45}
                   textAnchor="end"
+                  height={80}
                 />
                 <YAxis tick={{ fill: '#cbd5e1', fontSize: 11 }} />
                 <Tooltip

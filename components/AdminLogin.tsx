@@ -16,6 +16,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
   const [totpCode, setTotpCode] = useState("");
 
   const [role, setRole] = useState<'admin' | 'seller' | 'dev'>('seller');
+  const [bannerDismissed, setBannerDismissed] = useState(() => localStorage.getItem('billingBannerDismissed') === '1');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,6 +203,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
 
             {/* REFCOM198: Aviso de faturamento com contador regressivo */}
             {(() => {
+              if (bannerDismissed) return null;
               if (billingStatus.phase === 'normal' && billingStatus.daysRemaining > 14) return null;
               const isBlocked = billingStatus.blocked;
               const isOverdue = billingStatus.daysRemaining <= 0;
@@ -244,6 +246,14 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
                         )}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => { setBannerDismissed(true); localStorage.setItem('billingBannerDismissed', '1'); }}
+                      className="text-white/70 hover:text-white text-xs font-bold px-2 py-1 rounded-lg bg-black/20 self-start"
+                      title="Fechar"
+                    >
+                      ✕
+                    </button>
                   </div>
                 </div>
               );

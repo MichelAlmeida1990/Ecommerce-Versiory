@@ -428,7 +428,7 @@ const App: React.FC = () => {
                   </div>
                   {/* REFCOM210: Hero Banner Dinâmico */}
                   {bannerConfig.banners.length > 0 ? (
-                    <section className="mb-12 relative rounded-3xl overflow-hidden shadow-2xl h-[400px]">
+                    <section className="mb-12 relative rounded-3xl overflow-hidden shadow-2xl h-[300px] sm:h-[350px] md:h-[400px]">
                       {bannerConfig.banners.map((banner, index) => (
                         <div
                           key={banner.id}
@@ -487,7 +487,7 @@ const App: React.FC = () => {
                     </section>
                   ) : (
                     /* Banner padrão quando não há banners configurados */
-                    <section className="mb-12 relative rounded-3xl overflow-hidden shadow-2xl h-[400px]">
+                    <section className="mb-12 relative rounded-3xl overflow-hidden shadow-2xl h-[300px] sm:h-[350px] md:h-[400px]">
                       <img
                         src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&h=400&fit=crop"
                         alt="Banner"

@@ -38,7 +38,7 @@ const Header: React.FC<HeaderProps> = ({
             <HeaderLogo />
           </div>
           <div className="flex flex-col">
-            <span className="text-2xl font-black text-slate-900 tracking-tighter leading-none font-display">VersioryStore</span>
+            <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tighter leading-none font-display">VersioryStore</span>
             <span className="text-[10px] font-bold text-versiory-coral uppercase tracking-widest leading-none mt-1 opacity-80">Premium Digital Store</span>
           </div>
         </a>

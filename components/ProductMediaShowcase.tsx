@@ -18,7 +18,7 @@ const ProductMediaShowcase: React.FC<ProductMediaShowcaseProps> = ({
 
     if (gallery.length <= 1) {
         return (
-            <div className="aspect-square bg-white rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center p-4">
+            <div className="aspect-square max-h-[42vh] bg-white rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center p-4">
                 <img src={mainImage} alt={productName} className="w-full h-full object-contain mix-blend-multiply" />
             </div>
         );
@@ -26,7 +26,7 @@ const ProductMediaShowcase: React.FC<ProductMediaShowcaseProps> = ({
 
     return (
         <div className="space-y-4">
-            <div className="aspect-square bg-white rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center p-4 animate-in fade-in duration-300">
+            <div className="aspect-square max-h-[42vh] bg-white rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center p-4 animate-in fade-in duration-300">
                 <img
                     src={activeImage}
                     alt={productName}

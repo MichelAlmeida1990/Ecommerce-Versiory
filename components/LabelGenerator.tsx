@@ -380,14 +380,14 @@ const LabelPreview: React.FC<{
   if (layout === 'minimal') {
     return (
       <div
-        className="label-card bg-white text-black overflow-hidden flex"
+        className="label-card bg-white text-black overflow-hidden flex items-center"
         style={{ width: `${sizeInfo.width}mm`, height: `${sizeInfo.height}mm` }}
       >
-        <div className="flex-1 px-2 py-1 flex flex-col justify-center">
-          <p className="font-bold truncate leading-tight" style={{ fontSize: `${6 * scale}pt` }}>{name || 'Nome do produto'}</p>
-          <p className="font-black leading-tight" style={{ fontSize: `${11 * scale}pt` }}>{price > 0 ? formatCurrency(price) : 'R$ 0,00'}</p>
+        <div className="flex-1 px-1.5 py-1 flex flex-col justify-center gap-0">
+          <p className="font-bold truncate leading-none" style={{ fontSize: `${5.5 * scale}pt` }}>{name || 'Nome do produto'}</p>
+          <p className="font-black leading-none" style={{ fontSize: `${10 * scale}pt` }}>{price > 0 ? formatCurrency(price) : 'R$ 0,00'}</p>
         </div>
-        <div className="flex items-center px-1" style={{ width: `${sizeInfo.width * 0.42}mm` }} dangerouslySetInnerHTML={{ __html: barcodeSvg }} />
+        <div className="flex items-center px-1" style={{ width: `${sizeInfo.width * 0.38}mm` }} dangerouslySetInnerHTML={{ __html: barcodeSvg }} />
       </div>
     );
   }
@@ -395,12 +395,12 @@ const LabelPreview: React.FC<{
   if (layout === 'barcode-first') {
     return (
       <div
-        className="label-card bg-white text-black overflow-hidden flex flex-col items-center justify-center px-1"
+        className="label-card bg-white text-black overflow-hidden flex flex-col items-center justify-center px-1 py-1"
         style={{ width: `${sizeInfo.width}mm`, height: `${sizeInfo.height}mm` }}
       >
-        <p className="font-bold text-center truncate w-full leading-tight" style={{ fontSize: `${6 * scale}pt` }}>{name || 'Nome do produto'}</p>
+        <p className="font-bold text-center truncate w-full leading-tight" style={{ fontSize: `${5.5 * scale}pt` }}>{name || 'Nome do produto'}</p>
         <div className="w-full flex justify-center" dangerouslySetInnerHTML={{ __html: barcodeSvg }} />
-        <p className="font-black leading-tight mt-0.5" style={{ fontSize: `${12 * scale}pt` }}>{price > 0 ? formatCurrency(price) : 'R$ 0,00'}</p>
+        <p className="font-black leading-tight" style={{ fontSize: `${10 * scale}pt` }}>{price > 0 ? formatCurrency(price) : 'R$ 0,00'}</p>
       </div>
     );
   }
@@ -411,11 +411,11 @@ const LabelPreview: React.FC<{
       style={{ width: `${sizeInfo.width}mm`, height: `${sizeInfo.height}mm` }}
     >
       <div className="flex items-stretch" style={{ height: `${sizeInfo.height * 0.55}mm` }}>
-        <div className="flex items-center px-2" style={{ width: `${sizeInfo.width * 0.38}mm` }}>
-          <p className="font-black leading-none" style={{ fontSize: `${16 * scale}pt` }}>{price > 0 ? formatCurrency(price) : 'R$ 0,00'}</p>
+        <div className="flex items-center justify-center px-1" style={{ width: `${sizeInfo.width * 0.4}mm` }}>
+          <p className="font-black leading-none text-center" style={{ fontSize: `${13 * scale}pt` }}>{price > 0 ? formatCurrency(price) : 'R$ 0,00'}</p>
         </div>
         <div className="flex-1 flex flex-col justify-center px-1" style={{ borderLeft: '1px solid #000' }}>
-          <p className="font-bold leading-tight" style={{ fontSize: `${6.5 * scale}pt` }}>{name || 'Nome do produto'}</p>
+          <p className="font-bold leading-tight truncate" style={{ fontSize: `${6 * scale}pt` }}>{name || 'Nome do produto'}</p>
           <div className="w-full flex justify-center mt-0.5" dangerouslySetInnerHTML={{ __html: barcodeSvg }} />
         </div>
       </div>

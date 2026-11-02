@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
 import ProductMediaShowcase from './ProductMediaShowcase';
 import { useIsFavorite } from '../utils/favorites';
@@ -16,6 +16,16 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
   const [sizeError, setSizeError] = useState(false);
   const [colorError, setColorError] = useState(false);
   const [isFavorited, toggleFavorite] = useIsFavorite(product ? product.id : 0);
+
+  useEffect(() => {
+    if (product) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [product]);
 
   if (!product) return null;
 
@@ -86,7 +96,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
 
-      <div className="relative bg-white border border-slate-200 w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[90vh] lg:max-h-[85vh] lg:overflow-hidden">
+      <div className="relative bg-white border border-slate-200 w-full max-w-5xl rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[90vh] lg:max-h-[85vh]">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-20 bg-white/90 p-2 rounded-full hover:bg-slate-100 shadow-sm transition-colors"
@@ -105,7 +115,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
         </div>
 
 
-        <div className="lg:w-1/2 p-6 sm:p-8 lg:p-10 lg:max-h-[85vh] lg:overflow-y-auto">
+        <div className="lg:w-1/2 p-6 sm:p-8 lg:p-10 max-h-[48vh] lg:max-h-[85vh] overflow-y-auto">
           <div className="flex items-center gap-2 mb-2">
             <span className="px-3 py-1 bg-[#fff1e7] text-versiory-coral text-sm font-bold rounded-full uppercase tracking-widest">
               {product.category}
@@ -246,7 +256,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose, onAddToCa
             </div>
           )}
 
-          <div className="flex gap-4 sticky bottom-0 bg-white pt-4">
+          <div className="flex gap-4 bg-white pt-4">
             <button
               onClick={handleAddToCart}
               className="flex-1 bg-versiory-coral hover:bg-[#ff8368] text-white font-bold py-4 rounded-2xl shadow-xl shadow-black/10 transition-all active:scale-[0.98] text-base"
