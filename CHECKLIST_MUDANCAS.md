@@ -10,7 +10,7 @@
 - [x] Remover segredos do frontend (SMTP pass → Firestore)
 - [x] Remover senhas do código-fonte (env vars + fundação Firebase Auth)
 - [x] Audit Log (`audit_logs`) visível apenas para `dev`
-- [ ] Matriz de permissões centralizada (admin/seller/dev)
+- [x] Matriz de permissões centralizada (admin/seller/dev)
 
 ### 🟠 P1 — Painel do Developer
 - [ ] Gestão de Assinaturas (listar lojas, plano, status, expiração; ativar/cancelar/renovar/trocar plano; aprovar comprovante; histórico; alertas de churn)
