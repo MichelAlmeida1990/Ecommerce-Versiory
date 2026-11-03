@@ -10,6 +10,7 @@ import { Subscription, SmtpSettings } from '../types';
 import { getSmtpConfigFromFirestore, saveSmtpConfigToFirestore } from '../services/smtpConfig';
 import { StoreSettingsModal } from './StoreSettingsModal';
 import { ErrorLogsModal } from './ErrorLogsModal';
+import { IntegrationHealthModal } from './IntegrationHealthModal';
 
 type DevSubTab = 'tenants' | 'users' | 'smtp' | 'backups' | 'feature_flags';
 
@@ -60,6 +61,7 @@ const DevPanel: React.FC = () => {
   const [toast, setToast] = useState('');
   const [showStoreSettings, setShowStoreSettings] = useState(false);
   const [showErrorLogs, setShowErrorLogs] = useState(false);
+  const [showHealth, setShowHealth] = useState(false);
 
   // SMTP State
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
@@ -301,11 +303,13 @@ const DevPanel: React.FC = () => {
         </div>
       )}
       <div className="flex justify-end gap-2">
+        <button onClick={() => setShowHealth(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🔌 Saúde Integrações</button>
         <button onClick={() => setShowErrorLogs(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📋 Logs de Erro</button>
         <button onClick={() => setShowStoreSettings(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">⚙️ Configurações da Loja</button>
       </div>
       {showStoreSettings && <StoreSettingsModal onClose={() => setShowStoreSettings(false)} />}
       {showErrorLogs && <ErrorLogsModal onClose={() => setShowErrorLogs(false)} />}
+      {showHealth && <IntegrationHealthModal onClose={() => setShowHealth(false)} />}
 
       {/* Banner de Impersonation Ativo */}
       {impersonatedTenant && (
