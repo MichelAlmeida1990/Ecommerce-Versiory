@@ -25,13 +25,15 @@ import {
   getCustomers,
   subscribeToCustomers,
   getTracking,
-  saveCategory
+  saveCategory,
+  signInAdmin,
+  signOutAdmin,
+  DEFAULT_TENANT_ID
 } from './services/firebase';
 import { getBillingStatus, getBillingConfig } from './services/billingConfig';
 import { logAudit } from './services/firebase';
 import { STORE_WHATSAPP_NUMBER } from './utils/constants';
 
-const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'versiory2024';
 const SELLER_PASSWORD = import.meta.env.VITE_SELLER_PASSWORD || 'vendedor2024';
 const DEV_PASSWORD = import.meta.env.VITE_DEV_PASSWORD || 'devsuporte2026';
 const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes'];
@@ -185,7 +187,7 @@ const AdminApp: React.FC = () => {
     };
   }, [isAuthenticated]);
 
-const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', totpCode?: string) => {
+const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', totpCode?: string, email?: string) => {
     if (role !== 'dev') {
       const billing = getBillingStatus(getBillingConfig());
       if (billing.blocked) {
@@ -194,35 +196,41 @@ const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', t
       }
     }
 
-    const isValidPassword =
-      (role === 'admin' && password === ADMIN_PASSWORD) ||
-      (role === 'seller' && password === SELLER_PASSWORD) ||
-      (role === 'dev' && password === DEV_PASSWORD);
-
-    if (!isValidPassword) {
-      setError('Senha incorreta para o perfil selecionado.');
-      return;
-    }
-
     try {
-      await saveAdminSession({
-        isAuthenticated: true,
-        role,
-        loginTime: Date.now(),
-        lastActivity: Date.now()
-      });
+      if (role === 'admin') {
+        // Firebase Auth real para admin
+        if (!email) { setError('Informe o e-mail de acesso.'); return; }
+        await signInAdmin(email, password);
+        const tenantId = DEFAULT_TENANT_ID;
+        await saveAdminSession({ isAuthenticated: true, role, tenantId, loginTime: Date.now(), lastActivity: Date.now() });
+      } else {
+        // Seller e Dev continuam com senha local
+        const isValid =
+          (role === 'seller' && password === SELLER_PASSWORD) ||
+          (role === 'dev' && password === DEV_PASSWORD);
+        if (!isValid) { setError('Senha incorreta para o perfil selecionado.'); return; }
+        await saveAdminSession({ isAuthenticated: true, role, loginTime: Date.now(), lastActivity: Date.now() });
+      }
+
       setIsAuthenticated(true);
       setUserRole(role);
       setError('');
       logAudit({ action: 'login', userRole: role, details: 'Login no painel admin' });
-    } catch (error) {
-      console.error('Erro ao salvar sessão:', error);
-      setError('Erro ao fazer login.');
+    } catch (error: any) {
+      console.error('Erro ao fazer login:', error);
+      if (error?.code === 'auth/invalid-credential' || error?.code === 'auth/wrong-password' || error?.code === 'auth/user-not-found') {
+        setError('E-mail ou senha incorretos.');
+      } else if (error?.code === 'auth/too-many-requests') {
+        setError('Muitas tentativas. Aguarde alguns minutos.');
+      } else {
+        setError('Erro ao fazer login. Tente novamente.');
+      }
     }
   };
 
   const handleLogout = async () => {
     try {
+      await signOutAdmin();
       await clearAdminSession();
     } catch (error) {
       console.error('Erro ao limpar sessão:', error);

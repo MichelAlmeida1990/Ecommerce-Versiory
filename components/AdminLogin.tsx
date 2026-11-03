@@ -5,22 +5,22 @@ import { STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import { getBillingStatus, getBillingConfig, getBillingDueAmount } from '../services/billingConfig';
 
 interface AdminLoginProps {
-  onLogin: (password: string, role: 'admin' | 'seller' | 'dev', totpCode?: string) => void;
+  onLogin: (password: string, role: 'admin' | 'seller' | 'dev', totpCode?: string, email?: string) => void;
   error: string;
 }
 
 
 const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
   const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-
   const [role, setRole] = useState<'admin' | 'seller' | 'dev'>('seller');
   const [bannerDismissed, setBannerDismissed] = useState(() => localStorage.getItem('billingBannerDismissed') === '1');
   const [totpCode, setTotpCode] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin(password, role, role === 'dev' ? totpCode : undefined);
+    onLogin(password, role, role === 'dev' ? totpCode : undefined, role === 'admin' ? email : undefined);
   };
 
   const billingConfig = getBillingConfig();
@@ -133,6 +133,23 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
                 </button>
               </div>
             </div>
+
+            {/* Email Input — só para admin */}
+            {role === 'admin' && (
+              <div>
+                <label htmlFor="email" className="block text-sm font-bold text-white/90 mb-3">E-mail</label>
+                <input
+                  className="w-full px-5 py-4 bg-slate-800/50 backdrop-blur-xl border border-white/30 rounded-2xl text-white placeholder:text-white/60 focus:bg-slate-800/70 focus:border-white/50 focus:ring-4 focus:ring-white/20 outline-none transition-all duration-300 text-base font-medium"
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="admin@sualojaversiory.com"
+                  autoComplete="email"
+                  required={role === 'admin'}
+                />
+              </div>
+            )}
 
             {/* Password Input */}
             <div>
