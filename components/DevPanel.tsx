@@ -8,7 +8,7 @@ import { PlanId, PLAN_LABELS, PLAN_PRICES, PLAN_MODULES } from '../config/planCo
 import { getSubscriptions, updateSubscription, deleteSubscription } from '../services/subscriptionService';
 import { Subscription, SmtpSettings } from '../types';
 import { getSmtpConfigFromFirestore, saveSmtpConfigToFirestore } from '../services/smtpConfig';
-import { getProducts, getCategories, getCustomers, getOrders } from '../services/firebase';
+import { StoreSettingsModal } from './StoreSettingsModal';
 
 type DevSubTab = 'tenants' | 'users' | 'smtp' | 'backups' | 'feature_flags';
 
@@ -57,6 +57,7 @@ const DevPanel: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | TenantStatus>('all');
   const [toast, setToast] = useState('');
+  const [showStoreSettings, setShowStoreSettings] = useState(false);
 
   // SMTP State
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
@@ -297,6 +298,10 @@ const DevPanel: React.FC = () => {
           {toast}
         </div>
       )}
+      <div className="flex justify-end">
+        <button onClick={() => setShowStoreSettings(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">⚙️ Configurações da Loja</button>
+      </div>
+      {showStoreSettings && <StoreSettingsModal onClose={() => setShowStoreSettings(false)} />}
 
       {/* Banner de Impersonation Ativo */}
       {impersonatedTenant && (
