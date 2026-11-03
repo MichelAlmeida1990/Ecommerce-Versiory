@@ -9,6 +9,7 @@ import { getSubscriptions, updateSubscription, deleteSubscription } from '../ser
 import { Subscription, SmtpSettings } from '../types';
 import { getSmtpConfigFromFirestore, saveSmtpConfigToFirestore } from '../services/smtpConfig';
 import { StoreSettingsModal } from './StoreSettingsModal';
+import { ErrorLogsModal } from './ErrorLogsModal';
 
 type DevSubTab = 'tenants' | 'users' | 'smtp' | 'backups' | 'feature_flags';
 
@@ -58,6 +59,7 @@ const DevPanel: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | TenantStatus>('all');
   const [toast, setToast] = useState('');
   const [showStoreSettings, setShowStoreSettings] = useState(false);
+  const [showErrorLogs, setShowErrorLogs] = useState(false);
 
   // SMTP State
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
@@ -298,10 +300,12 @@ const DevPanel: React.FC = () => {
           {toast}
         </div>
       )}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <button onClick={() => setShowErrorLogs(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📋 Logs de Erro</button>
         <button onClick={() => setShowStoreSettings(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">⚙️ Configurações da Loja</button>
       </div>
       {showStoreSettings && <StoreSettingsModal onClose={() => setShowStoreSettings(false)} />}
+      {showErrorLogs && <ErrorLogsModal onClose={() => setShowErrorLogs(false)} />}
 
       {/* Banner de Impersonation Ativo */}
       {impersonatedTenant && (
