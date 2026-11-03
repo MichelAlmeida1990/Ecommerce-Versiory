@@ -11,6 +11,7 @@ import { getSmtpConfigFromFirestore, saveSmtpConfigToFirestore } from '../servic
 import { StoreSettingsModal } from './StoreSettingsModal';
 import { ErrorLogsModal } from './ErrorLogsModal';
 import { IntegrationHealthModal } from './IntegrationHealthModal';
+import { SupportToolsModal } from './SupportToolsModal';
 
 type DevSubTab = 'tenants' | 'users' | 'smtp' | 'backups' | 'feature_flags';
 
@@ -62,6 +63,7 @@ const DevPanel: React.FC = () => {
   const [showStoreSettings, setShowStoreSettings] = useState(false);
   const [showErrorLogs, setShowErrorLogs] = useState(false);
   const [showHealth, setShowHealth] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
 
   // SMTP State
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
@@ -302,7 +304,8 @@ const DevPanel: React.FC = () => {
           {toast}
         </div>
       )}
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2 flex-wrap">
+        <button onClick={() => setShowSupport(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🛠️ Ferramentas</button>
         <button onClick={() => setShowHealth(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🔌 Saúde Integrações</button>
         <button onClick={() => setShowErrorLogs(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📋 Logs de Erro</button>
         <button onClick={() => setShowStoreSettings(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">⚙️ Configurações da Loja</button>
@@ -310,6 +313,7 @@ const DevPanel: React.FC = () => {
       {showStoreSettings && <StoreSettingsModal onClose={() => setShowStoreSettings(false)} />}
       {showErrorLogs && <ErrorLogsModal onClose={() => setShowErrorLogs(false)} />}
       {showHealth && <IntegrationHealthModal onClose={() => setShowHealth(false)} />}
+      {showSupport && <SupportToolsModal onClose={() => setShowSupport(false)} />}
 
       {/* Banner de Impersonation Ativo */}
       {impersonatedTenant && (
