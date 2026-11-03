@@ -95,7 +95,12 @@
 
 ---
 
-**Legenda:** [x] implementado · [ ] proposto/pendente
+## Infra / Google Cloud (400GB disponível)
+- [ ] Migrar imagens de produtos de base64 para Cloud Storage (reduz tamanho do Firestore, melhora performance)
+- [ ] Backups automatizados do Firestore para Cloud Storage
+- [ ] Backend de e-mail/SMTP em Cloud Run (remover credenciais do frontend)
+- [ ] CDN para assets estáticos
+- Capacidade estimada: com estrutura atual (Firestore + localStorage), suporta dezenas de lojas pequenas; com Cloud Storage + otimização, centenas. Limitante atual: tamanho do Firestore por loja e base64 de imagens.
 
 ## Correções recentes
 - [x] Checkout: corrigido erro "Cannot access 'subtotal' before initialization" no auto-aplicar cupom (cálculo inline do subtotal).
