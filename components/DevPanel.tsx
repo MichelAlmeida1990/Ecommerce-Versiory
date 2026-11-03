@@ -14,6 +14,8 @@ import { IntegrationHealthModal } from './IntegrationHealthModal';
 import { SupportToolsModal } from './SupportToolsModal';
 import { GlobalAnnouncementsModal } from './GlobalAnnouncementsModal';
 import { UsageMetricsModal } from './UsageMetricsModal';
+import { PlanManagementModal } from './PlanManagementModal';
+import { MarketplaceIntegrationsModal } from './MarketplaceIntegrationsModal';
 
 type DevSubTab = 'tenants' | 'users' | 'smtp' | 'backups' | 'feature_flags';
 
@@ -68,6 +70,8 @@ const DevPanel: React.FC = () => {
   const [showSupport, setShowSupport] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
+  const [showPlans, setShowPlans] = useState(false);
+  const [showMarketplace, setShowMarketplace] = useState(false);
 
   // SMTP State
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
@@ -309,6 +313,8 @@ const DevPanel: React.FC = () => {
         </div>
       )}
       <div className="flex justify-end gap-2 flex-wrap">
+        <button onClick={() => setShowMarketplace(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🛒 Marketplace</button>
+        <button onClick={() => setShowPlans(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">💳 Planos</button>
         <button onClick={() => setShowMetrics(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📊 Métricas</button>
         <button onClick={() => setShowAnnouncements(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📢 Avisos</button>
         <button onClick={() => setShowSupport(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🛠️ Ferramentas</button>
@@ -322,6 +328,8 @@ const DevPanel: React.FC = () => {
       {showSupport && <SupportToolsModal onClose={() => setShowSupport(false)} />}
       {showAnnouncements && <GlobalAnnouncementsModal onClose={() => setShowAnnouncements(false)} />}
       {showMetrics && <UsageMetricsModal onClose={() => setShowMetrics(false)} />}
+      {showPlans && <PlanManagementModal onClose={() => setShowPlans(false)} />}
+      {showMarketplace && <MarketplaceIntegrationsModal onClose={() => setShowMarketplace(false)} />}
 
       {/* Banner de Impersonation Ativo */}
       {impersonatedTenant && (
