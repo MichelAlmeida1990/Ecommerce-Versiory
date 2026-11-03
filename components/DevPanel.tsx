@@ -13,6 +13,7 @@ import { ErrorLogsModal } from './ErrorLogsModal';
 import { IntegrationHealthModal } from './IntegrationHealthModal';
 import { SupportToolsModal } from './SupportToolsModal';
 import { GlobalAnnouncementsModal } from './GlobalAnnouncementsModal';
+import { UsageMetricsModal } from './UsageMetricsModal';
 
 type DevSubTab = 'tenants' | 'users' | 'smtp' | 'backups' | 'feature_flags';
 
@@ -66,6 +67,7 @@ const DevPanel: React.FC = () => {
   const [showHealth, setShowHealth] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
+  const [showMetrics, setShowMetrics] = useState(false);
 
   // SMTP State
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
@@ -307,6 +309,7 @@ const DevPanel: React.FC = () => {
         </div>
       )}
       <div className="flex justify-end gap-2 flex-wrap">
+        <button onClick={() => setShowMetrics(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📊 Métricas</button>
         <button onClick={() => setShowAnnouncements(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📢 Avisos</button>
         <button onClick={() => setShowSupport(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🛠️ Ferramentas</button>
         <button onClick={() => setShowHealth(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🔌 Saúde Integrações</button>
@@ -318,6 +321,7 @@ const DevPanel: React.FC = () => {
       {showHealth && <IntegrationHealthModal onClose={() => setShowHealth(false)} />}
       {showSupport && <SupportToolsModal onClose={() => setShowSupport(false)} />}
       {showAnnouncements && <GlobalAnnouncementsModal onClose={() => setShowAnnouncements(false)} />}
+      {showMetrics && <UsageMetricsModal onClose={() => setShowMetrics(false)} />}
 
       {/* Banner de Impersonation Ativo */}
       {impersonatedTenant && (
