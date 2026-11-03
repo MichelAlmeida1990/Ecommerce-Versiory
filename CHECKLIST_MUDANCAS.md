@@ -13,8 +13,15 @@
 - [x] Matriz de permissões centralizada (admin/seller/dev)
 
 ### 🟠 P1 — Painel do Developer
-- [ ] Gestão de Assinaturas (listar lojas, plano, status, expiração; ativar/cancelar/renovar/trocar plano; aprovar comprovante; histórico; alertas de churn)
-- [ ] Gestão de Usuários e Lojas (CRUD de contas, reset de senha, bloqueio, impersonation)
+- [x] **Central do Desenvolvedor (`DevPanel.tsx`)** — aba "⚡ Dev" exclusiva, aberta por padrão no login dev:
+  - [x] Cadastro de lojas clientes (tenants): ID único, nome, responsável, e-mail, WhatsApp, plano, valor mensal, dia de vencimento (`tenantService.ts`, coleção `tenants` no Firestore)
+  - [x] Status por loja: Trial / Ativa / Suspensa / Cancelada — ativar/suspender com 1 clique
+  - [x] Extensão rápida de acesso (+7/+15/+30 dias) — reativa a loja e registra confirmação de pagamento
+  - [x] Dados de acesso por loja (senhas 2FA, contas) + anotações de suporte
+  - [x] Busca (loja/dono/e-mail) e filtro por status
+  - [x] Métricas: MRR das lojas ativas, lojas ativas, em trial, pendências (suspensas + a aprovar)
+  - [x] Gestão de solicitações de assinatura da loja virtual: aprovar/renovar por 1 mês (com expiração), excluir
+- [ ] Gestão de Usuários e Lojas (reset de senha, bloqueio, impersonation)
 - [ ] Configuração de E-mail (SMTP) global + templates transacionais + teste de envio + fila/retry
 - [ ] Configurações da Loja (dados, logo, tema, domínio, fuso, moeda, fiscal, certificado A1, CSC, série)
 - [ ] Backups (export/import, agendamento, restore com confirmação)
@@ -29,7 +36,7 @@
 - [ ] Comunicação (avisos/banners globais, histórico de notificações)
 
 ### 🟢 P3 — Comercial / Analytics
-- [ ] Dashboard do Developer (MRR, ARR, churn, LTV, CAC, lojas ativas)
+- [ ] Dashboard do Developer (MRR, ARR, churn, LTV, CAC, lojas ativas) — *parcial: MRR e contagens por status já exibidos no DevPanel*
 - [ ] Gestão de Planos e Preços (CRUD, versionamento, cupons, trials)
 - [ ] Marketplace de integrações (ativar/desativar por loja, logs de sync)
 
@@ -39,7 +46,8 @@
 - [x] Enforçar planos em `usePlanAccess.hasModule` (hoje retorna `true`)
 - [x] Mover SMTP do `localStorage` para Firestore
 - [x] Preencher aba "Assinaturas" com dados reais
-- [ ] Documentar perfil `dev` em `CREDENCIAIS_ADMIN.md`
+- [x] Commit e push no remoto (`main`, commit `fa8a7e8` — feat(dev): Central do Desenvolvedor)
+- [x] Documentar perfil `dev` em `CREDENCIAIS_ADMIN.md`
 
 ---
 
@@ -60,14 +68,14 @@
 - [x] Modal "Ver detalhes": fundo branco, tipografia ajustada, scroll interno na coluna de info, coração funcional
 
 ### 🟡 P1 — Visual
-- [ ] Filtros avançados (faixa de preço, marca, tamanho, cor)
-- [ ] Carrinho drawer com resumo/cupom/frete
+- [x] Filtros avançados (faixa de preço, atalhos de valor, em estoque e ordenação)
+- [x] Carrinho drawer com resumo/cupom/frete
 - [ ] Página de produto com galeria + zoom + variantes com estoque
-- [ ] Trust badges próximos ao CTA
+- [x] Trust badges próximos ao CTA
 - [ ] Skeleton loading nos cards
 - [ ] Seções: Novidades, Mais Vendidos, Vistos recentemente
 - [ ] Breadcrumb na página de produto
-- [ ] Empty states ilustrados (carrinho vazio)
+- [x] Empty states ilustrados (carrinho vazio e busca sem resultados)
 - [ ] Busca com autocomplete/sugestões
 - [x] Modal mobile: imagem com altura fixa + info scrollável
 

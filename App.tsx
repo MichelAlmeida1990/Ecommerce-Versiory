@@ -4,6 +4,7 @@ import { Product, CartItem, Category } from './types';
 import Header from './components/Header';
 import ProductCard from './components/ProductCard';
 import Cart from './components/Cart';
+import Checkout from './components/Checkout';
 import ProductModal from './components/ProductModal';
 import ChatWidget from './components/ChatWidget';
 import CustomerOrders from './components/CustomerOrders';
@@ -34,8 +35,14 @@ const App: React.FC = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [checkoutCoupon, setCheckoutCoupon] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<Category>('Todos');
+  const [minPrice, setMinPrice] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [currentUserPhone, setCurrentUserPhone] = useState('');
@@ -250,6 +257,8 @@ const App: React.FC = () => {
   }, [cartItems, isAuthenticated, currentUserEmail, isCartLoaded]);
   // -------------------------------
 
+  const activeFiltersCount = (minPrice ? 1 : 0) + (maxPrice ? 1 : 0) + (inStockOnly ? 1 : 0);
+
   const filteredProducts = useMemo(() => {
     let result = products.filter(p => {
       // ERRCOM105: Filtrar inativos na vitrine
@@ -257,13 +266,19 @@ const App: React.FC = () => {
 
       const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
       const q = searchQuery.trim().toLowerCase();
-      if (!q) return matchesCategory;
-
       const nameMatch = p.name?.toLowerCase().includes(q);
       const descMatch = p.description?.toLowerCase().includes(q);
       const catMatch = p.category?.toLowerCase().includes(q);
+      const textMatch = !q || (nameMatch || descMatch || catMatch);
 
-      return matchesCategory && (nameMatch || descMatch || catMatch);
+      if (!matchesCategory || !textMatch) return false;
+
+      const price = p.priceEcommerce !== undefined && p.priceEcommerce !== null ? p.priceEcommerce : (p.price || 0);
+      if (minPrice !== '' && price < Number(minPrice)) return false;
+      if (maxPrice !== '' && price > Number(maxPrice)) return false;
+      if (inStockOnly && (p.stock || 0) <= 0) return false;
+
+      return true;
     });
 
     // REFCOM218: Aplicar ordenação de produtos
@@ -284,7 +299,7 @@ const App: React.FC = () => {
     }
 
     return result;
-  }, [products, activeCategory, searchQuery, sortBy]);
+  }, [products, activeCategory, searchQuery, sortBy, minPrice, maxPrice, inStockOnly]);
 
   const addToCart = (product: Product, selectedSize?: string, selectedColor?: string) => {
     // Validação de estoque (Item 17)
@@ -519,45 +534,202 @@ const App: React.FC = () => {
                   <section className="mb-6">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div>
-                        <h2 className="text-2xl font-black text-slate-900 mb-2">Produtos em Destaque</h2>
-                        <p className="text-slate-600">{filteredProducts.length} produtos encontrados</p>
+                        <h2 className="text-2xl font-black text-slate-900 mb-1">Produtos em Destaque</h2>
+                        <p className="text-slate-500 text-sm">
+                          {filteredProducts.length} {filteredProducts.length === 1 ? 'produto encontrado' : 'produtos encontrados'}
+                        </p>
                       </div>
-                      {/* REFCOM218: Filtro de ordenação */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-bold text-slate-700">Ordenar por:</label>
-                        <select
-                          value={sortBy}
-                          onChange={(e) => setSortBy(e.target.value as any)}
-                          className="px-4 py-2 rounded-xl border-2 border-slate-200 text-slate-700 font-medium focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral outline-none bg-white hover:border-slate-300 transition-all"
+
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Botão de Filtros Avançados */}
+                        <button
+                          type="button"
+                          onClick={() => setIsFilterPanelOpen(prev => !prev)}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-xl border-2 font-bold text-sm transition-all cursor-pointer ${
+                            isFilterPanelOpen || activeFiltersCount > 0
+                              ? 'border-versiory-coral bg-versiory-coral/10 text-versiory-coral shadow-sm'
+                              : 'border-slate-200 text-slate-700 bg-white hover:border-slate-300'
+                          }`}
                         >
-                          <option value="default">Padrão</option>
-                          <option value="price-asc">Menor Preço</option>
-                          <option value="price-desc">Maior Preço</option>
-                          <option value="rating">Melhor Avaliação</option>
-                        </select>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                          </svg>
+                          <span>Filtros</span>
+                          {activeFiltersCount > 0 && (
+                            <span className="w-5 h-5 bg-versiory-coral text-white text-[11px] font-black rounded-full flex items-center justify-center">
+                              {activeFiltersCount}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* REFCOM218: Filtro de ordenação */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-bold text-slate-700 hidden sm:inline">Ordenar por:</label>
+                          <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as any)}
+                            className="px-3.5 py-2 rounded-xl border-2 border-slate-200 text-slate-700 text-sm font-medium focus:ring-2 focus:ring-versiory-coral focus:border-versiory-coral outline-none bg-white hover:border-slate-300 transition-all cursor-pointer"
+                          >
+                            <option value="default">Padrão / Destaques</option>
+                            <option value="price-asc">Menor Preço</option>
+                            <option value="price-desc">Maior Preço</option>
+                            <option value="rating">Melhor Avaliação</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Painel Expansível de Filtros */}
+                    {isFilterPanelOpen && (
+                      <div className="mt-4 p-5 bg-white border border-slate-200 rounded-2xl shadow-sm transition-all duration-300">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                          {/* Faixa de Preço */}
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                              Faixa de Preço (R$)
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                placeholder="Mínimo"
+                                value={minPrice}
+                                onChange={(e) => setMinPrice(e.target.value)}
+                                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-versiory-coral"
+                              />
+                              <span className="text-slate-400 font-bold text-xs">até</span>
+                              <input
+                                type="number"
+                                placeholder="Máximo"
+                                value={maxPrice}
+                                onChange={(e) => setMaxPrice(e.target.value)}
+                                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-versiory-coral"
+                              />
+                            </div>
+                            {/* Atalhos Rápidos de Faixa */}
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {[
+                                { label: 'Até R$ 50', min: '', max: '50' },
+                                { label: 'R$ 50 - 100', min: '50', max: '100' },
+                                { label: 'R$ 100 - 200', min: '100', max: '200' },
+                                { label: '+ R$ 200', min: '200', max: '' }
+                              ].map((range, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => { setMinPrice(range.min); setMaxPrice(range.max); }}
+                                  className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-colors ${
+                                    minPrice === range.min && maxPrice === range.max
+                                      ? 'bg-versiory-coral text-white border-versiory-coral'
+                                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {range.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Apenas em Estoque */}
+                          <div className="flex items-center h-10">
+                            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={inStockOnly}
+                                onChange={(e) => setInStockOnly(e.target.checked)}
+                                className="w-5 h-5 rounded-lg border-2 border-slate-300 text-versiory-coral focus:ring-versiory-coral cursor-pointer"
+                              />
+                              <span className="text-sm font-bold text-slate-800">
+                                Apenas produtos disponíveis em estoque
+                              </span>
+                            </label>
+                          </div>
+
+                          {/* Botões de Ação */}
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMinPrice('');
+                                setMaxPrice('');
+                                setInStockOnly(false);
+                              }}
+                              className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+                            >
+                              Limpar Filtros
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsFilterPanelOpen(false)}
+                              className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-versiory-coral rounded-xl transition-colors shadow-sm"
+                            >
+                              Aplicar ({filteredProducts.length})
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Chips de Filtros Ativos */}
+                    {activeFiltersCount > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filtros ativos:</span>
+                        {minPrice && (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-slate-100 text-slate-700 px-3 py-1 rounded-full">
+                            Mín: R$ {minPrice}
+                            <button type="button" onClick={() => setMinPrice('')} className="hover:text-red-500 ml-0.5">✕</button>
+                          </span>
+                        )}
+                        {maxPrice && (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-slate-100 text-slate-700 px-3 py-1 rounded-full">
+                            Máx: R$ {maxPrice}
+                            <button type="button" onClick={() => setMaxPrice('')} className="hover:text-red-500 ml-0.5">✕</button>
+                          </span>
+                        )}
+                        {inStockOnly && (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full">
+                            Apenas em estoque
+                            <button type="button" onClick={() => setInStockOnly(false)} className="hover:text-red-500 ml-0.5">✕</button>
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { setMinPrice(''); setMaxPrice(''); setInStockOnly(false); }}
+                          className="text-xs font-bold text-versiory-coral hover:underline ml-1"
+                        >
+                          Limpar todos
+                        </button>
+                      </div>
+                    )}
                   </section>
 
-<div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+                  <div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
                     {filteredProducts.length > 0 ? (
                       filteredProducts.map(p => (
                         <ProductCard key={p.id} product={p} onAddToCart={addToCart} onViewDetails={setSelectedProduct} />
                       ))
                     ) : (
-                      <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
-                        <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <div className="col-span-full flex flex-col items-center justify-center py-20 px-4 text-center">
+                        <div className="w-24 h-24 rounded-3xl bg-slate-100/90 border border-slate-200/80 flex items-center justify-center mb-5 shadow-inner">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                           </svg>
                         </div>
-                        <h3 className="text-xl font-black text-slate-900 mb-2">Nenhum produto encontrado</h3>
-                        <p className="text-slate-500 max-w-md">Tente ajustar os filtros ou a busca. Explore outras categorias para encontrar o que procura.</p>
+                        <h3 className="text-2xl font-black text-slate-900 mb-2">Nenhum produto encontrado</h3>
+                        <p className="text-slate-500 max-w-md text-sm leading-relaxed mb-6">
+                          Não encontramos nenhum item correspondente aos filtros aplicados. Tente ajustar os valores de preço, desmarcar opções ou explorar outras categorias.
+                        </p>
                         <button
-                          onClick={() => { setActiveCategory('Todos'); setSearchQuery(''); }}
-                          className="mt-6 bg-versiory-ink hover:bg-versiory-coral text-white font-bold px-6 py-3 rounded-xl transition-all"
+                          type="button"
+                          onClick={() => {
+                            setActiveCategory('Todos');
+                            setSearchQuery('');
+                            setMinPrice('');
+                            setMaxPrice('');
+                            setInStockOnly(false);
+                          }}
+                          className="bg-gradient-to-r from-versiory-ink to-slate-900 hover:from-versiory-coral hover:to-[#ff8368] text-white font-bold px-8 py-3.5 rounded-2xl shadow-xl shadow-black/10 transition-all cursor-pointer"
                         >
-                          Limpar filtros
+                          Limpar todos os filtros
                         </button>
                       </div>
                     )}
@@ -701,9 +873,21 @@ const App: React.FC = () => {
           items={cartItems}
           onUpdateQuantity={updateQuantity}
           onRemove={removeFromCart}
+          onProceedToCheckout={(coupon) => {
+            setCheckoutCoupon(coupon || '');
+            setIsCartOpen(false);
+            setIsCheckoutOpen(true);
+          }}
+        />
+
+        <Checkout
+          isOpen={isCheckoutOpen}
+          onClose={() => setIsCheckoutOpen(false)}
+          items={cartItems}
           customerEmail={currentUserEmail}
           customerAddress={currentUserAddress}
           onOrderComplete={handleOrderComplete}
+          initialCouponCode={checkoutCoupon}
         />
 
         <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} onAddToCart={addToCart} />

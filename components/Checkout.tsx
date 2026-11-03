@@ -11,6 +11,7 @@ interface CheckoutProps {
   customerEmail: string;
   customerAddress: string;
   onOrderComplete: () => void;
+  initialCouponCode?: string;
 }
 
 const Checkout: React.FC<CheckoutProps> = ({
@@ -19,7 +20,8 @@ const Checkout: React.FC<CheckoutProps> = ({
   items,
   customerEmail,
   customerAddress,
-  onOrderComplete
+  onOrderComplete,
+  initialCouponCode
 }) => {
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credito' | 'whatsapp'>('whatsapp'); // REFCOM135.5: Alterado 'credit' para 'credito'
   const [installments, setInstallments] = useState(1);
@@ -59,10 +61,34 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [customerData, setCustomerData] = useState<Customer | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('default');
   const [customAddress, setCustomAddress] = useState(customerAddress);
-  const [couponCode, setCouponCode] = useState('');
+  const [couponCode, setCouponCode] = useState(initialCouponCode || '');
   const [discount, setDiscount] = useState(0);
   const [couponError, setCouponError] = useState('');
   const [couponApplied, setCouponApplied] = useState(false);
+
+  // Auto-aplicar cupom vindo do Carrinho Drawer
+  useEffect(() => {
+    if (isOpen && initialCouponCode && !couponApplied) {
+      setCouponCode(initialCouponCode);
+      const autoApply = async () => {
+        try {
+          const { validateAndUseCoupon } = await import('../services/firebase');
+          const { coupon, error } = await validateAndUseCoupon(initialCouponCode.toUpperCase().trim());
+          if (coupon && !error) {
+            const sub = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+            const d = coupon.tipo === 'percentual'
+              ? sub * (coupon.valor / 100)
+              : coupon.valor;
+            setDiscount(Math.min(d, sub));
+            setCouponApplied(true);
+          }
+        } catch (e) {
+          console.error('Erro ao auto-aplicar cupom no checkout:', e);
+        }
+      };
+      autoApply();
+    }
+  }, [isOpen, initialCouponCode]);
   const [otpSent, setOtpSent] = useState(false);
   // REFCOM093: Gerar código automaticamente ao montar (sem etapa de clique)
   const [otpCode, setOtpCode] = useState<string>(() => Math.floor(1000 + Math.random() * 9000).toString());
