@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Produtos e categorias: leitura pública, escrita só admin/dev
+    match /tenants/{tenantId}/products/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.auth.token.tenantId == tenantId ||
+        request.auth.token.role == 'dev'
+      );
+    }
+
+    match /tenants/{tenantId}/categories/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.auth.token.tenantId == tenantId ||
+        request.auth.token.role == 'dev'
+      );
+    }
+
+    // Cupons: leitura pública, escrita só admin/dev
+    match /tenants/{tenantId}/coupons/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.auth.token.tenantId == tenantId ||
+        request.auth.token.role == 'dev'
+      );
+    }
+
+    // Clientes: leitura/escrita pública (e-commerce cria/atualiza clientes sem login Firebase)
+    match /tenants/{tenantId}/customers/{docId} {
+      allow read, write: if true;
+    }
+
+    // Pedidos: leitura/escrita pública (e-commerce cria pedidos sem login Firebase)
+    match /tenants/{tenantId}/orders/{docId} {
+      allow read, write: if true;
+    }
+
+    // Carrinho: leitura/escrita pública
+    match /tenants/{tenantId}/carts/{docId} {
+      allow read, write: if true;
+    }
+
+    // Rastreamento: leitura pública, escrita só admin/dev
+    match /tenants/{tenantId}/tracking/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.auth.token.tenantId == tenantId ||
+        request.auth.token.role == 'dev'
+      );
+    }
+
+    // Demais coleções do tenant: só admin/dev autenticado
+    match /tenants/{tenantId}/{collection}/{docId} {
+      allow read, write: if request.auth != null && (
+        request.auth.token.tenantId == tenantId ||
+        request.auth.token.role == 'dev'
+      );
+    }
+
+    // Audit logs: escrita pública (app loga sem auth), leitura só dev
+    match /audit_logs/{logId} {
+      allow create: if true;
+      allow read: if request.auth != null && request.auth.token.role == 'dev';
+    }
+
+    // Config do tenant: leitura pública
+    match /tenants/{tenantId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.role == 'dev';
+    }
+
+    // Bloquear tudo mais (coleções raiz antigas)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

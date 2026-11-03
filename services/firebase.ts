@@ -3,7 +3,6 @@ import {
     getFirestore,
     collection,
     query,
-    where,
     orderBy,
     getDocs,
     setDoc,
@@ -12,7 +11,13 @@ import {
     getDoc,
     onSnapshot
 } from "firebase/firestore";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import {
+    getAuth,
+    signInWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged,
+    type User as FirebaseUser
+} from "firebase/auth";
 import {
     Product,
     Order,
@@ -22,7 +27,6 @@ import {
     InventoryMovement,
     Expense,
     ManualRevenue,
-    OrderInstallment
 } from "../types";
 
 const firebaseConfig = {
@@ -39,7 +43,14 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// ---- Firebase Auth helpers (fundacao para migracao do login admin) ----
+// ---- Tenant ID padrão (enquanto não há roteamento por subdomínio) ----
+export const DEFAULT_TENANT_ID = 'versiory-demo';
+
+// Retorna o path da coleção dentro do tenant
+const tenantCol = (tenantId: string, col: string) =>
+    `tenants/${tenantId}/${col}`;
+
+// ---- Firebase Auth helpers ----
 export const signInAdmin = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     return cred.user;
@@ -53,31 +64,20 @@ export const onAdminAuthChanged = (callback: (user: FirebaseUser | null) => void
     return onAuthStateChanged(auth, callback);
 };
 
-// ---- Cloudinary Setup ----
+// ---- Cloudinary ----
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dq1hw3zyq/image/upload";
 const CLOUDINARY_PRESET = "tojuttxp";
 
 export const uploadImageObj = async (base64String: string, fileName: string): Promise<string> => {
     if (!base64String) return '';
     if (base64String.startsWith('http')) return base64String;
-
     const formData = new FormData();
     formData.append('file', base64String);
     formData.append('upload_preset', CLOUDINARY_PRESET);
-
-    // We append the fileName just as context, Cloudinary handles unique naming
     formData.append('context', `original_filename=${fileName}`);
-
     try {
-        const response = await fetch(CLOUDINARY_URL, {
-            method: 'POST',
-            body: formData,
-        });
-
-        if (!response.ok) {
-            throw new Error(`Cloudinary error: ${response.statusText}`);
-        }
-
+        const response = await fetch(CLOUDINARY_URL, { method: 'POST', body: formData });
+        if (!response.ok) throw new Error(`Cloudinary error: ${response.statusText}`);
         const data = await response.json();
         return data.secure_url;
     } catch (error) {
@@ -86,174 +86,212 @@ export const uploadImageObj = async (base64String: string, fileName: string): Pr
     }
 };
 
-// ---- Firestore Generic Helpers ----
-
-async function getCollection<T>(path: string): Promise<T[]> {
-    const q = query(collection(db, path));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as T));
+// ---- Firestore Generic Helpers (tenant-aware) ----
+async function getCollection<T>(tenantId: string, col: string): Promise<T[]> {
+    const q = query(collection(db, tenantCol(tenantId, col)));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as unknown as T));
 }
 
-// Since we are using number/string IDs, we use setDoc to specify the document ID
-async function setDocument(path: string, id: string | number, data: any) {
-    const docRef = doc(db, path, String(id));
-    await setDoc(docRef, data);
+async function setDocument(tenantId: string, col: string, id: string | number, data: any) {
+    const ref = doc(db, tenantCol(tenantId, col), String(id));
+    await setDoc(ref, data);
 }
 
-async function deleteDocument(path: string, id: string | number) {
-    const docRef = doc(db, path, String(id));
-    await deleteDoc(docRef);
+async function deleteDocument(tenantId: string, col: string, id: string | number) {
+    const ref = doc(db, tenantCol(tenantId, col), String(id));
+    await deleteDoc(ref);
 }
 
 // ---- Products ----
-export const getProducts = () => getCollection<Product>("products");
-export const subscribeToProducts = (callback: (products: Product[]) => void) => {
-    const q = query(collection(db, "products"));
+export const getProducts = (tenantId = DEFAULT_TENANT_ID) =>
+    getCollection<Product>(tenantId, 'products');
+
+export const subscribeToProducts = (callback: (products: Product[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+    const q = query(collection(db, tenantCol(tenantId, 'products')));
     return onSnapshot(q, (snapshot) => {
-        const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Product));
-        callback(products);
+        callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Product)));
     });
 };
 
-export const saveProduct = async (product: Product, base64Image?: string) => {
+export const saveProduct = async (product: Product, base64Image?: string, tenantId = DEFAULT_TENANT_ID) => {
     let imageUrl = product.image;
     if (base64Image && base64Image.startsWith('data:image')) {
         imageUrl = await uploadImageObj(base64Image, `product_${product.id}_${Date.now()}`);
     }
-
-    // Processar array de imagens secundárias
     const uploadedImages: string[] = [];
     if (product.images && product.images.length > 0) {
         for (const img of product.images) {
             if (img && img.startsWith('data:image')) {
-                const url = await uploadImageObj(img, `product_${product.id}_gallery_${Date.now()}`);
-                uploadedImages.push(url);
+                uploadedImages.push(await uploadImageObj(img, `product_${product.id}_gallery_${Date.now()}`));
             } else if (img) {
                 uploadedImages.push(img);
             }
         }
     }
-
-    const productData = {
-        ...product,
-        image: imageUrl,
-        images: uploadedImages
-    };
-    await setDocument("products", product.id, productData);
+    const productData = { ...product, image: imageUrl, images: uploadedImages };
+    await setDocument(tenantId, 'products', product.id, productData);
     return productData;
 };
 
-
-export const deleteProductItem = (id: number) => deleteDocument("products", id);
-
+export const deleteProductItem = (id: number, tenantId = DEFAULT_TENANT_ID) =>
+    deleteDocument(tenantId, 'products', id);
 
 // ---- Categories ----
-export const getCategories = () => getCollection<CategoryItem>("categories");
-export const saveCategory = (category: CategoryItem) => setDocument("categories", category.id, category);
-export const deleteCategoryItem = (id: string) => deleteDocument("categories", id);
+export const getCategories = (tenantId = DEFAULT_TENANT_ID) =>
+    getCollection<CategoryItem>(tenantId, 'categories');
+
+export const saveCategory = (category: CategoryItem, tenantId = DEFAULT_TENANT_ID) =>
+    setDocument(tenantId, 'categories', category.id, category);
+
+export const deleteCategoryItem = (id: string, tenantId = DEFAULT_TENANT_ID) =>
+    deleteDocument(tenantId, 'categories', id);
 
 // ---- Orders ----
-export const getOrders = async (): Promise<Order[]> => {
-    // Sort by date descending
-    const q = query(collection(db, "orders"), orderBy("date", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ ...doc.data() } as Order));
+export const getOrders = async (tenantId = DEFAULT_TENANT_ID): Promise<Order[]> => {
+    const q = query(collection(db, tenantCol(tenantId, 'orders')), orderBy('date', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ ...d.data() } as Order));
 };
-export const subscribeToOrders = (callback: (orders: Order[]) => void) => {
-    const q = query(collection(db, "orders"), orderBy("date", "desc"));
+
+export const subscribeToOrders = (callback: (orders: Order[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+    const q = query(collection(db, tenantCol(tenantId, 'orders')), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
-        const orders = snapshot.docs.map(doc => ({ ...doc.data() } as Order));
-        callback(orders);
+        callback(snapshot.docs.map(d => ({ ...d.data() } as Order)));
     });
 };
-export const saveOrder = (order: Order) => setDocument("orders", order.id, order);
-export const getOrder = async (id: string): Promise<Order | null> => {
-    const docRef = doc(db, "orders", id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return docSnap.data() as Order;
-    }
-    return null;
+
+export const saveOrder = (order: Order, tenantId = DEFAULT_TENANT_ID) =>
+    setDocument(tenantId, 'orders', order.id, order);
+
+export const getOrder = async (id: string, tenantId = DEFAULT_TENANT_ID): Promise<Order | null> => {
+    const ref = doc(db, tenantCol(tenantId, 'orders'), id);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() as Order : null;
 };
 
 // ---- Customers ----
-export const getCustomers = () => getCollection<Customer>("customers");
-export const saveCustomer = (customer: Customer) => setDocument("customers", customer.id, customer);
-// REFCOM240: assinatura em tempo real dos clientes. Antes o ADM carregava a lista uma
-// única vez, então alterações feitas no e-commerce (ex.: Data de Nascimento em Meu
-// Perfil) só apareciam depois de recarregar a página.
-export const subscribeToCustomers = (callback: (customers: Customer[]) => void) => {
-    return onSnapshot(collection(db, "customers"), (snapshot) => {
-        const customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Customer));
-        callback(customers);
+export const getCustomers = (tenantId = DEFAULT_TENANT_ID) =>
+    getCollection<Customer>(tenantId, 'customers');
+
+export const saveCustomer = (customer: Customer, tenantId = DEFAULT_TENANT_ID) =>
+    setDocument(tenantId, 'customers', customer.id, customer);
+
+export const subscribeToCustomers = (callback: (customers: Customer[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+    return onSnapshot(collection(db, tenantCol(tenantId, 'customers')), (snapshot) => {
+        callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Customer)));
     });
 };
 
-// ---- Cart Persistence ----
-export const saveCart = async (email: string, items: any[]) => {
-    await setDocument("carts", email, { items, updatedAt: Date.now() });
+// ---- Cart ----
+export const saveCart = async (email: string, items: any[], tenantId = DEFAULT_TENANT_ID) => {
+    await setDocument(tenantId, 'carts', email, { items, updatedAt: Date.now() });
 };
 
-export const getCart = async (email: string): Promise<any[]> => {
-    const docRef = doc(db, "carts", email);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return docSnap.data().items || [];
-    }
-    return [];
+export const getCart = async (email: string, tenantId = DEFAULT_TENANT_ID): Promise<any[]> => {
+    const ref = doc(db, tenantCol(tenantId, 'carts'), email);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data().items || [] : [];
 };
 
 // ---- Tracking ----
-export const getTracking = () => getCollection<TrackingItem>("tracking");
-export const saveTrackingItem = (tracking: TrackingItem) => setDocument("tracking", tracking.orderId, tracking);
-export const getTrackingItem = async (orderId: string): Promise<TrackingItem | null> => {
-    const docRef = doc(db, "tracking", orderId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return docSnap.data() as TrackingItem;
-    }
-    return null;
+export const getTracking = (tenantId = DEFAULT_TENANT_ID) =>
+    getCollection<TrackingItem>(tenantId, 'tracking');
+
+export const saveTrackingItem = (tracking: TrackingItem, tenantId = DEFAULT_TENANT_ID) =>
+    setDocument(tenantId, 'tracking', tracking.orderId, tracking);
+
+export const getTrackingItem = async (orderId: string, tenantId = DEFAULT_TENANT_ID): Promise<TrackingItem | null> => {
+    const ref = doc(db, tenantCol(tenantId, 'tracking'), orderId);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() as TrackingItem : null;
 };
 
 // ---- Inventory Movements ----
-export const getInventoryMovements = async (): Promise<InventoryMovement[]> => {
-    const q = query(collection(db, "inventoryMovements"), orderBy("date", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ ...doc.data() } as InventoryMovement));
+export const getInventoryMovements = async (tenantId = DEFAULT_TENANT_ID): Promise<InventoryMovement[]> => {
+    const q = query(collection(db, tenantCol(tenantId, 'inventoryMovements')), orderBy('date', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ ...d.data() } as InventoryMovement));
 };
-export const subscribeToInventoryMovements = (callback: (movements: InventoryMovement[]) => void) => {
-    const q = query(collection(db, "inventoryMovements"), orderBy("date", "desc"));
+
+export const subscribeToInventoryMovements = (callback: (movements: InventoryMovement[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+    const q = query(collection(db, tenantCol(tenantId, 'inventoryMovements')), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
-        const movements = snapshot.docs.map(doc => ({ ...doc.data() } as InventoryMovement));
-        callback(movements);
+        callback(snapshot.docs.map(d => ({ ...d.data() } as InventoryMovement)));
     });
 };
-export const saveInventoryMovement = (movement: InventoryMovement) => setDocument("inventoryMovements", movement.id, movement);
+
+export const saveInventoryMovement = (movement: InventoryMovement, tenantId = DEFAULT_TENANT_ID) =>
+    setDocument(tenantId, 'inventoryMovements', movement.id, movement);
 
 // ---- Expenses ----
-export const getExpenses = async (): Promise<Expense[]> => {
-    const q = query(collection(db, "expenses"), orderBy("date", "desc"));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ ...doc.data() } as Expense));
+export const getExpenses = async (tenantId = DEFAULT_TENANT_ID): Promise<Expense[]> => {
+    const q = query(collection(db, tenantCol(tenantId, 'expenses')), orderBy('date', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ ...d.data() } as Expense));
 };
-export const subscribeToExpenses = (callback: (expenses: Expense[]) => void) => {
-    const q = query(collection(db, "expenses"), orderBy("date", "desc"));
+
+export const subscribeToExpenses = (callback: (expenses: Expense[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+    const q = query(collection(db, tenantCol(tenantId, 'expenses')), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
-        const expenses = snapshot.docs.map(doc => ({ ...doc.data() } as Expense));
-        callback(expenses);
+        callback(snapshot.docs.map(d => ({ ...d.data() } as Expense)));
     });
 };
-export const saveExpense = (expense: Expense) => setDocument("expenses", expense.id, expense);
-export const deleteExpense = (id: number) => deleteDocument("expenses", id);
+
+export const saveExpense = (expense: Expense, tenantId = DEFAULT_TENANT_ID) =>
+    setDocument(tenantId, 'expenses', expense.id, expense);
+
+export const deleteExpense = (id: number, tenantId = DEFAULT_TENANT_ID) =>
+    deleteDocument(tenantId, 'expenses', id);
 
 // ---- Manual Revenues ----
-export const getManualRevenues = () => getCollection<ManualRevenue>("manualRevenues");
-export const saveManualRevenue = (revenue: ManualRevenue) => setDocument("manualRevenues", revenue.id, revenue);
-export const deleteManualRevenue = (id: number) => deleteDocument("manualRevenues", id);
+export const getManualRevenues = (tenantId = DEFAULT_TENANT_ID) =>
+    getCollection<ManualRevenue>(tenantId, 'manualRevenues');
 
-// ---- User Session ----
-// Cada usuário tem sua própria sessão baseada no email
+export const saveManualRevenue = (revenue: ManualRevenue, tenantId = DEFAULT_TENANT_ID) =>
+    setDocument(tenantId, 'manualRevenues', revenue.id, revenue);
 
+export const deleteManualRevenue = (id: number, tenantId = DEFAULT_TENANT_ID) =>
+    deleteDocument(tenantId, 'manualRevenues', id);
+
+// ---- Coupons ----
+import { Coupon } from '../types';
+
+export const getCoupons = (tenantId = DEFAULT_TENANT_ID) =>
+    getCollection<Coupon>(tenantId, 'coupons');
+
+export const saveCoupon = (coupon: Coupon, tenantId = DEFAULT_TENANT_ID) =>
+    setDocument(tenantId, 'coupons', coupon.id, coupon);
+
+export const deleteCouponItem = (id: string, tenantId = DEFAULT_TENANT_ID) =>
+    deleteDocument(tenantId, 'coupons', id);
+
+export const validateAndUseCoupon = async (
+    codigo: string,
+    tenantId = DEFAULT_TENANT_ID
+): Promise<{ coupon: Coupon | null; error: string | null }> => {
+    try {
+        const coupons = await getCoupons(tenantId);
+        const coupon = coupons.find(c => c.codigo.toUpperCase() === codigo.toUpperCase());
+        if (!coupon) return { coupon: null, error: 'Cupom inválido ou expirado' };
+        if (!coupon.ativo) return { coupon: null, error: 'Cupom inválido ou expirado' };
+        const now = new Date();
+        const fim = new Date(coupon.dataFim);
+        fim.setHours(23, 59, 59, 999);
+        if (now < new Date(coupon.dataInicio) || now > fim)
+            return { coupon: null, error: 'Cupom fora do período de validade' };
+        if (coupon.usosRealizados >= coupon.usoMaximo)
+            return { coupon: null, error: 'Limite de usos do cupom atingido' };
+        const updated: Coupon = { ...coupon, usosRealizados: coupon.usosRealizados + 1 };
+        await saveCoupon(updated, tenantId);
+        return { coupon: updated, error: null };
+    } catch (err) {
+        console.error('Erro ao validar cupom:', err);
+        return { coupon: null, error: 'Erro ao validar cupom. Tente novamente.' };
+    }
+};
+
+// ---- User Session (localStorage — migrar para Firestore futuramente) ----
 export interface UserSession {
     email: string;
     name?: string;
@@ -261,53 +299,42 @@ export interface UserSession {
     cpfCnpj?: string;
     address?: string;
     loginTime: number;
-    // REFCOM252: Assinatura por Plano
+    tenantId?: string;
     planId?: string;
     subscriptionStatus?: 'pending' | 'active' | 'expired' | 'cancelled';
     subscriptionExpiresAt?: string | null;
 }
 
 export const saveUserSession = async (session: UserSession) => {
-    const sessionData = {
-        ...session,
-        loginTime: session.loginTime || Date.now()
-    };
-    // Usar email como chave única para cada usuário
-    localStorage.setItem(`versiory_user_${session.email}`, JSON.stringify(sessionData));
-    // Salvar também qual é o último usuário logado
+    const data = { ...session, loginTime: session.loginTime || Date.now() };
+    localStorage.setItem(`versiory_user_${session.email}`, JSON.stringify(data));
     localStorage.setItem('versiory_last_user', session.email);
 };
 
 export const getUserSession = async (): Promise<UserSession | null> => {
     try {
-        // Buscar o último usuário logado
         const lastUser = localStorage.getItem('versiory_last_user');
         if (!lastUser) return null;
-
-        const sessionData = localStorage.getItem(`versiory_user_${lastUser}`);
-        if (!sessionData) return null;
-
-        return JSON.parse(sessionData) as UserSession;
-    } catch (error) {
-        console.error('Erro ao buscar sessão:', error);
+        const data = localStorage.getItem(`versiory_user_${lastUser}`);
+        return data ? JSON.parse(data) as UserSession : null;
+    } catch {
         return null;
     }
 };
 
 export const clearUserSession = async () => {
     const lastUser = localStorage.getItem('versiory_last_user');
-    if (lastUser) {
-        localStorage.removeItem(`versiory_user_${lastUser}`);
-    }
+    if (lastUser) localStorage.removeItem(`versiory_user_${lastUser}`);
     localStorage.removeItem('versiory_last_user');
 };
 
-// ---- Admin Session ----
-const ADMIN_SESSION_KEY = "versiory_admin_session";
+// ---- Admin Session (localStorage) ----
+const ADMIN_SESSION_KEY = 'versiory_admin_session';
 
 export interface AdminSession {
     isAuthenticated: boolean;
     role?: 'admin' | 'seller' | 'dev';
+    tenantId?: string;
     loginTime: number;
     lastActivity: number;
 }
@@ -318,21 +345,16 @@ export const saveAdminSession = async (session: AdminSession) => {
 
 export const getAdminSession = async (): Promise<AdminSession | null> => {
     try {
-        const sessionData = localStorage.getItem(ADMIN_SESSION_KEY);
-        if (sessionData) {
-            const session = JSON.parse(sessionData) as AdminSession;
-            // Verificar se a sessão é válida: dev 8h, demais 24h
-            const maxAge = session.role === 'dev' ? 8 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-            const isExpired = Date.now() - session.loginTime > maxAge;
-            if (isExpired) {
-                localStorage.removeItem(ADMIN_SESSION_KEY);
-                return null;
-            }
-            return session;
+        const data = localStorage.getItem(ADMIN_SESSION_KEY);
+        if (!data) return null;
+        const session = JSON.parse(data) as AdminSession;
+        const maxAge = session.role === 'dev' ? 8 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+        if (Date.now() - session.loginTime > maxAge) {
+            localStorage.removeItem(ADMIN_SESSION_KEY);
+            return null;
         }
-        return null;
-    } catch (error) {
-        console.error('Erro ao buscar sessão admin:', error);
+        return session;
+    } catch {
         return null;
     }
 };
@@ -340,11 +362,8 @@ export const getAdminSession = async (): Promise<AdminSession | null> => {
 export const updateAdminActivity = async () => {
     try {
         const session = await getAdminSession();
-        if (session && session.isAuthenticated) {
-            await saveAdminSession({
-                ...session,
-                lastActivity: Date.now()
-            });
+        if (session?.isAuthenticated) {
+            await saveAdminSession({ ...session, lastActivity: Date.now() });
         }
     } catch (error) {
         console.error('Erro ao atualizar atividade admin:', error);
@@ -355,11 +374,12 @@ export const clearAdminSession = async () => {
     localStorage.removeItem(ADMIN_SESSION_KEY);
 };
 
-// ---- Audit Log (fundacao) ----
+// ---- Audit Log (coleção global — visível para dev cross-tenant) ----
 export interface AuditLogEntry {
     id?: string;
     userId?: string;
     userRole?: string;
+    tenantId?: string;
     action: string;
     entity?: string;
     entityId?: string;
@@ -370,63 +390,33 @@ export interface AuditLogEntry {
 export const logAudit = async (entry: Omit<AuditLogEntry, 'id' | 'createdAt'>) => {
     try {
         const ref = doc(collection(db, 'audit_logs'));
-        await setDoc(ref, {
-            ...entry,
-            createdAt: Date.now()
-        });
+        await setDoc(ref, { ...entry, createdAt: Date.now() });
     } catch (error) {
         console.error('Erro ao registrar audit log:', error);
     }
 };
 
-// ---- Coupons (ERRCOM124) ----
-import { Coupon } from '../types';
+// ---- Tenant Config ----
+export interface TenantConfig {
+    name: string;
+    slug: string;
+    whatsapp: string;
+    active: boolean;
+    createdAt: string;
+    logoUrl?: string;
+    primaryColor?: string;
+}
 
-export const getCoupons = () => getCollection<Coupon>('coupons');
-
-export const saveCoupon = (coupon: Coupon) => setDocument('coupons', coupon.id, coupon);
-
-export const deleteCouponItem = (id: string) => deleteDocument('coupons', id);
-
-/**
- * Valida e consome um cupom.
- * Retorna o objeto coupon se válido, ou null se inválido (com mensagem de erro).
- */
-export const validateAndUseCoupon = async (
-    codigo: string
-): Promise<{ coupon: Coupon | null; error: string | null }> => {
-    try {
-        const coupons = await getCoupons();
-        const coupon = coupons.find(
-            c => c.codigo.toUpperCase() === codigo.toUpperCase()
-        );
-
-        if (!coupon) return { coupon: null, error: 'Cupom inválido ou expirado' };
-        if (!coupon.ativo) return { coupon: null, error: 'Cupom inválido ou expirado' };
-
-        const now = new Date();
-        const inicio = new Date(coupon.dataInicio);
-        const fim = new Date(coupon.dataFim);
-        fim.setHours(23, 59, 59, 999); // incluir o dia inteiro
-
-        if (now < inicio || now > fim) {
-            return { coupon: null, error: 'Cupom fora do período de validade' };
-        }
-
-        if (coupon.usosRealizados >= coupon.usoMaximo) {
-            return { coupon: null, error: 'Limite de usos do cupom atingido' };
-        }
-
-        // Incrementar uso — salvar de volta no Firestore
-        const updated: Coupon = { ...coupon, usosRealizados: coupon.usosRealizados + 1 };
-        await saveCoupon(updated);
-
-        return { coupon: updated, error: null };
-    } catch (err) {
-        console.error('Erro ao validar cupom:', err);
-        return { coupon: null, error: 'Erro ao validar cupom. Tente novamente.' };
-    }
+export const getTenantConfig = async (tenantId = DEFAULT_TENANT_ID): Promise<TenantConfig | null> => {
+    const ref = doc(db, 'tenants', tenantId);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() as TenantConfig : null;
 };
 
-// REFCOM199: Número do WhatsApp da loja (centralizado para facilitar configuração)
+export const saveTenantConfig = async (config: TenantConfig, tenantId = DEFAULT_TENANT_ID) => {
+    const ref = doc(db, 'tenants', tenantId);
+    await setDoc(ref, config);
+};
+
+// ---- WhatsApp da loja ----
 export const STORE_WHATSAPP_NUMBER = '5511958540171';
