@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import HeaderLogo from './HeaderLogo';
+import { Product } from '../types';
 
 interface HeaderProps {
   onCartClick: () => void;
@@ -11,6 +12,7 @@ interface HeaderProps {
   onLogout?: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  products?: Product[];
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -21,12 +23,21 @@ const Header: React.FC<HeaderProps> = ({
   userEmail,
   onLogout,
   searchQuery,
-  onSearchChange
+  onSearchChange,
+  products = []
 }) => {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const navigate = useNavigate();
+
+  const searchSuggestions = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!products || q.length < 2) return [];
+    return products
+      .filter(p => p.active !== false && (p.name?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q)))
+      .slice(0, 5);
+  }, [products, searchQuery]);
 
   return (
     <>
@@ -56,9 +67,49 @@ const Header: React.FC<HeaderProps> = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
+            onBlur={() => setTimeout(() => setIsSearchFocused(false), 250)}
             className="w-full bg-blue-50/70 border border-blue-200 rounded-2xl py-3 pl-12 pr-4 focus:bg-blue-50 focus:ring-4 ring-[#ffe1d2] outline-none transition-all placeholder:text-slate-400 text-slate-900 font-medium relative z-0"
           />
+
+          {/* Autocomplete Suggestions Dropdown */}
+          {isSearchFocused && searchSuggestions.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="p-2 border-b border-slate-50 bg-slate-50/60">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3">Sugestões de Produtos</span>
+              </div>
+              <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+                {searchSuggestions.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      navigate(`/product/${item.id}`);
+                      setIsSearchFocused(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors text-left group/item"
+                  >
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="w-11 h-11 rounded-xl object-cover bg-slate-100 flex-shrink-0 border border-slate-100 group-hover/item:scale-105 transition-transform"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-900 truncate group-hover/item:text-versiory-coral transition-colors">
+                        {item.name}
+                      </p>
+                      <span className="text-[10px] font-medium text-slate-500">
+                        {item.category}
+                      </span>
+                    </div>
+                    <span className="text-xs font-black text-slate-900 pr-2">
+                      R$ {(item.priceEcommerce || item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -164,6 +215,31 @@ const Header: React.FC<HeaderProps> = ({
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-full bg-blue-50/70 border border-blue-200 rounded-2xl py-3 pl-12 pr-4 focus:bg-blue-50 focus:ring-4 ring-[#ffe1d2] outline-none transition-all placeholder:text-slate-400 text-slate-900 font-medium"
           />
+
+          {searchSuggestions.length > 0 && (
+            <div className="mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 divide-y divide-slate-50 overflow-hidden">
+              {searchSuggestions.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    navigate(`/product/${item.id}`);
+                    setIsMobileSearchOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 p-3 text-left hover:bg-slate-50 transition-colors"
+                >
+                  <img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover bg-slate-100 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate">{item.name}</p>
+                    <span className="text-[10px] text-slate-500">{item.category}</span>
+                  </div>
+                  <span className="text-xs font-black text-slate-900">
+                    R$ {(item.priceEcommerce || item.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     )}

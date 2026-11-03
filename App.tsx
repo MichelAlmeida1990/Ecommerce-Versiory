@@ -42,6 +42,9 @@ const App: React.FC = () => {
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
   const [inStockOnly, setInStockOnly] = useState(false);
+  const [isProductsLoading, setIsProductsLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState<'all' | 'best-sellers' | 'new' | 'recent'>('all');
+  const [recentProductIds, setRecentProductIds] = useState<number[]>([]);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,14 +89,33 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
+    // Carregar produtos vistos recentemente
+    const loadRecent = () => {
+      try {
+        const raw = localStorage.getItem('versiory_recent_products');
+        if (raw) setRecentProductIds(JSON.parse(raw));
+      } catch {}
+    };
+    loadRecent();
+    window.addEventListener('recentProductsUpdated', loadRecent);
+    window.addEventListener('storage', loadRecent);
+    return () => {
+      window.removeEventListener('recentProductsUpdated', loadRecent);
+      window.removeEventListener('storage', loadRecent);
+    };
+  }, []);
+
+  useEffect(() => {
     // ERRCOM150: Usar subscribeToProducts para atualização em tempo real
     const unsubscribe = subscribeToProducts((productsData) => {
       if (productsData.length > 0) {
         setProducts(productsData);
+        setIsProductsLoading(false);
       } else {
         // Fallback para constants se Firebase estiver vazio
         import('./constants').then(({ PRODUCTS }) => {
           setProducts(PRODUCTS);
+          setIsProductsLoading(false);
         });
       }
     });
@@ -264,6 +286,11 @@ const App: React.FC = () => {
       // ERRCOM105: Filtrar inativos na vitrine
       if (p.active === false) return false;
 
+      // Filtrar por seção de Vistos Recentemente
+      if (activeSection === 'recent') {
+        if (!recentProductIds.includes(p.id)) return false;
+      }
+
       const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
       const q = searchQuery.trim().toLowerCase();
       const nameMatch = p.name?.toLowerCase().includes(q);
@@ -281,25 +308,34 @@ const App: React.FC = () => {
       return true;
     });
 
-    // REFCOM218: Aplicar ordenação de produtos
-    switch (sortBy) {
-      case 'price-asc':
-        result.sort((a, b) => (a.priceEcommerce || a.price) - (b.priceEcommerce || b.price));
-        break;
-      case 'price-desc':
-        result.sort((a, b) => (b.priceEcommerce || b.price) - (a.priceEcommerce || a.price));
-        break;
-      case 'rating':
-        result.sort((a, b) => b.rating - a.rating);
-        break;
-      case 'default':
-      default:
-        // Mantém ordem original (pode ser ordenada por mais vendidos no futuro)
-        break;
+    // Seção Mais Vendidos ou Novidades
+    if (activeSection === 'best-sellers') {
+      result.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    } else if (activeSection === 'new') {
+      result.sort((a, b) => b.id - a.id);
+    } else if (activeSection === 'recent') {
+      // Ordenar na ordem em que foram vistos
+      result.sort((a, b) => recentProductIds.indexOf(a.id) - recentProductIds.indexOf(b.id));
+    } else {
+      // REFCOM218: Aplicar ordenação de produtos
+      switch (sortBy) {
+        case 'price-asc':
+          result.sort((a, b) => (a.priceEcommerce || a.price) - (b.priceEcommerce || b.price));
+          break;
+        case 'price-desc':
+          result.sort((a, b) => (b.priceEcommerce || b.price) - (a.priceEcommerce || a.price));
+          break;
+        case 'rating':
+          result.sort((a, b) => b.rating - a.rating);
+          break;
+        case 'default':
+        default:
+          break;
+      }
     }
 
     return result;
-  }, [products, activeCategory, searchQuery, sortBy, minPrice, maxPrice, inStockOnly]);
+  }, [products, activeCategory, searchQuery, sortBy, minPrice, maxPrice, inStockOnly, activeSection, recentProductIds]);
 
   const addToCart = (product: Product, selectedSize?: string, selectedColor?: string) => {
     // Validação de estoque (Item 17)
@@ -414,6 +450,7 @@ const App: React.FC = () => {
           onProfileClick={() => window.dispatchEvent(new CustomEvent('openProfileModal'))} // Corrected prop name
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          products={products}
           isAuthenticated={isAuthenticated}
           userEmail={currentUserEmail}
           onLogout={async () => {
@@ -510,6 +547,33 @@ const App: React.FC = () => {
                       />
                     </section>
                   )}
+
+                  {/* Seções da Vitrine: Todos, Mais Vendidos, Novidades, Vistos Recentemente */}
+                  <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+                    {[
+                      { id: 'all', label: 'Todos os Produtos', icon: '🛍️' },
+                      { id: 'best-sellers', label: 'Mais Vendidos', icon: '🔥' },
+                      { id: 'new', label: 'Novidades', icon: '✨' },
+                      { id: 'recent', label: `Vistos Recentemente (${recentProductIds.length})`, icon: '👀', hide: recentProductIds.length === 0 }
+                    ].filter(tab => !tab.hide).map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveSection(tab.id as any);
+                          if (tab.id === 'recent') setActiveCategory('Todos');
+                        }}
+                        className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
+                          activeSection === tab.id
+                            ? 'bg-gradient-to-r from-versiory-ink to-slate-900 text-white shadow-lg shadow-black/15 scale-105'
+                            : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        <span>{tab.icon}</span>
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
+                  </div>
 
                   <section className="mb-8">
                     <h2 className="text-2xl font-black text-slate-900 mb-2">Categorias</h2>
@@ -703,7 +767,20 @@ const App: React.FC = () => {
                   </section>
 
                   <div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-                    {filteredProducts.length > 0 ? (
+                    {isProductsLoading ? (
+                      /* Skeleton Loading Cards */
+                      Array.from({ length: 8 }).map((_, i) => (
+                        <div key={i} className="bg-white rounded-3xl border border-slate-100 p-4 shadow-sm animate-pulse flex flex-col">
+                          <div className="aspect-square bg-slate-200/80 rounded-2xl mb-4 w-full" />
+                          <div className="h-4 bg-slate-200 rounded-md w-3/4 mb-2" />
+                          <div className="h-3 bg-slate-100 rounded-md w-1/2 mb-5" />
+                          <div className="mt-auto flex items-center justify-between pt-2">
+                            <div className="h-6 bg-slate-200 rounded-md w-20" />
+                            <div className="h-9 bg-slate-200/70 rounded-xl w-24" />
+                          </div>
+                        </div>
+                      ))
+                    ) : filteredProducts.length > 0 ? (
                       filteredProducts.map(p => (
                         <ProductCard key={p.id} product={p} onAddToCart={addToCart} onViewDetails={setSelectedProduct} />
                       ))

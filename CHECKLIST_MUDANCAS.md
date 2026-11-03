@@ -21,11 +21,11 @@
   - [x] Busca (loja/dono/e-mail) e filtro por status
   - [x] Métricas: MRR das lojas ativas, lojas ativas, em trial, pendências (suspensas + a aprovar)
   - [x] Gestão de solicitações de assinatura da loja virtual: aprovar/renovar por 1 mês (com expiração), excluir
-- [ ] Gestão de Usuários e Lojas (reset de senha, bloqueio, impersonation)
-- [ ] Configuração de E-mail (SMTP) global + templates transacionais + teste de envio + fila/retry
+- [x] Gestão de Usuários e Lojas (reset de senha, bloqueio, impersonation)
+- [x] Configuração de E-mail (SMTP) global + templates transacionais + teste de envio + fila/retry
 - [ ] Configurações da Loja (dados, logo, tema, domínio, fuso, moeda, fiscal, certificado A1, CSC, série)
-- [ ] Backups (export/import, agendamento, restore com confirmação)
-- [ ] Feature Flags / Plan Gating (ligar/desligar módulos por loja/plano, override, tela de upgrade)
+- [x] Backups (export/import, agendamento, restore com confirmação)
+- [x] Feature Flags / Plan Gating (ligar/desligar módulos por loja/plano, override, tela de upgrade)
 - [x] Abas exclusivas para `dev` (Assinaturas, Usuários, Logs, Config. Técnicas)
 
 ### 🟡 P2 — Operação e Observabilidade
@@ -70,13 +70,13 @@
 ### 🟡 P1 — Visual
 - [x] Filtros avançados (faixa de preço, atalhos de valor, em estoque e ordenação)
 - [x] Carrinho drawer com resumo/cupom/frete
-- [ ] Página de produto com galeria + zoom + variantes com estoque
+- [x] Página de produto com galeria + zoom + variantes com estoque
 - [x] Trust badges próximos ao CTA
-- [ ] Skeleton loading nos cards
-- [ ] Seções: Novidades, Mais Vendidos, Vistos recentemente
-- [ ] Breadcrumb na página de produto
+- [x] Skeleton loading nos cards
+- [x] Seções: Novidades, Mais Vendidos, Vistos recentemente
+- [x] Breadcrumb na página de produto
 - [x] Empty states ilustrados (carrinho vazio e busca sem resultados)
-- [ ] Busca com autocomplete/sugestões
+- [x] Busca com autocomplete/sugestões
 - [x] Modal mobile: imagem com altura fixa + info scrollável
 
 ### 🟢 P2 — Visual

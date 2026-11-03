@@ -14,6 +14,16 @@ const ProductDetail: React.FC = () => {
   const [colorError, setColorError] = useState(false);
   const [activeImage, setActiveImage] = useState<string>('');
   const [allImages, setAllImages] = useState<string[]>([]);
+  const [isZooming, setIsZooming] = useState(false);
+  const [zoomCoords, setZoomCoords] = useState({ x: 50, y: 50 });
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - left) / width) * 100;
+    const y = ((e.clientY - top) / height) * 100;
+    setZoomCoords({ x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) });
+  };
 
 
   useEffect(() => {
@@ -29,6 +39,13 @@ const ProductDetail: React.FC = () => {
           if (found.sizes && found.sizes.length > 0) {
             setSelectedSize(found.sizes[0]);
           }
+          // Registrar nos produtos vistos recentemente
+          try {
+            const recent = JSON.parse(localStorage.getItem('versiory_recent_products') || '[]');
+            const updated = [found.id, ...recent.filter((i: number) => i !== found.id)].slice(0, 8);
+            localStorage.setItem('versiory_recent_products', JSON.stringify(updated));
+            window.dispatchEvent(new Event('recentProductsUpdated'));
+          } catch {}
         }
       } catch (error) {
         console.error("Error fetching product:", error);
@@ -148,31 +165,63 @@ const ProductDetail: React.FC = () => {
           </ol>
         </nav>
 
-        <div className="bg-blue-100 rounded-3xl shadow-xl shadow-slate-200/50 overflow-hidden border border-blue-200">
+        <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/80">
           <div className="lg:grid lg:grid-cols-2 lg:gap-8 p-6 lg:p-12">
 
             {/* Left Column: Images */}
             <div className="mb-8 lg:mb-0">
               <div className="sticky top-24">
-                <div className="aspect-square bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center p-4 group">
+                <div
+                  onMouseEnter={() => setIsZooming(true)}
+                  onMouseLeave={() => setIsZooming(false)}
+                  onMouseMove={handleMouseMove}
+                  onClick={() => setIsImageModalOpen(true)}
+                  className="aspect-square bg-slate-50/80 rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center p-4 relative cursor-zoom-in group select-none"
+                >
                   <img
                     src={activeImage || product.image}
                     alt={product.name}
-                    className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-500"
+                    style={
+                      isZooming
+                        ? {
+                            transformOrigin: `${zoomCoords.x}% ${zoomCoords.y}%`,
+                            transform: 'scale(2.2)',
+                            transition: 'transform 0.1s ease-out'
+                          }
+                        : {
+                            transform: 'scale(1)',
+                            transition: 'transform 0.3s ease-out'
+                          }
+                    }
+                    className="w-full h-full object-contain mix-blend-multiply pointer-events-none"
                   />
+                  {/* Badge de Zoom */}
+                  <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-xl text-[11px] font-bold text-slate-700 shadow-sm border border-slate-200/60 flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-versiory-coral" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                    <span>Passe o mouse para zoom</span>
+                  </div>
                 </div>
+
                 {/* Thumbnails */}
-                <div className="grid grid-cols-5 gap-4 mt-4">
-                  {allImages.map((img, index) => (
-                    <div
-                      key={index}
-                      onClick={() => setActiveImage(img)}
-                      className={`aspect-square rounded-xl border-2 p-1 cursor-pointer transition-all ${activeImage === img ? 'border-versiory-coral scale-110 shadow-md' : 'border-slate-100 hover:border-slate-300'}`}
-                    >
-                      <img src={img} alt={`Thumb ${index + 1}`} className="w-full h-full object-cover rounded-lg mix-blend-multiply" />
-                    </div>
-                  ))}
-                </div>
+                {allImages.length > 1 && (
+                  <div className="grid grid-cols-5 gap-3 mt-4">
+                    {allImages.map((img, index) => (
+                      <div
+                        key={index}
+                        onClick={() => setActiveImage(img)}
+                        className={`aspect-square rounded-xl border-2 p-1 cursor-pointer transition-all ${
+                          activeImage === img
+                            ? 'border-versiory-coral scale-105 shadow-md bg-white'
+                            : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                        }`}
+                      >
+                        <img src={img} alt={`Thumb ${index + 1}`} className="w-full h-full object-cover rounded-lg mix-blend-multiply" />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -452,7 +501,7 @@ const ProductDetail: React.FC = () => {
         </div>
 
         {/* REFCOM244: Product Specs / About */}
-        <div id="detalhes" className="mt-12 bg-blue-100 rounded-3xl p-8 lg:p-12 shadow-sm border border-blue-200">
+        <div id="detalhes" className="mt-12 bg-white rounded-3xl p-8 lg:p-12 shadow-sm border border-slate-200/80">
           <h2 className="text-2xl font-bold text-slate-900 mb-6">Sobre este item</h2>
           <div className="prose prose-slate max-w-none prose-p:text-slate-600 prose-li:text-slate-600 prose-li:marker:text-versiory-coral whitespace-pre-wrap">
             <p>{product.description}</p>
@@ -481,6 +530,45 @@ const ProductDetail: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Modal de Imagem em Alta Resolução */}
+        {isImageModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+            <div className="relative max-w-4xl w-full max-h-[90vh] bg-white rounded-3xl overflow-hidden p-6 flex flex-col items-center">
+              <button
+                onClick={() => setIsImageModalOpen(false)}
+                className="absolute top-4 right-4 p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-full transition-colors"
+                title="Fechar"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <div className="w-full flex-1 flex items-center justify-center p-4 overflow-hidden">
+                <img
+                  src={activeImage || product.image}
+                  alt={product.name}
+                  className="max-h-[75vh] w-auto object-contain rounded-xl"
+                />
+              </div>
+              {allImages.length > 1 && (
+                <div className="flex gap-2 mt-4 overflow-x-auto py-2">
+                  {allImages.map((img, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setActiveImage(img)}
+                      className={`w-14 h-14 rounded-xl border-2 overflow-hidden transition-all ${
+                        activeImage === img ? 'border-versiory-coral scale-105' : 'border-slate-200 opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={img} alt="Thumb" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
