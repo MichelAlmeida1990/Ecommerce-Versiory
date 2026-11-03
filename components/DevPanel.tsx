@@ -16,6 +16,7 @@ import { GlobalAnnouncementsModal } from './GlobalAnnouncementsModal';
 import { UsageMetricsModal } from './UsageMetricsModal';
 import { PlanManagementModal } from './PlanManagementModal';
 import { MarketplaceIntegrationsModal } from './MarketplaceIntegrationsModal';
+import { DeveloperDashboardModal } from './DeveloperDashboardModal';
 
 type DevSubTab = 'tenants' | 'users' | 'smtp' | 'backups' | 'feature_flags';
 
@@ -72,6 +73,7 @@ const DevPanel: React.FC = () => {
   const [showMetrics, setShowMetrics] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
   const [showMarketplace, setShowMarketplace] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
 
   // SMTP State
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
@@ -313,6 +315,7 @@ const DevPanel: React.FC = () => {
         </div>
       )}
       <div className="flex justify-end gap-2 flex-wrap">
+        <button onClick={() => setShowDashboard(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📈 Dashboard Dev</button>
         <button onClick={() => setShowMarketplace(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🛒 Marketplace</button>
         <button onClick={() => setShowPlans(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">💳 Planos</button>
         <button onClick={() => setShowMetrics(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📊 Métricas</button>
@@ -330,6 +333,7 @@ const DevPanel: React.FC = () => {
       {showMetrics && <UsageMetricsModal onClose={() => setShowMetrics(false)} />}
       {showPlans && <PlanManagementModal onClose={() => setShowPlans(false)} />}
       {showMarketplace && <MarketplaceIntegrationsModal onClose={() => setShowMarketplace(false)} />}
+      {showDashboard && <DeveloperDashboardModal onClose={() => setShowDashboard(false)} />}
 
       {/* Banner de Impersonation Ativo */}
       {impersonatedTenant && (
