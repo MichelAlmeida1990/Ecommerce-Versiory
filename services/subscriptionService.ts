@@ -1,8 +1,8 @@
-import { db } from './firebase';
+import { db, DEFAULT_TENANT_ID } from './firebase';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 import { Subscription } from '../types';
 
-const COLLECTION = 'subscriptions';
+const COLLECTION = `tenants/${DEFAULT_TENANT_ID}/subscriptions`;
 
 export const getSubscriptions = async (): Promise<Subscription[]> => {
   try {

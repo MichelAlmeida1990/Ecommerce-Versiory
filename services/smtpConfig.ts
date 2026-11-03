@@ -1,8 +1,8 @@
-import { db } from './firebase';
+import { db, DEFAULT_TENANT_ID } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { SmtpSettings } from '../types';
 
-const SMTP_DOC = 'config/smtp';
+const SMTP_DOC = `tenants/${DEFAULT_TENANT_ID}/config/smtp`;
 
 export const getSmtpConfigFromFirestore = async (): Promise<SmtpSettings | null> => {
   try {
