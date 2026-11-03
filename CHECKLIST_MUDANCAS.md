@@ -97,3 +97,6 @@
 
 **Legenda:** [x] implementado · [ ] proposto/pendente
 
+## Correções recentes
+- [x] Checkout: corrigido erro "Cannot access 'subtotal' before initialization" no auto-aplicar cupom (cálculo inline do subtotal).
+
