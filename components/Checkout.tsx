@@ -506,7 +506,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       effectiveIsStorePickup ? `🏬 *MODALIDADE:* Retire na Loja` : `🚚 *MODALIDADE:* Entrega via Transportadora`,
       '',
       '*DETALHES DA VENDA:*',
-      `� Data da Venda: ${dateStr} ${timeStr}`,
+      `📅 Data Emissão + hora: ${dateStr} ${timeStr}`,
       `💳 Forma de Pagto: ${paymentMethod === 'whatsapp' ? 'A combinar' : paymentMethod === 'credito' ? `CRÉDITO (${installments}x)` : paymentMethod.toUpperCase()}`,
       `🏷️ Origem: E-commerce (Site)`,
       '',
