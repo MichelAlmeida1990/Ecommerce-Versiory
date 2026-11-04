@@ -328,8 +328,9 @@ export const clearUserSession = async () => {
     localStorage.removeItem('versiory_last_user');
 };
 
-// ---- Admin Session (localStorage) ----
-const ADMIN_SESSION_KEY = 'versiory_admin_session';
+// ---- Admin Session (Firestore) ----
+import { getActiveTenantId } from './tenantContext';
+import { saveAdminSession as saveFsSession, loadAdminSession as loadFsSession, clearAdminSession as clearFsSession } from './sessionsService';
 
 export interface AdminSession {
     isAuthenticated: boolean;
@@ -339,18 +340,40 @@ export interface AdminSession {
     lastActivity: number;
 }
 
+const fsUserId = (role: string): string => {
+    try {
+        const u = auth.currentUser;
+        if (u) return u.uid;
+    } catch { /* ignore */ }
+    return `${role}-${getActiveTenantId()}`;
+};
+
 export const saveAdminSession = async (session: AdminSession) => {
-    localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+    try {
+        await saveFsSession({ ...session, userId: fsUserId(session.role || 'dev') });
+    } catch {
+        localStorage.setItem('versiory_admin_session_fallback', JSON.stringify(session));
+    }
 };
 
 export const getAdminSession = async (): Promise<AdminSession | null> => {
     try {
-        const data = localStorage.getItem(ADMIN_SESSION_KEY);
-        if (!data) return null;
-        const session = JSON.parse(data) as AdminSession;
+        const userId = fsUserId('dev');
+        const session = await loadFsSession(userId);
+        if (!session) {
+            const fb = localStorage.getItem('versiory_admin_session_fallback');
+            if (!fb) return null;
+            const parsed = JSON.parse(fb) as AdminSession;
+            const maxAge = parsed.role === 'dev' ? 8 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+            if (Date.now() - parsed.loginTime > maxAge) {
+                localStorage.removeItem('versiory_admin_session_fallback');
+                return null;
+            }
+            return parsed;
+        }
         const maxAge = session.role === 'dev' ? 8 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
         if (Date.now() - session.loginTime > maxAge) {
-            localStorage.removeItem(ADMIN_SESSION_KEY);
+            await clearFsSession(session.userId || userId);
             return null;
         }
         return session;
@@ -371,7 +394,10 @@ export const updateAdminActivity = async () => {
 };
 
 export const clearAdminSession = async () => {
-    localStorage.removeItem(ADMIN_SESSION_KEY);
+    try {
+        await clearFsSession(fsUserId('dev'));
+    } catch { /* ignore */ }
+    localStorage.removeItem('versiory_admin_session_fallback');
 };
 
 // ---- Audit Log (coleÃ§Ã£o global â€” visÃ­vel para dev cross-tenant) ----
