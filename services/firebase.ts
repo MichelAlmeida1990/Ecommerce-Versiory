@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+﻿import { initializeApp } from "firebase/app";
 import {
     getFirestore,
     collection,
@@ -43,10 +43,10 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// ---- Tenant ID padrão (enquanto não há roteamento por subdomínio) ----
+// ---- Tenant ID padrÃ£o (enquanto nÃ£o hÃ¡ roteamento por subdomÃ­nio) ----
 export const DEFAULT_TENANT_ID = 'versiory-demo';
 
-// Retorna o path da coleção dentro do tenant
+// Retorna o path da coleÃ§Ã£o dentro do tenant
 const tenantCol = (tenantId: string, col: string) =>
     `tenants/${tenantId}/${col}`;
 
@@ -104,17 +104,17 @@ async function deleteDocument(tenantId: string, col: string, id: string | number
 }
 
 // ---- Products ----
-export const getProducts = (tenantId = DEFAULT_TENANT_ID) =>
+export const getProducts = (tenantId = resolveTenant()) =>
     getCollection<Product>(tenantId, 'products');
 
-export const subscribeToProducts = (callback: (products: Product[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+export const subscribeToProducts = (callback: (products: Product[]) => void, tenantId = resolveTenant()) => {
     const q = query(collection(db, tenantCol(tenantId, 'products')));
     return onSnapshot(q, (snapshot) => {
         callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Product)));
     });
 };
 
-export const saveProduct = async (product: Product, base64Image?: string, tenantId = DEFAULT_TENANT_ID) => {
+export const saveProduct = async (product: Product, base64Image?: string, tenantId = resolveTenant()) => {
     let imageUrl = product.image;
     if (base64Image && base64Image.startsWith('data:image')) {
         imageUrl = await uploadImageObj(base64Image, `product_${product.id}_${Date.now()}`);
@@ -134,152 +134,152 @@ export const saveProduct = async (product: Product, base64Image?: string, tenant
     return productData;
 };
 
-export const deleteProductItem = (id: number, tenantId = DEFAULT_TENANT_ID) =>
+export const deleteProductItem = (id: number, tenantId = resolveTenant()) =>
     deleteDocument(tenantId, 'products', id);
 
 // ---- Categories ----
-export const getCategories = (tenantId = DEFAULT_TENANT_ID) =>
+export const getCategories = (tenantId = resolveTenant()) =>
     getCollection<CategoryItem>(tenantId, 'categories');
 
-export const saveCategory = (category: CategoryItem, tenantId = DEFAULT_TENANT_ID) =>
+export const saveCategory = (category: CategoryItem, tenantId = resolveTenant()) =>
     setDocument(tenantId, 'categories', category.id, category);
 
-export const deleteCategoryItem = (id: string, tenantId = DEFAULT_TENANT_ID) =>
+export const deleteCategoryItem = (id: string, tenantId = resolveTenant()) =>
     deleteDocument(tenantId, 'categories', id);
 
 // ---- Orders ----
-export const getOrders = async (tenantId = DEFAULT_TENANT_ID): Promise<Order[]> => {
+export const getOrders = async (tenantId = resolveTenant()): Promise<Order[]> => {
     const q = query(collection(db, tenantCol(tenantId, 'orders')), orderBy('date', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ ...d.data() } as Order));
 };
 
-export const subscribeToOrders = (callback: (orders: Order[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+export const subscribeToOrders = (callback: (orders: Order[]) => void, tenantId = resolveTenant()) => {
     const q = query(collection(db, tenantCol(tenantId, 'orders')), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
         callback(snapshot.docs.map(d => ({ ...d.data() } as Order)));
     });
 };
 
-export const saveOrder = (order: Order, tenantId = DEFAULT_TENANT_ID) =>
+export const saveOrder = (order: Order, tenantId = resolveTenant()) =>
     setDocument(tenantId, 'orders', order.id, order);
 
-export const getOrder = async (id: string, tenantId = DEFAULT_TENANT_ID): Promise<Order | null> => {
+export const getOrder = async (id: string, tenantId = resolveTenant()): Promise<Order | null> => {
     const ref = doc(db, tenantCol(tenantId, 'orders'), id);
     const snap = await getDoc(ref);
     return snap.exists() ? snap.data() as Order : null;
 };
 
 // ---- Customers ----
-export const getCustomers = (tenantId = DEFAULT_TENANT_ID) =>
+export const getCustomers = (tenantId = resolveTenant()) =>
     getCollection<Customer>(tenantId, 'customers');
 
-export const saveCustomer = (customer: Customer, tenantId = DEFAULT_TENANT_ID) =>
+export const saveCustomer = (customer: Customer, tenantId = resolveTenant()) =>
     setDocument(tenantId, 'customers', customer.id, customer);
 
-export const subscribeToCustomers = (callback: (customers: Customer[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+export const subscribeToCustomers = (callback: (customers: Customer[]) => void, tenantId = resolveTenant()) => {
     return onSnapshot(collection(db, tenantCol(tenantId, 'customers')), (snapshot) => {
         callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Customer)));
     });
 };
 
 // ---- Cart ----
-export const saveCart = async (email: string, items: any[], tenantId = DEFAULT_TENANT_ID) => {
+export const saveCart = async (email: string, items: any[], tenantId = resolveTenant()) => {
     await setDocument(tenantId, 'carts', email, { items, updatedAt: Date.now() });
 };
 
-export const getCart = async (email: string, tenantId = DEFAULT_TENANT_ID): Promise<any[]> => {
+export const getCart = async (email: string, tenantId = resolveTenant()): Promise<any[]> => {
     const ref = doc(db, tenantCol(tenantId, 'carts'), email);
     const snap = await getDoc(ref);
     return snap.exists() ? snap.data().items || [] : [];
 };
 
 // ---- Tracking ----
-export const getTracking = (tenantId = DEFAULT_TENANT_ID) =>
+export const getTracking = (tenantId = resolveTenant()) =>
     getCollection<TrackingItem>(tenantId, 'tracking');
 
-export const saveTrackingItem = (tracking: TrackingItem, tenantId = DEFAULT_TENANT_ID) =>
+export const saveTrackingItem = (tracking: TrackingItem, tenantId = resolveTenant()) =>
     setDocument(tenantId, 'tracking', tracking.orderId, tracking);
 
-export const getTrackingItem = async (orderId: string, tenantId = DEFAULT_TENANT_ID): Promise<TrackingItem | null> => {
+export const getTrackingItem = async (orderId: string, tenantId = resolveTenant()): Promise<TrackingItem | null> => {
     const ref = doc(db, tenantCol(tenantId, 'tracking'), orderId);
     const snap = await getDoc(ref);
     return snap.exists() ? snap.data() as TrackingItem : null;
 };
 
 // ---- Inventory Movements ----
-export const getInventoryMovements = async (tenantId = DEFAULT_TENANT_ID): Promise<InventoryMovement[]> => {
+export const getInventoryMovements = async (tenantId = resolveTenant()): Promise<InventoryMovement[]> => {
     const q = query(collection(db, tenantCol(tenantId, 'inventoryMovements')), orderBy('date', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ ...d.data() } as InventoryMovement));
 };
 
-export const subscribeToInventoryMovements = (callback: (movements: InventoryMovement[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+export const subscribeToInventoryMovements = (callback: (movements: InventoryMovement[]) => void, tenantId = resolveTenant()) => {
     const q = query(collection(db, tenantCol(tenantId, 'inventoryMovements')), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
         callback(snapshot.docs.map(d => ({ ...d.data() } as InventoryMovement)));
     });
 };
 
-export const saveInventoryMovement = (movement: InventoryMovement, tenantId = DEFAULT_TENANT_ID) =>
+export const saveInventoryMovement = (movement: InventoryMovement, tenantId = resolveTenant()) =>
     setDocument(tenantId, 'inventoryMovements', movement.id, movement);
 
 // ---- Expenses ----
-export const getExpenses = async (tenantId = DEFAULT_TENANT_ID): Promise<Expense[]> => {
+export const getExpenses = async (tenantId = resolveTenant()): Promise<Expense[]> => {
     const q = query(collection(db, tenantCol(tenantId, 'expenses')), orderBy('date', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ ...d.data() } as Expense));
 };
 
-export const subscribeToExpenses = (callback: (expenses: Expense[]) => void, tenantId = DEFAULT_TENANT_ID) => {
+export const subscribeToExpenses = (callback: (expenses: Expense[]) => void, tenantId = resolveTenant()) => {
     const q = query(collection(db, tenantCol(tenantId, 'expenses')), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
         callback(snapshot.docs.map(d => ({ ...d.data() } as Expense)));
     });
 };
 
-export const saveExpense = (expense: Expense, tenantId = DEFAULT_TENANT_ID) =>
+export const saveExpense = (expense: Expense, tenantId = resolveTenant()) =>
     setDocument(tenantId, 'expenses', expense.id, expense);
 
-export const deleteExpense = (id: number, tenantId = DEFAULT_TENANT_ID) =>
+export const deleteExpense = (id: number, tenantId = resolveTenant()) =>
     deleteDocument(tenantId, 'expenses', id);
 
 // ---- Manual Revenues ----
-export const getManualRevenues = (tenantId = DEFAULT_TENANT_ID) =>
+export const getManualRevenues = (tenantId = resolveTenant()) =>
     getCollection<ManualRevenue>(tenantId, 'manualRevenues');
 
-export const saveManualRevenue = (revenue: ManualRevenue, tenantId = DEFAULT_TENANT_ID) =>
+export const saveManualRevenue = (revenue: ManualRevenue, tenantId = resolveTenant()) =>
     setDocument(tenantId, 'manualRevenues', revenue.id, revenue);
 
-export const deleteManualRevenue = (id: number, tenantId = DEFAULT_TENANT_ID) =>
+export const deleteManualRevenue = (id: number, tenantId = resolveTenant()) =>
     deleteDocument(tenantId, 'manualRevenues', id);
 
 // ---- Coupons ----
 import { Coupon } from '../types';
 
-export const getCoupons = (tenantId = DEFAULT_TENANT_ID) =>
+export const getCoupons = (tenantId = resolveTenant()) =>
     getCollection<Coupon>(tenantId, 'coupons');
 
-export const saveCoupon = (coupon: Coupon, tenantId = DEFAULT_TENANT_ID) =>
+export const saveCoupon = (coupon: Coupon, tenantId = resolveTenant()) =>
     setDocument(tenantId, 'coupons', coupon.id, coupon);
 
-export const deleteCouponItem = (id: string, tenantId = DEFAULT_TENANT_ID) =>
+export const deleteCouponItem = (id: string, tenantId = resolveTenant()) =>
     deleteDocument(tenantId, 'coupons', id);
 
 export const validateAndUseCoupon = async (
     codigo: string,
-    tenantId = DEFAULT_TENANT_ID
+    tenantId = resolveTenant()
 ): Promise<{ coupon: Coupon | null; error: string | null }> => {
     try {
         const coupons = await getCoupons(tenantId);
         const coupon = coupons.find(c => c.codigo.toUpperCase() === codigo.toUpperCase());
-        if (!coupon) return { coupon: null, error: 'Cupom inválido ou expirado' };
-        if (!coupon.ativo) return { coupon: null, error: 'Cupom inválido ou expirado' };
+        if (!coupon) return { coupon: null, error: 'Cupom invÃ¡lido ou expirado' };
+        if (!coupon.ativo) return { coupon: null, error: 'Cupom invÃ¡lido ou expirado' };
         const now = new Date();
         const fim = new Date(coupon.dataFim);
         fim.setHours(23, 59, 59, 999);
         if (now < new Date(coupon.dataInicio) || now > fim)
-            return { coupon: null, error: 'Cupom fora do período de validade' };
+            return { coupon: null, error: 'Cupom fora do perÃ­odo de validade' };
         if (coupon.usosRealizados >= coupon.usoMaximo)
             return { coupon: null, error: 'Limite de usos do cupom atingido' };
         const updated: Coupon = { ...coupon, usosRealizados: coupon.usosRealizados + 1 };
@@ -291,7 +291,7 @@ export const validateAndUseCoupon = async (
     }
 };
 
-// ---- User Session (localStorage — migrar para Firestore futuramente) ----
+// ---- User Session (localStorage â€” migrar para Firestore futuramente) ----
 export interface UserSession {
     email: string;
     name?: string;
@@ -374,7 +374,7 @@ export const clearAdminSession = async () => {
     localStorage.removeItem(ADMIN_SESSION_KEY);
 };
 
-// ---- Audit Log (coleção global — visível para dev cross-tenant) ----
+// ---- Audit Log (coleÃ§Ã£o global â€” visÃ­vel para dev cross-tenant) ----
 export interface AuditLogEntry {
     id?: string;
     userId?: string;
@@ -407,16 +407,17 @@ export interface TenantConfig {
     primaryColor?: string;
 }
 
-export const getTenantConfig = async (tenantId = DEFAULT_TENANT_ID): Promise<TenantConfig | null> => {
+export const getTenantConfig = async (tenantId = resolveTenant()): Promise<TenantConfig | null> => {
     const ref = doc(db, 'tenants', tenantId);
     const snap = await getDoc(ref);
     return snap.exists() ? snap.data() as TenantConfig : null;
 };
 
-export const saveTenantConfig = async (config: TenantConfig, tenantId = DEFAULT_TENANT_ID) => {
+export const saveTenantConfig = async (config: TenantConfig, tenantId = resolveTenant()) => {
     const ref = doc(db, 'tenants', tenantId);
     await setDoc(ref, config);
 };
 
 // ---- WhatsApp da loja ----
 export const STORE_WHATSAPP_NUMBER = '5511958540171';
+

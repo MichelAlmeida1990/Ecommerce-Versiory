@@ -1,12 +1,13 @@
-import { db, DEFAULT_TENANT_ID } from './firebase';
+import { db } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { SmtpSettings } from '../types';
+import { getActiveTenantId } from './tenantContext';
 
-const SMTP_DOC = `tenants/${DEFAULT_TENANT_ID}/config/smtp`;
+const smtpDocPath = () => `tenants/${getActiveTenantId()}/config/smtp`;
 
 export const getSmtpConfigFromFirestore = async (): Promise<SmtpSettings | null> => {
   try {
-    const snap = await getDoc(doc(db, SMTP_DOC));
+    const snap = await getDoc(doc(db, smtpDocPath()));
     if (snap.exists()) {
       return snap.data() as SmtpSettings;
     }
@@ -19,7 +20,7 @@ export const getSmtpConfigFromFirestore = async (): Promise<SmtpSettings | null>
 
 export const saveSmtpConfigToFirestore = async (settings: SmtpSettings): Promise<void> => {
   try {
-    await setDoc(doc(db, SMTP_DOC), settings, { merge: true });
+    await setDoc(doc(db, smtpDocPath()), settings, { merge: true });
   } catch (e) {
     console.error('Erro ao salvar SMTP no Firestore:', e);
     throw e;
