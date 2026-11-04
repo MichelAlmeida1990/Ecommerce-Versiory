@@ -43,3 +43,4 @@ export const approveSubscription = async (id: string, approvedBy: string): Promi
 export const cancelSubscription = async (id: string): Promise<void> => {
   await updateSubscription(id, { status: 'cancelled' });
 };
+

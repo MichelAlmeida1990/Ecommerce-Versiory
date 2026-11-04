@@ -25,3 +25,4 @@ export const loadAdminSession = async (userId: string): Promise<AdminSession | n
 export const clearAdminSession = async (userId: string): Promise<void> => {
   await deleteDoc(doc(db, SESSION_DOC(userId)));
 };
+

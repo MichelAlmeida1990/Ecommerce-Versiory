@@ -26,3 +26,4 @@ export const saveSmtpConfigToFirestore = async (settings: SmtpSettings): Promise
     throw e;
   }
 };
+
