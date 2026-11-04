@@ -89,6 +89,19 @@ export const TENANT_STATUS_LABELS: Record<TenantStatus, string> = {
   cancelled: 'Cancelada'
 };
 
+/** Cria um tenant com dados iniciais. O usuário Firebase Auth + custom claims devem ser criados no Console/Admin SDK. */
+export const onboardTenant = async (tenant: Tenant): Promise<Tenant> => {
+  const now = new Date().toISOString();
+  const data = { ...tenant, updatedAt: now, createdAt: now, status: 'trial' };
+  await setDoc(doc(db, COLLECTION, tenant.id), data, { merge: true });
+  // categorias iniciais
+  const defaults = ['Camisetas', 'Calças', 'Vestidos', 'Acessórios'];
+  await Promise.all(defaults.map((name, i) =>
+    setDoc(doc(db, COLLECTION, tenant.id, 'categories', `cat-${i}`), { id: `cat-${i}`, name, tenantId: tenant.id, createdAt: now }, { merge: true })
+  ));
+  return data as Tenant;
+};
+
 export const TENANT_STATUS_COLORS: Record<TenantStatus, string> = {
   trial: 'bg-blue-600',
   active: 'bg-emerald-600',
