@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Tenant, TenantStatus, getTenants, saveTenant, updateTenant, deleteTenant,
-  suspendTenant, activateTenant, extendTenantAccess,
+  suspendTenant, activateTenant, extendTenantAccess, onboardTenant,
   TENANT_STATUS_LABELS, TENANT_STATUS_COLORS
 } from '../services/tenantService';
 import { PlanId, PLAN_LABELS, PLAN_PRICES, PLAN_MODULES } from '../config/planConfig';
@@ -133,6 +133,28 @@ const DevPanel: React.FC = () => {
   });
 
   const openNew = () => { setForm(emptyForm()); setShowForm(true); };
+
+  const createTestStore = async () => {
+    try {
+      await onboardTenant({
+        id: 'loja-teste-2',
+        storeName: 'Loja Teste 2',
+        ownerName: 'Cliente Teste',
+        email: 'admin@lojateste2.com',
+        phone: '',
+        planId: 'basic',
+        status: 'trial',
+        monthlyValue: 99,
+        dueDay: 10,
+        accessNotes: 'Criada via DevPanel para validação de isolamento multi-tenant.'
+      });
+      await reload();
+      notify('Loja de teste criada. Agora configure o usuário Firebase Auth com tenantId loja-teste-2.');
+    } catch (e) {
+      notify('Erro ao criar loja de teste.');
+      console.error(e);
+    }
+  };
   const openEdit = (t: Tenant) => {
     setForm({
       id: t.id, storeName: t.storeName, ownerName: t.ownerName || '', email: t.email || '',
@@ -369,6 +391,9 @@ const DevPanel: React.FC = () => {
             </button>
             <button onClick={openNew} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-md">
               + Nova Loja
+            </button>
+            <button onClick={createTestStore} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-md">
+              + Loja de Teste
             </button>
           </div>
         </div>
