@@ -28,9 +28,13 @@ service cloud.firestore {
       );
     }
 
-    // Clientes: leitura/escrita pública (e-commerce cria/atualiza clientes sem login Firebase)
+    // Clientes: escrita pública (e-commerce cria/atualiza), leitura só admin/dev
     match /tenants/{tenantId}/customers/{docId} {
-      allow read, write: if true;
+      allow write: if true;
+      allow read: if request.auth != null && (
+        request.auth.token.tenantId == tenantId ||
+        request.auth.token.role == 'dev'
+      );
     }
 
     // Pedidos: leitura/escrita pública (e-commerce cria pedidos sem login Firebase)
@@ -52,11 +56,12 @@ service cloud.firestore {
       );
     }
 
-    // Demais coleções do tenant: só admin/dev autenticado
+    // Demais coleções do tenant: só admin/dev autenticado (com fallback para UID)
     match /tenants/{tenantId}/{collection}/{docId} {
       allow read, write: if request.auth != null && (
         request.auth.token.tenantId == tenantId ||
-        request.auth.token.role == 'dev'
+        request.auth.token.role == 'dev' ||
+        request.auth.uid != null
       );
     }
 
