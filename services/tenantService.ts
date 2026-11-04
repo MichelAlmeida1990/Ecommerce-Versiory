@@ -14,6 +14,7 @@ export interface Tenant {
   ownerName: string;
   email: string;
   phone?: string;
+  adminUid?: string;   // UID do usuário Firebase Auth responsável (admin da loja)
   planId: PlanId;
   status: TenantStatus;
   monthlyValue: number;            // valor mensal cobrado (pode diferir do preço de tabela)
@@ -53,6 +54,10 @@ export const saveTenant = async (tenant: Tenant): Promise<void> => {
 
 export const updateTenant = async (id: string, data: Partial<Tenant>): Promise<void> => {
   await updateDoc(doc(db, COLLECTION, id), { ...data, updatedAt: new Date().toISOString() } as any);
+};
+
+export const setTenantAdminUid = async (tenantId: string, uid: string): Promise<void> => {
+  await updateTenant(tenantId, { adminUid: uid });
 };
 
 export const deleteTenant = async (id: string): Promise<void> => {
