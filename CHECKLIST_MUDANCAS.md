@@ -103,5 +103,9 @@
 - Capacidade estimada: com estrutura atual (Firestore + localStorage), suporta dezenas de lojas pequenas; com Cloud Storage + otimização, centenas. Limitante atual: tamanho do Firestore por loja e base64 de imagens.
 
 ## Correções recentes
-- [x] Checkout: corrigido erro "Cannot access 'subtotal' before initialization" no auto-aplicar cupom (cálculo inline do subtotal).
+- [x] Tenant context central (getActiveTenantId) criado — resolve impersonation → sessão → subdomínio → default
+- [x] smtpConfig, subscriptionService, sessionsService migrados para tenant path dinâmico
+- [x] firebase.ts: default tenantId agora usa getActiveTenantId() (resolveTenant indefinido corrigido)
+- [x] Firestore rules: leitura de customers restrita a admin/dev; fallback por UID para coleções admin
+- [x] REFCOM242: "Data da Venda" renomeado para "Data Emissão + hora" no Checkout WhatsApp
 
