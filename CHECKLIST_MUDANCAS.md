@@ -108,4 +108,5 @@
 - [x] firebase.ts: default tenantId agora usa getActiveTenantId() (resolveTenant indefinido corrigido)
 - [x] Firestore rules: leitura de customers restrita a admin/dev; fallback por UID para coleções admin
 - [x] REFCOM242: "Data da Venda" renomeado para "Data Emissão + hora" no Checkout WhatsApp
+- [x] Segunda Loja de Teste: botão "+ Loja de Teste" no DevPanel chama `onboardTenant` (tenant `loja-teste-2`)
 
