@@ -200,8 +200,10 @@ const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', t
       if (role === 'admin') {
         // Firebase Auth real para admin
         if (!email) { setError('Informe o e-mail de acesso.'); return; }
-        await signInAdmin(email, password);
-        const tenantId = DEFAULT_TENANT_ID;
+        const firebaseUser = await signInAdmin(email, password);
+        // Força refresh do token para garantir que os custom claims estejam disponíveis
+        const tokenResult = await firebaseUser.getIdTokenResult(true);
+        const tenantId = (tokenResult.claims.tenantId as string) || DEFAULT_TENANT_ID;
         await saveAdminSession({ isAuthenticated: true, role, tenantId, loginTime: Date.now(), lastActivity: Date.now() });
       } else {
         // Seller e Dev continuam com senha local
