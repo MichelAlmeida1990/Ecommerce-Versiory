@@ -134,22 +134,20 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
               </div>
             </div>
 
-            {/* Email Input — só para admin */}
-            {role === 'admin' && (
-              <div>
-                <label htmlFor="email" className="block text-sm font-bold text-white/90 mb-3">E-mail</label>
-                <input
-                  className="w-full px-5 py-4 bg-slate-800/50 backdrop-blur-xl border border-white/30 rounded-2xl text-white placeholder:text-white/60 focus:bg-slate-800/70 focus:border-white/50 focus:ring-4 focus:ring-white/20 outline-none transition-all duration-300 text-base font-medium"
-                  type="email"
-                  id="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="admin@sualojaversiory.com"
-                  autoComplete="email"
-                  required={role === 'admin'}
-                />
-              </div>
-            )}
+            {/* Email Input — admin sempre; seller/dev opcional (Firebase Auth) */}
+            <div>
+              <label htmlFor="email" className="block text-sm font-bold text-white/90 mb-3">E-mail {role === 'admin' ? '' : '(opcional — Firebase Auth)'}</label>
+              <input
+                className="w-full px-5 py-4 bg-slate-800/50 backdrop-blur-xl border border-white/30 rounded-2xl text-white placeholder:text-white/60 focus:bg-slate-800/70 focus:border-white/50 focus:ring-4 focus:ring-white/20 outline-none transition-all duration-300 text-base font-medium"
+                type="email"
+                id="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder={role === 'admin' ? 'admin@sualojaversiory.com' : 'vendedor@sualojaversiory.com (opcional)'}
+                autoComplete="email"
+                required={role === 'admin'}
+              />
+            </div>
 
             {/* Password Input */}
             <div>

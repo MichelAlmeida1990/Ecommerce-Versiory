@@ -32,6 +32,7 @@ import {
 } from './services/firebase';
 import { getBillingStatus, getBillingConfig } from './services/billingConfig';
 import { logAudit } from './services/firebase';
+import { getActiveTenantId } from './services/tenantContext';
 import { STORE_WHATSAPP_NUMBER } from './utils/constants';
 
 const SELLER_PASSWORD = import.meta.env.VITE_SELLER_PASSWORD || 'vendedor2024';
@@ -77,6 +78,16 @@ const AdminApp: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated) return;
 
+    // Diagnóstico de autenticação Firebase (ajuda a identificar permission-denied)
+    (async () => {
+      try {
+        const { auth } = await import('./services/firebase');
+        const u = auth.currentUser;
+        const claims = u ? (await u.getIdTokenResult()).claims : null;
+        console.log('[AdminApp] auth.currentUser:', u?.uid || null, '| claims:', claims);
+      } catch (e) { console.warn('[AdminApp] não foi possível ler auth state:', e); }
+    })();
+
     let unsubProducts: (() => void) | undefined;
     let unsubOrders: (() => void) | undefined;
     let unsubMovements: (() => void) | undefined;
@@ -87,6 +98,7 @@ const AdminApp: React.FC = () => {
       try {
         // Produtos
         unsubProducts = subscribeToProducts((data) => {
+          console.log('[AdminApp] tenant ativo:', getActiveTenantId(), '| produtos recebidos:', data.length);
           if (data.length === 0 && PRODUCTS && PRODUCTS.length > 0) {
             const defaultProducts = PRODUCTS.map(p => ({ ...p, stock: p.stock ?? 20, sizes: p.sizes ?? '', images: p.images ?? [] }));
             setProducts(defaultProducts);
@@ -204,14 +216,37 @@ const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', t
         // Força refresh do token para garantir que os custom claims estejam disponíveis
         const tokenResult = await firebaseUser.getIdTokenResult(true);
         const tenantId = (tokenResult.claims.tenantId as string) || DEFAULT_TENANT_ID;
+        console.log('[AdminApp] login admin OK. uid:', firebaseUser.uid, 'claims:', tokenResult.claims);
         await saveAdminSession({ isAuthenticated: true, role, tenantId, loginTime: Date.now(), lastActivity: Date.now() });
       } else {
-        // Seller e Dev continuam com senha local
-        const isValid =
-          (role === 'seller' && password === SELLER_PASSWORD) ||
-          (role === 'dev' && password === DEV_PASSWORD);
-        if (!isValid) { setError('Senha incorreta para o perfil selecionado.'); return; }
-        await saveAdminSession({ isAuthenticated: true, role, loginTime: Date.now(), lastActivity: Date.now() });
+        // Seller/Dev: tenta Firebase Auth se e-mail informado; senão senha local (fallback)
+        let usedFirebaseAuth = false;
+        if (email) {
+          try {
+            const firebaseUser = await signInAdmin(email, password);
+            const tokenResult = await firebaseUser.getIdTokenResult(true);
+            const claims = tokenResult.claims;
+            if (claims.role && claims.role !== role && claims.role !== 'dev') {
+              throw new Error('role-mismatch');
+            }
+            const tenantId = (claims.tenantId as string) || (role === 'seller' ? DEFAULT_TENANT_ID : undefined);
+            console.log(`[AdminApp] login ${role} via Firebase Auth. uid:`, firebaseUser.uid, 'claims:', claims);
+            await saveAdminSession({ isAuthenticated: true, role, tenantId, loginTime: Date.now(), lastActivity: Date.now() });
+            usedFirebaseAuth = true;
+          } catch (e: any) {
+            if (e?.message !== 'role-mismatch' && e?.code !== 'auth/user-not-found' && e?.code !== 'auth/invalid-credential' && e?.code !== 'auth/wrong-password') {
+              console.error('Erro Firebase Auth:', e);
+            }
+            usedFirebaseAuth = false;
+          }
+        }
+        if (!usedFirebaseAuth) {
+          const isValid =
+            (role === 'seller' && password === SELLER_PASSWORD) ||
+            (role === 'dev' && password === DEV_PASSWORD);
+          if (!isValid) { setError('Senha incorreta para o perfil selecionado.'); return; }
+          await saveAdminSession({ isAuthenticated: true, role, tenantId: role === 'seller' ? DEFAULT_TENANT_ID : undefined, loginTime: Date.now(), lastActivity: Date.now() });
+        }
       }
 
       setIsAuthenticated(true);

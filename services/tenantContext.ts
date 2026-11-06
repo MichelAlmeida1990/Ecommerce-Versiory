@@ -16,7 +16,10 @@ export const getActiveTenantId = (): string => {
     const raw = localStorage.getItem('versiory_impersonated_tenant');
     if (raw) {
       const t = JSON.parse(raw);
-      if (t?.id) return t.id;
+      if (t?.id) {
+        console.log('[tenantContext] usando impersonação:', t.id);
+        return t.id;
+      }
     }
   } catch { /* ignore */ }
 
@@ -24,15 +27,25 @@ export const getActiveTenantId = (): string => {
     const raw = localStorage.getItem('versiory_admin_session');
     if (raw) {
       const session = JSON.parse(raw);
-      if (session?.tenantId && session.role !== 'dev') return session.tenantId;
+      if (session?.tenantId && session.role !== 'dev') {
+        console.log('[tenantContext] usando sessão admin:', session.tenantId, '(role:', session.role + ')');
+        return session.tenantId;
+      }
+      console.log('[tenantContext] sessão admin sem tenantId válido. role:', session?.role, 'tenantId:', session?.tenantId);
     }
   } catch { /* ignore */ }
 
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
+    // Ignora IPs (ex.: 192.168.x.x) — não são subdomínios de tenant
+    const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
     const parts = host.split('.');
-    if (parts.length > 2 && parts[0] !== 'www') return parts[0];
+    if (!isIp && parts.length > 2 && parts[0] !== 'www') {
+      console.log('[tenantContext] usando subdomínio:', parts[0]);
+      return parts[0];
+    }
   }
 
+  console.log('[tenantContext] fallback DEFAULT:', DEFAULT_TENANT_ID);
   return DEFAULT_TENANT_ID;
 };

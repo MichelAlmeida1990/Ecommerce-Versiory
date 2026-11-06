@@ -56,12 +56,11 @@ service cloud.firestore {
       );
     }
 
-    // Demais coleções do tenant: só admin/dev autenticado (com fallback para UID)
+    // Demais coleções do tenant: só admin/dev autenticado com tenant correto
     match /tenants/{tenantId}/{collection}/{docId} {
       allow read, write: if request.auth != null && (
         request.auth.token.tenantId == tenantId ||
-        request.auth.token.role == 'dev' ||
-        request.auth.uid != null
+        request.auth.token.role == 'dev'
       );
     }
 

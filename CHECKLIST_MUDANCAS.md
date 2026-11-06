@@ -109,4 +109,9 @@
 - [x] Firestore rules: leitura de customers restrita a admin/dev; fallback por UID para coleções admin
 - [x] REFCOM242: "Data da Venda" renomeado para "Data Emissão + hora" no Checkout WhatsApp
 - [x] Segunda Loja de Teste: botão "+ Loja de Teste" no DevPanel chama `onboardTenant` (tenant `loja-teste-2`)
+- [x] **Bug de tenant em acesso via IP (192.168.x.x):** `getActiveTenantId()` interpretava o IP como subdomínio de tenant → resolvia para `"192"` → 0 produtos. Corrigido: hostnames IP são ignorados no fallback de subdomínio.
+- [x] **Diagnóstico de auth/tenant:** logs `[AdminApp]` e `[tenantContext]` adicionados para rastrear UID, claims, tenant ativo e contagem de produtos.
+- [x] **Seller salva `tenantId`** na sessão admin (tenant determinístico).
+- [x] **Scripts de suporte:** `scripts/listTenantsProducts.cjs` e `scripts/getUidByEmail.cjs` para inspecionar tenants/produtos e UIDs/custom claims.
+- [x] **Migração incremental de seller/dev para Firebase Auth:** `AdminLogin` agora exibe campo de e-mail para todos os perfis; `AdminApp.handleLogin` tenta Firebase Auth quando e-mail é informado (com fallback para senha local, preservando compatibilidade). Roles validados via custom claims.
 
