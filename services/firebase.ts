@@ -57,7 +57,7 @@ export const SHOWCASE_TENANT_ID = DEFAULT_TENANT_ID;
 
 // Re-export de funções de tenant (domínio/subdomínio/onboarding)
 export { getTenantByDomain, getTenantBySubdomain } from './tenantService';
-export { createPendingOnboarding, getPendingOnboardings, approvePendingOnboarding, rejectPendingOnboarding } from './tenantService';
+export { createPendingOnboarding, getPendingOnboardings, approvePendingOnboarding, rejectPendingOnboarding, getAdminUserByUid } from './tenantService';
 
 // Retorna o path da coleÃ§Ã£o dentro do tenant
 const tenantCol = (tenantId: string, col: string) =>

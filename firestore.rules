@@ -145,6 +145,14 @@ service cloud.firestore {
       allow update, delete: if isTenantStaff(tenantId);
     }
 
+    // ---------- Admin Users Index (lookup global por UID após login) ----------
+    match /adminUsers/{uid} {
+      allow read: if signedIn();
+      allow create: if isDev(request.auth.uid);
+      allow update: if isDev(request.auth.uid) || request.auth.uid == uid;
+      allow delete: if isDev(request.auth.uid);
+    }
+
     // ---------- Catch-all global ----------
     match /{document=**} {
       allow read, write: if false;

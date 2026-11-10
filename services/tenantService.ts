@@ -144,7 +144,7 @@ export const onboardTenant = async (tenant: Tenant): Promise<Tenant> => {
   ));
   // Criar authorizedUser se houver adminUid
   if (tenant.adminUid) {
-    await addAuthorizedUser(tenant.id, tenant.adminUid, 'admin');
+    await addAuthorizedUser(tenant.id, tenant.adminUid, 'admin', tenant.email);
   }
   return data as Tenant;
 };
@@ -235,17 +235,20 @@ export const rejectPendingOnboarding = async (
 
 // ---- Gerenciamento de Usuários Autorizados por Tenant (fonte de verdade para regras) ----
 
-export const addAuthorizedUser = async (tenantId: string, uid: string, role: 'admin' | 'seller' | 'dev'): Promise<void> => {
+export const addAuthorizedUser = async (tenantId: string, uid: string, role: 'admin' | 'seller' | 'dev', email: string): Promise<void> => {
+  const now = new Date().toISOString();
   await setDoc(doc(db, COLLECTION, tenantId, 'authorizedUsers', uid), {
     uid,
     role,
     tenantId,
-    createdAt: new Date().toISOString()
+    createdAt: now
   }, { merge: true });
+  await createAdminUserIndex(uid, role, tenantId, email);
 };
 
 export const removeAuthorizedUser = async (tenantId: string, uid: string): Promise<void> => {
   await deleteDoc(doc(db, COLLECTION, tenantId, 'authorizedUsers', uid));
+  await deleteAdminUserIndex(uid);
 };
 
 export const getAuthorizedUsers = async (tenantId: string): Promise<{ uid: string; role: string; tenantId: string }[]> => {
@@ -266,6 +269,35 @@ export const getUserRoleInTenant = async (tenantId: string, uid: string): Promis
     return snap.data().role || null;
   } catch (e) {
     console.error('Erro ao buscar role do usuário no tenant:', e);
+    return null;
+  }
+};
+
+// ---- Índice global de usuários admin (lookup por UID após login) ----
+
+const ADMIN_USERS_COLLECTION = 'adminUsers';
+
+export const createAdminUserIndex = async (uid: string, role: 'admin' | 'seller' | 'dev', tenantId: string, email: string): Promise<void> => {
+  await setDoc(doc(db, ADMIN_USERS_COLLECTION, uid), {
+    uid,
+    role,
+    tenantId,
+    email,
+    updatedAt: new Date().toISOString()
+  }, { merge: true });
+};
+
+export const deleteAdminUserIndex = async (uid: string): Promise<void> => {
+  await deleteDoc(doc(db, ADMIN_USERS_COLLECTION, uid));
+};
+
+export const getAdminUserByUid = async (uid: string): Promise<{ uid: string; role: string; tenantId: string; email: string } | null> => {
+  try {
+    const snap = await getDoc(doc(db, ADMIN_USERS_COLLECTION, uid));
+    if (!snap.exists()) return null;
+    return snap.data() as { uid: string; role: string; tenantId: string; email: string };
+  } catch (e) {
+    console.error('Erro ao buscar admin user por UID:', e);
     return null;
   }
 };

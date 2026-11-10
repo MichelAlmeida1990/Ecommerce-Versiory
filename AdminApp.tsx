@@ -28,6 +28,7 @@ import {
   signInAdmin,
   signOutAdmin,
   onAdminAuthChanged,
+  getAdminUserByUid,
 } from './services/firebase';
 import { getBillingStatus, getBillingConfig } from './services/billingConfig';
 import { logAudit } from './services/firebase';
@@ -56,19 +57,31 @@ const AdminApp: React.FC = () => {
           setIsAuthenticated(false);
           return;
         }
-        const claims = (await user.getIdTokenResult()).claims;
-        const role = claims.role;
-        const tenantId = claims.tenantId;
-        if (!['admin', 'seller', 'dev'].includes(String(role)) ||
-          (role !== 'dev' && (typeof tenantId !== 'string' || !tenantId))) {
+        const uid = user.uid;
+
+        if (user.email === 'dev@versiory.com' || uid === 'dev-global') {
+          const session = { isAuthenticated: true, role: 'dev', tenantId: undefined, loginTime: Date.now(), lastActivity: Date.now() };
+          await saveAdminSession(session);
+          setUserRole('dev');
+          setIsAuthenticated(true);
+          return;
+        }
+
+        const adminUser = await getAdminUserByUid(uid);
+        if (!adminUser) {
+          await clearAdminSession();
+          setIsAuthenticated(false);
+          return;
+        }
+        if (!['admin', 'seller'].includes(adminUser.role)) {
           await clearAdminSession();
           setIsAuthenticated(false);
           return;
         }
         const session = {
           isAuthenticated: true,
-          role: role as 'admin' | 'seller' | 'dev',
-          tenantId: typeof tenantId === 'string' ? tenantId : undefined,
+          role: adminUser.role as 'admin' | 'seller',
+          tenantId: adminUser.tenantId,
           loginTime: Date.now(),
           lastActivity: Date.now(),
         };
@@ -76,7 +89,7 @@ const AdminApp: React.FC = () => {
         setUserRole(session.role);
         setIsAuthenticated(true);
       } catch (error) {
-        console.error('Erro ao validar claims do painel:', error);
+        console.error('Erro ao validar usuário admin:', error);
         setIsAuthenticated(false);
       } finally {
         setIsLoading(false);
@@ -226,19 +239,40 @@ const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', e
         return;
       }
       const firebaseUser = await signInAdmin(email.trim(), password);
-      const claims = (await firebaseUser.getIdTokenResult(true)).claims;
-      if (claims.role !== role ||
-        (role !== 'dev' && (typeof claims.tenantId !== 'string' || !claims.tenantId))) {
+      const uid = firebaseUser.uid;
+
+      if (role === 'dev') {
+        const isDevUser = firebaseUser.email === 'dev@versiory.com' || uid === 'dev-global';
+        if (!isDevUser) {
+          await signOutAdmin();
+          throw new Error('role-mismatch');
+        }
+        const session = { isAuthenticated: true, role: 'dev', tenantId: undefined, loginTime: Date.now(), lastActivity: Date.now() };
+        await saveAdminSession(session);
+        setUserRole('dev');
+        setIsAuthenticated(true);
+        setError('');
+        logAudit({ action: 'login', userRole: 'dev', details: 'Login no painel admin (dev)' });
+        return;
+      }
+
+      // Para admin/seller, buscar no índice adminUsers
+      const adminUser = await getAdminUserByUid(uid);
+      if (!adminUser) {
         await signOutAdmin();
         throw new Error('role-mismatch');
       }
-      const tenantId = typeof claims.tenantId === 'string' ? claims.tenantId : undefined;
+      if (adminUser.role !== role) {
+        await signOutAdmin();
+        throw new Error('role-mismatch');
+      }
+      const tenantId = adminUser.tenantId;
       const session = { isAuthenticated: true, role, tenantId, loginTime: Date.now(), lastActivity: Date.now() };
       await saveAdminSession(session);
-      setIsAuthenticated(true);
       setUserRole(role);
+      setIsAuthenticated(true);
       setError('');
-      logAudit({ action: 'login', userRole: role, details: 'Login no painel admin' });
+      logAudit({ action: 'login', userRole: role, details: `Login no painel admin (${role} - ${tenantId})` });
     } catch (error: any) {
       console.error('Erro ao fazer login:', error);
       if (error?.message === 'role-mismatch') {

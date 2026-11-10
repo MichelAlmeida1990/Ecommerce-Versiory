@@ -177,7 +177,7 @@ const DevPanel: React.FC = () => {
     await saveTenant({ ...form });
     // Criar authorizedUser se houver adminUid preenchido
     if (form.adminUid) {
-      await addAuthorizedUser(form.id, form.adminUid, 'admin');
+      await addAuthorizedUser(form.id, form.adminUid, 'admin', form.email);
     }
     setShowForm(false);
     await reload();
@@ -266,7 +266,7 @@ const DevPanel: React.FC = () => {
       });
       // Criar documento authorizedUsers para o admin da loja (se houver adminUid)
       if (p.adminUid) {
-        await addAuthorizedUser(tenantId, p.adminUid, 'admin');
+        await addAuthorizedUser(tenantId, p.adminUid, 'admin', p.email);
       }
       await reload();
       notify(`Loja "${p.storeName}" aprovada e criada. Configure o usuário Firebase Auth com tenantId ${tenantId} e role admin.`);
