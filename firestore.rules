@@ -1,45 +1,66 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // ---------- Helpers ----------
     function signedIn() {
       return request.auth != null;
     }
 
-    function isDev() {
-      return signedIn() && request.auth.token.role == 'dev';
+    // Usuário é dev (email específico ou uid especial)
+    function isDev(uid) {
+      return signedIn()
+        && (uid == 'dev-global' || request.auth.token.email == 'dev@versiory.com');
     }
 
+    // Busca o role do usuário dentro de um tenant (fonte de verdade: Firestore)
+    function getUserRole(tenantId, uid) {
+      return get(/databases/$(database)/documents/tenants/$(tenantId)/authorizedUsers/$(uid)).data.role;
+    }
+
+    // Verifica se o usuário está autorizado em um tenant (existe documento authorizedUsers)
+    function isAuthorized(tenantId, uid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/tenants/$(tenantId)/authorizedUsers/$(uid));
+    }
+
+    // Verifica se o usuário é staff (admin ou seller) de um tenant
     function isTenantStaff(tenantId) {
       return signedIn()
-        && request.auth.token.role in ['admin', 'seller', 'dev']
-        && (isDev() || request.auth.token.tenantId == tenantId);
+        && (isDev(request.auth.uid)
+          || (isAuthorized(tenantId, request.auth.uid)
+            && getUserRole(tenantId, request.auth.uid) in ['admin', 'seller']));
     }
 
+    // Verifica se o usuário é dono do próprio perfil de cliente
     function isProfileOwner(customerId) {
       return signedIn() && request.auth.uid == customerId;
     }
 
+    // ---------- Products ----------
     match /tenants/{tenantId}/products/{docId} {
-      allow read: if signedIn() && request.auth.token.tenantId == tenantId;
+      allow read: if signedIn() && isTenantStaff(tenantId);
       allow write: if isTenantStaff(tenantId);
     }
 
+    // ---------- Categories ----------
     match /tenants/{tenantId}/categories/{docId} {
-      allow read: if signedIn() && request.auth.token.tenantId == tenantId;
+      allow read: if signedIn() && isTenantStaff(tenantId);
       allow write: if isTenantStaff(tenantId);
     }
 
+    // ---------- Coupons ----------
     match /tenants/{tenantId}/coupons/{docId} {
-      allow read: if signedIn() && request.auth.token.tenantId == tenantId;
+      allow read: if signedIn() && isTenantStaff(tenantId);
       allow write: if isTenantStaff(tenantId);
     }
 
+    // ---------- Customers ----------
     match /tenants/{tenantId}/customers/{customerId} {
       allow read: if isTenantStaff(tenantId)
-        || (isProfileOwner(customerId) && request.auth.token.tenantId == tenantId);
+        || (isProfileOwner(customerId) && isAuthorized(tenantId, request.auth.uid));
       allow create: if isTenantStaff(tenantId)
         || (isProfileOwner(customerId)
-          && request.auth.token.tenantId == tenantId
+          && isAuthorized(tenantId, request.auth.uid)
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.email == request.auth.token.email
           && request.resource.data.keys().hasOnly([
@@ -53,7 +74,7 @@ service cloud.firestore {
           && request.resource.data.tenantId == tenantId);
       allow update: if isTenantStaff(tenantId)
         || (isProfileOwner(customerId)
-          && request.auth.token.tenantId == tenantId
+          && isAuthorized(tenantId, request.auth.uid)
           && request.resource.data.uid == request.auth.uid
           && !request.resource.data.keys().hasAny(['password'])
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -67,13 +88,14 @@ service cloud.firestore {
       allow delete: if isTenantStaff(tenantId);
     }
 
+    // ---------- Orders ----------
     match /tenants/{tenantId}/orders/{orderId} {
       allow read: if isTenantStaff(tenantId)
         || (signedIn() && resource.data.customerUid == request.auth.uid
             && resource.data.tenantId == tenantId
-            && request.auth.token.tenantId == tenantId);
+            && isAuthorized(tenantId, request.auth.uid));
       allow create: if signedIn()
-        && request.auth.token.tenantId == tenantId
+        && isAuthorized(tenantId, request.auth.uid)
         && request.resource.data.customerUid == request.auth.uid
         && request.resource.data.tenantId == tenantId
         && request.resource.data.status == 'pending';
@@ -81,42 +103,49 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ---------- Carts ----------
     match /tenants/{tenantId}/carts/{customerId} {
       allow read, write: if isProfileOwner(customerId)
-        && request.auth.token.tenantId == tenantId;
+        && isAuthorized(tenantId, request.auth.uid);
     }
 
+    // ---------- Tracking ----------
     match /tenants/{tenantId}/tracking/{orderId} {
       allow read: if isTenantStaff(tenantId)
         || (signedIn()
             && resource.data.customerUid == request.auth.uid
             && resource.data.tenantId == tenantId
-            && request.auth.token.tenantId == tenantId);
+            && isAuthorized(tenantId, request.auth.uid));
       allow write: if isTenantStaff(tenantId);
     }
 
+    // ---------- Catch-all (nenhuma outra coleção dentro de tenants) ----------
     match /tenants/{tenantId}/{collection}/{docId} {
       allow read, write: if false;
     }
 
+    // ---------- Pending Onboardings (coleção raiz, não dentro de tenant) ----------
     match /pending_onboardings/{docId} {
       allow create: if signedIn();
-      allow read: if isDev() || (signedIn() && request.auth.token.role == 'admin');
-      allow update, delete: if isDev() || (signedIn() && request.auth.token.role == 'admin');
+      allow read: if isDev(request.auth.uid);
+      allow update, delete: if isDev(request.auth.uid);
     }
 
+    // ---------- Audit Logs ----------
     match /audit_logs/{logId} {
       allow create: if isTenantStaff(request.resource.data.tenantId);
-      allow read: if isDev();
+      allow read: if isDev(request.auth.uid);
       allow update, delete: if false;
     }
 
+    // ---------- Tenants (coleção raiz) ----------
     match /tenants/{tenantId} {
-      allow create: if signedIn() && request.auth.token.tenantId == tenantId;
+      allow create: if signedIn() && isAuthorized(tenantId, request.auth.uid);
       allow read: if true;
       allow update, delete: if isTenantStaff(tenantId);
     }
 
+    // ---------- Catch-all global ----------
     match /{document=**} {
       allow read, write: if false;
     }

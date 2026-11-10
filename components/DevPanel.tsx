@@ -4,7 +4,7 @@ import {
   suspendTenant, activateTenant, extendTenantAccess, onboardTenant,
   TENANT_STATUS_LABELS, TENANT_STATUS_COLORS,
   createPendingOnboarding, getPendingOnboardings, approvePendingOnboarding, rejectPendingOnboarding,
-  PendingOnboarding
+  PendingOnboarding, addAuthorizedUser, getAuthorizedUsers
 } from '../services/tenantService';
 import { PlanId, PLAN_LABELS, PLAN_PRICES, PLAN_MODULES } from '../config/planConfig';
 import { getSubscriptions, updateSubscription, deleteSubscription } from '../services/subscriptionService';
@@ -175,6 +175,10 @@ const DevPanel: React.FC = () => {
     e.preventDefault();
     if (!form.id || !form.storeName) { notify('Informe o identificador e o nome da loja.'); return; }
     await saveTenant({ ...form });
+    // Criar authorizedUser se houver adminUid preenchido
+    if (form.adminUid) {
+      await addAuthorizedUser(form.id, form.adminUid, 'admin');
+    }
     setShowForm(false);
     await reload();
     notify('Loja salva com sucesso.');
@@ -242,8 +246,8 @@ const DevPanel: React.FC = () => {
     if (!window.confirm(`Aprovar a loja "${p.storeName}" (${p.subdomain})?`)) return;
     try {
       const tenantId = p.subdomain.toLowerCase().replace(/\s+/g, '-');
-      // Nota: o adminUid e custom claims devem ser criados manualmente no Console do Firebase
-      // Após criar o usuário Auth, o admin deve preencher o adminUid aqui
+      // Nota: o usuário Firebase Auth deve ser criado no Console do Firebase
+      // Após criar o usuário, o admin deve preencher o adminUid aqui
       await approvePendingOnboarding(p.id, currentAdminUid, tenantId);
       await onboardTenant({
         id: tenantId,
@@ -260,8 +264,12 @@ const DevPanel: React.FC = () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
+      // Criar documento authorizedUsers para o admin da loja (se houver adminUid)
+      if (p.adminUid) {
+        await addAuthorizedUser(tenantId, p.adminUid, 'admin');
+      }
       await reload();
-      notify(`Loja "${p.storeName}" aprovada e criada. Configure o usuário Firebase Auth com tenantId ${tenantId}.`);
+      notify(`Loja "${p.storeName}" aprovada e criada. Configure o usuário Firebase Auth com tenantId ${tenantId} e role admin.`);
     } catch (e) {
       notify('Erro ao aprovar solicitação.');
       console.error(e);

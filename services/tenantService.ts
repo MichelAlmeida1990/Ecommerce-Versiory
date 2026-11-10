@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, orderBy, where, limit } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, orderBy, where, limit, getDoc } from 'firebase/firestore';
 import { PlanId } from '../config/planConfig';
 
 // Painel do Desenvolvedor: gestão das lojas (tenants) que assinam o sistema
@@ -142,6 +142,10 @@ export const onboardTenant = async (tenant: Tenant): Promise<Tenant> => {
   await Promise.all(defaults.map((name, i) =>
     setDoc(doc(db, COLLECTION, tenant.id, 'categories', `cat-${i}`), { id: `cat-${i}`, name, tenantId: tenant.id, createdAt: now }, { merge: true })
   ));
+  // Criar authorizedUser se houver adminUid
+  if (tenant.adminUid) {
+    await addAuthorizedUser(tenant.id, tenant.adminUid, 'admin');
+  }
   return data as Tenant;
 };
 
@@ -227,4 +231,41 @@ export const rejectPendingOnboarding = async (
     reviewedBy: adminUid,
     rejectionReason: reason || ''
   });
+};
+
+// ---- Gerenciamento de Usuários Autorizados por Tenant (fonte de verdade para regras) ----
+
+export const addAuthorizedUser = async (tenantId: string, uid: string, role: 'admin' | 'seller' | 'dev'): Promise<void> => {
+  await setDoc(doc(db, COLLECTION, tenantId, 'authorizedUsers', uid), {
+    uid,
+    role,
+    tenantId,
+    createdAt: new Date().toISOString()
+  }, { merge: true });
+};
+
+export const removeAuthorizedUser = async (tenantId: string, uid: string): Promise<void> => {
+  await deleteDoc(doc(db, COLLECTION, tenantId, 'authorizedUsers', uid));
+};
+
+export const getAuthorizedUsers = async (tenantId: string): Promise<{ uid: string; role: string; tenantId: string }[]> => {
+  try {
+    const q = query(collection(db, COLLECTION, tenantId, 'authorizedUsers'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ uid: d.id, ...d.data() } as { uid: string; role: string; tenantId: string }));
+  } catch (e) {
+    console.error('Erro ao carregar usuários autorizados:', e);
+    return [];
+  }
+};
+
+export const getUserRoleInTenant = async (tenantId: string, uid: string): Promise<string | null> => {
+  try {
+    const snap = await getDoc(doc(db, COLLECTION, tenantId, 'authorizedUsers', uid));
+    if (!snap.exists()) return null;
+    return snap.data().role || null;
+  } catch (e) {
+    console.error('Erro ao buscar role do usuário no tenant:', e);
+    return null;
+  }
 };
