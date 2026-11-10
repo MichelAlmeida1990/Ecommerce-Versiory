@@ -9,7 +9,9 @@ service cloud.firestore {
     // Usuário é dev (email específico ou uid especial)
     function isDev(uid) {
       return signedIn()
-        && (uid == 'dev-global' || request.auth.token.email == 'dev@versiory.com');
+        && (uid == 'dev-global'
+          || request.auth.token.email == 'dev@versiory.com'
+          || request.auth.token.email == 'dev@sualoja.com');
     }
 
     // Busca o role do usuário dentro de um tenant (fonte de verdade: Firestore)

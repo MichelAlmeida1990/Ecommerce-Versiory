@@ -59,7 +59,7 @@ const AdminApp: React.FC = () => {
         }
         const uid = user.uid;
 
-        if (user.email === 'dev@versiory.com' || uid === 'dev-global') {
+        if (user.email === 'dev@versiory.com' || user.email === 'dev@sualoja.com' || uid === 'dev-global') {
           const session = { isAuthenticated: true, role: 'dev', tenantId: undefined, loginTime: Date.now(), lastActivity: Date.now() };
           await saveAdminSession(session);
           setUserRole('dev');
@@ -242,7 +242,7 @@ const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', e
       const uid = firebaseUser.uid;
 
       if (role === 'dev') {
-        const isDevUser = firebaseUser.email === 'dev@versiory.com' || uid === 'dev-global';
+        const isDevUser = firebaseUser.email === 'dev@versiory.com' || firebaseUser.email === 'dev@sualoja.com' || uid === 'dev-global';
         if (!isDevUser) {
           await signOutAdmin();
           throw new Error('role-mismatch');
