@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, orderBy, where, limit } from 'firebase/firestore';
 import { PlanId } from '../config/planConfig';
 
 // Painel do Desenvolvedor: gestão das lojas (tenants) que assinam o sistema
@@ -19,6 +19,10 @@ export interface Tenant {
   status: TenantStatus;
   monthlyValue: number;            // valor mensal cobrado (pode diferir do preço de tabela)
   dueDay: number;                  // dia de vencimento da mensalidade
+  customDomain?: string;           // domínio personalizado (ex: minhaloja.com.br)
+  subdomain?: string;              // subdomínio (ex: minhaloja para *.versiory.com)
+  domainVerified?: boolean;        // se o domínio personalizado foi verificado via DNS
+  domainVerifiedAt?: string;       // data da verificação do domínio
   billingConfig?: {                // config de faturamento gravada no localStorage da loja
     dueDay: number;
     value: number;
@@ -43,6 +47,40 @@ export const getTenants = async (): Promise<Tenant[]> => {
   } catch (e) {
     console.error('Erro ao carregar tenants:', e);
     return [];
+  }
+};
+
+export const getTenantByDomain = async (domain: string): Promise<Tenant | null> => {
+  try {
+    const q = query(
+      collection(db, COLLECTION),
+      where('customDomain', '==', domain),
+      where('status', '==', 'active'),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    return { id: snap.docs[0].id, ...snap.docs[0].data() } as Tenant;
+  } catch (e) {
+    console.error('Erro ao buscar tenant por domínio:', e);
+    return null;
+  }
+};
+
+export const getTenantBySubdomain = async (subdomain: string): Promise<Tenant | null> => {
+  try {
+    const q = query(
+      collection(db, COLLECTION),
+      where('subdomain', '==', subdomain),
+      where('status', '==', 'active'),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    return { id: snap.docs[0].id, ...snap.docs[0].data() } as Tenant;
+  } catch (e) {
+    console.error('Erro ao buscar tenant por subdomínio:', e);
+    return null;
   }
 };
 
@@ -112,4 +150,81 @@ export const TENANT_STATUS_COLORS: Record<TenantStatus, string> = {
   active: 'bg-emerald-600',
   suspended: 'bg-amber-600',
   cancelled: 'bg-red-600'
+};
+
+// ---- Solicitações de Onboarding (aprovação manual via DevPanel) ----
+
+export type OnboardingStatus = 'pending' | 'approved' | 'rejected';
+
+export interface PendingOnboarding {
+  id: string;                      // docId gerado pelo Firestore
+  storeName: string;
+  ownerName: string;
+  email: string;
+  phone?: string;
+  subdomain: string;
+  customDomain?: string;
+  planId: PlanId;
+  monthlyValue: number;
+  dueDay: number;
+  status: OnboardingStatus;
+  createdAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;             // UID do admin que aprovou/rejeitou
+  rejectionReason?: string;
+  adminUid?: string;               // UID do Firebase Auth criado após aprovação
+  tenantId?: string;               // ID do tenant criado após aprovação
+}
+
+const PENDING_COLLECTION = 'pending_onboardings';
+
+export const createPendingOnboarding = async (data: Omit<PendingOnboarding, 'id' | 'status' | 'createdAt'>): Promise<string> => {
+  const now = new Date().toISOString();
+  const docRef = doc(collection(db, PENDING_COLLECTION));
+  await setDoc(docRef, {
+    ...data,
+    status: 'pending',
+    createdAt: now
+  });
+  return docRef.id;
+};
+
+export const getPendingOnboardings = async (): Promise<PendingOnboarding[]> => {
+  try {
+    const q = query(collection(db, PENDING_COLLECTION), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as PendingOnboarding));
+  } catch (e) {
+    console.error('Erro ao carregar solicitações de onboarding:', e);
+    return [];
+  }
+};
+
+export const approvePendingOnboarding = async (
+  pendingId: string,
+  adminUid: string,
+  tenantId: string
+): Promise<void> => {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, PENDING_COLLECTION, pendingId), {
+    status: 'approved',
+    reviewedAt: now,
+    reviewedBy: adminUid,
+    adminUid,
+    tenantId
+  });
+};
+
+export const rejectPendingOnboarding = async (
+  pendingId: string,
+  adminUid: string,
+  reason?: string
+): Promise<void> => {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, PENDING_COLLECTION, pendingId), {
+    status: 'rejected',
+    reviewedAt: now,
+    reviewedBy: adminUid,
+    rejectionReason: reason || ''
+  });
 };

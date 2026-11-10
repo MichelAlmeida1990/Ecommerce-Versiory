@@ -14,10 +14,17 @@ import {
 import {
     getAuth,
     signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    sendEmailVerification,
+    sendPasswordResetEmail,
+    EmailAuthProvider,
+    reauthenticateWithCredential,
+    updatePassword,
     signOut,
     onAuthStateChanged,
     type User as FirebaseUser
 } from "firebase/auth";
+
 import {
     Product,
     Order,
@@ -27,6 +34,7 @@ import {
     InventoryMovement,
     Expense,
     ManualRevenue,
+    Coupon,
 } from "../types";
 
 const firebaseConfig = {
@@ -45,6 +53,11 @@ export const auth = getAuth(app);
 
 import { getActiveTenantId } from './tenantContext';
 export const DEFAULT_TENANT_ID = 'versiory-demo';
+export const SHOWCASE_TENANT_ID = DEFAULT_TENANT_ID;
+
+// Re-export de funções de tenant (domínio/subdomínio/onboarding)
+export { getTenantByDomain, getTenantBySubdomain } from './tenantService';
+export { createPendingOnboarding, getPendingOnboardings, approvePendingOnboarding, rejectPendingOnboarding } from './tenantService';
 
 // Retorna o path da coleÃ§Ã£o dentro do tenant
 const tenantCol = (tenantId: string, col: string) =>
@@ -54,6 +67,28 @@ const tenantCol = (tenantId: string, col: string) =>
 export const signInAdmin = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     return cred.user;
+};
+
+export const registerCustomerAuth = async (email: string, password: string) => {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    await sendEmailVerification(cred.user);
+    return cred.user;
+};
+
+export const resendCustomerVerification = () => {
+    if (!auth.currentUser) throw new Error('Entre na conta para reenviar a confirmação.');
+    return sendEmailVerification(auth.currentUser);
+};
+
+export const sendCustomerPasswordReset = (email: string) =>
+    sendPasswordResetEmail(auth, email);
+
+export const changeCustomerPassword = async (currentPassword: string, newPassword: string) => {
+    const user = auth.currentUser;
+    if (!user?.email) throw new Error('É necessário entrar na conta novamente.');
+    const credential = EmailAuthProvider.credential(user.email, currentPassword);
+    await reauthenticateWithCredential(user, credential);
+    await updatePassword(user, newPassword);
 };
 
 export const signOutAdmin = async () => {
@@ -104,14 +139,37 @@ async function deleteDocument(tenantId: string, col: string, id: string | number
 }
 
 // ---- Products ----
-export const getProducts = (tenantId = getActiveTenantId()) =>
-    getCollection<Product>(tenantId, 'products');
+export const getProducts = async (tenantId = getActiveTenantId()): Promise<Product[]> => {
+    return getCollection<Product>(tenantId, 'products');
+};
 
 export const subscribeToProducts = (callback: (products: Product[]) => void, tenantId = getActiveTenantId()) => {
     const q = query(collection(db, tenantCol(tenantId, 'products')));
     return onSnapshot(q, (snapshot) => {
         callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Product)));
     });
+};
+
+export const subscribeToPublicProducts = (
+    callback: (products: Product[]) => void,
+    tenantId = getActiveTenantId(),
+    onError: (error: unknown) => void = (error) => console.error('Erro ao carregar catálogo público:', error)
+) => {
+    let active = true;
+    const refresh = async () => {
+        try {
+            const products = await getProducts(tenantId);
+            if (active) callback(products);
+        } catch (error) {
+            if (active) onError(error);
+        }
+    };
+    void refresh();
+    const refreshTimer = setInterval(() => void refresh(), 60_000);
+    return () => {
+        active = false;
+        clearInterval(refreshTimer);
+    };
 };
 
 export const saveProduct = async (product: Product, base64Image?: string, tenantId = getActiveTenantId()) => {
@@ -175,7 +233,95 @@ export const getCustomers = (tenantId = getActiveTenantId()) =>
     getCollection<Customer>(tenantId, 'customers');
 
 export const saveCustomer = (customer: Customer, tenantId = getActiveTenantId()) =>
-    setDocument(tenantId, 'customers', customer.id, customer);
+    setDocument(tenantId, 'customers', customer.uid || customer.id, customer);
+
+export const getCustomerProfile = async (tenantId = getActiveTenantId()): Promise<Customer | null> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return null;
+    const snapshot = await getDoc(doc(db, tenantCol(tenantId, 'customers'), uid));
+    return snapshot.exists() ? ({ ...snapshot.data(), uid } as Customer) : null;
+};
+
+export const ensureCustomerProfile = async (
+    profile?: Partial<Customer>,
+    tenantId = getActiveTenantId()
+): Promise<Customer> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('É necessário estar autenticado.');
+    const customerData = { ...profile, uid, updatedAt: Date.now() };
+    await setDocument(tenantId, 'customers', uid, customerData);
+    return customerData as Customer;
+};
+
+export const createCustomerOrder = async (
+    input: Record<string, unknown>,
+    tenantId = getActiveTenantId()
+): Promise<{ id: string; total: number; discountAmount: number; items: Order['items'] }> => {
+    const orderId = String(input.orderId || `order_${Date.now()}`);
+    const orderData = {
+        ...input,
+        id: orderId,
+        tenantId,
+        status: 'pending',
+        createdAt: Date.now(),
+    };
+    await setDocument(tenantId, 'orders', orderId, orderData);
+    return { id: orderId, total: 0, discountAmount: 0, items: [] };
+};
+
+export const getCustomerOrders = async (tenantId = getActiveTenantId()): Promise<Order[]> => {
+    const uid = auth.currentUser?.uid;
+    const q = query(
+        collection(db, tenantCol(tenantId, 'orders')),
+        orderBy('date', 'desc')
+    );
+    const snapshot = await getDocs(q);
+    const allOrders = snapshot.docs.map(d => ({ ...d.data() } as Order));
+    if (uid) {
+        return allOrders.filter(o => o.customerEmail === auth.currentUser?.email);
+    }
+    return allOrders.filter(o => o.customerEmail === auth.currentUser?.email);
+};
+
+export const updateCustomerOrder = async (
+    input: { orderId: string; action: 'cancel' | 'request-return' | 'update-address'; reason?: string; address?: string },
+    tenantId = getActiveTenantId()
+): Promise<Order> => {
+    const uid = auth.currentUser?.uid;
+    const email = auth.currentUser?.email;
+    const ref = doc(db, tenantCol(tenantId, 'orders'), input.orderId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error('Pedido não encontrado.');
+    const order = snap.data() as Order;
+    if (order.customerEmail !== email) {
+        throw new Error('Você não tem permissão para atualizar este pedido.');
+    }
+    const updates: Partial<Order> = {};
+    if (input.action === 'cancel') updates.status = 'cancelled';
+    if (input.action === 'request-return') updates.status = 'returned';
+    if (input.action === 'update-address' && input.address) updates.address = input.address;
+    if (input.reason) updates.notes = input.reason;
+    await setDoc(ref, { ...order, ...updates });
+    return { ...order, ...updates } as Order;
+};
+
+export const lookupOrderTracking = async (
+    orderId: string,
+    email: string,
+    tenantId = getActiveTenantId()
+): Promise<{ order: Order; tracking: TrackingItem | null }> => {
+    const ref = doc(db, tenantCol(tenantId, 'orders'), orderId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error('Pedido não encontrado.');
+    const order = snap.data() as Order;
+    if (order.customerEmail !== email) {
+        throw new Error('Este pedido não pertence a este e-mail.');
+    }
+    const trackingRef = doc(db, tenantCol(tenantId, 'tracking'), orderId);
+    const trackingSnap = await getDoc(trackingRef);
+    const tracking = trackingSnap.exists() ? (trackingSnap.data() as TrackingItem) : null;
+    return { order, tracking };
+};
 
 export const subscribeToCustomers = (callback: (customers: Customer[]) => void, tenantId = getActiveTenantId()) => {
     return onSnapshot(collection(db, tenantCol(tenantId, 'customers')), (snapshot) => {
@@ -184,12 +330,16 @@ export const subscribeToCustomers = (callback: (customers: Customer[]) => void, 
 };
 
 // ---- Cart ----
-export const saveCart = async (email: string, items: any[], tenantId = getActiveTenantId()) => {
-    await setDocument(tenantId, 'carts', email, { items, updatedAt: Date.now() });
+export const saveCart = async (_email: string, items: any[], tenantId = getActiveTenantId()) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    await setDocument(tenantId, 'carts', uid, { items, updatedAt: Date.now() });
 };
 
-export const getCart = async (email: string, tenantId = getActiveTenantId()): Promise<any[]> => {
-    const ref = doc(db, tenantCol(tenantId, 'carts'), email);
+export const getCart = async (_email: string, tenantId = getActiveTenantId()): Promise<any[]> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return [];
+    const ref = doc(db, tenantCol(tenantId, 'carts'), uid);
     const snap = await getDoc(ref);
     return snap.exists() ? snap.data().items || [] : [];
 };
@@ -255,8 +405,6 @@ export const deleteManualRevenue = (id: number, tenantId = getActiveTenantId()) 
     deleteDocument(tenantId, 'manualRevenues', id);
 
 // ---- Coupons ----
-import { Coupon } from '../types';
-
 export const getCoupons = (tenantId = getActiveTenantId()) =>
     getCollection<Coupon>(tenantId, 'coupons');
 
@@ -266,34 +414,31 @@ export const saveCoupon = (coupon: Coupon, tenantId = getActiveTenantId()) =>
 export const deleteCouponItem = (id: string, tenantId = getActiveTenantId()) =>
     deleteDocument(tenantId, 'coupons', id);
 
-export const validateAndUseCoupon = async (
+export const previewCoupon = async (
     codigo: string,
+    subtotal: number,
     tenantId = getActiveTenantId()
-): Promise<{ coupon: Coupon | null; error: string | null }> => {
-    try {
-        const coupons = await getCoupons(tenantId);
-        const coupon = coupons.find(c => c.codigo.toUpperCase() === codigo.toUpperCase());
-        if (!coupon) return { coupon: null, error: 'Cupom invÃ¡lido ou expirado' };
-        if (!coupon.ativo) return { coupon: null, error: 'Cupom invÃ¡lido ou expirado' };
-        const now = new Date();
-        const fim = new Date(coupon.dataFim);
-        fim.setHours(23, 59, 59, 999);
-        if (now < new Date(coupon.dataInicio) || now > fim)
-            return { coupon: null, error: 'Cupom fora do perÃ­odo de validade' };
-        if (coupon.usosRealizados >= coupon.usoMaximo)
-            return { coupon: null, error: 'Limite de usos do cupom atingido' };
-        const updated: Coupon = { ...coupon, usosRealizados: coupon.usosRealizados + 1 };
-        await saveCoupon(updated, tenantId);
-        return { coupon: updated, error: null };
-    } catch (err) {
-        console.error('Erro ao validar cupom:', err);
-        return { coupon: null, error: 'Erro ao validar cupom. Tente novamente.' };
+): Promise<{ coupon: Pick<Coupon, 'codigo' | 'tipo' | 'valor'> | null; error: string | null }> => {
+    const coupons = await getCollection<Coupon>(tenantId, 'coupons');
+    const coupon = coupons.find(c => c.codigo === codigo);
+    if (!coupon) return { coupon: null, error: 'Cupom não encontrado.' };
+    if (!coupon.ativo) return { coupon: null, error: 'Cupom inativo.' };
+    if (coupon.dataFim && new Date(coupon.dataFim) < new Date()) {
+        return { coupon: null, error: 'Cupom expirado.' };
     }
+    if (coupon.valorMinimo && subtotal < coupon.valorMinimo) {
+        return { coupon: null, error: `Valor mínimo de R$ ${coupon.valorMinimo} não atingido.` };
+    }
+    return {
+        coupon: { codigo: coupon.codigo, tipo: coupon.tipo, valor: coupon.valor },
+        error: null,
+    };
 };
 
 // ---- User Session (localStorage â€” migrar para Firestore futuramente) ----
 export interface UserSession {
     email: string;
+    uid?: string;
     name?: string;
     phone?: string;
     cpfCnpj?: string;
@@ -323,15 +468,13 @@ export const getUserSession = async (): Promise<UserSession | null> => {
 };
 
 export const clearUserSession = async () => {
+    await signOut(auth);
     const lastUser = localStorage.getItem('versiory_last_user');
     if (lastUser) localStorage.removeItem(`versiory_user_${lastUser}`);
     localStorage.removeItem('versiory_last_user');
 };
 
 // ---- Admin Session (Firestore) ----
-import { getActiveTenantId } from './tenantContext';
-import { saveAdminSession as saveFsSession, loadAdminSession as loadFsSession, clearAdminSession as clearFsSession } from './sessionsService';
-
 export interface AdminSession {
     isAuthenticated: boolean;
     role?: 'admin' | 'seller' | 'dev';
@@ -340,45 +483,26 @@ export interface AdminSession {
     lastActivity: number;
 }
 
-const fsUserId = (role: string): string => {
-    try {
-        const u = auth.currentUser;
-        if (u) return u.uid;
-    } catch { /* ignore */ }
-    return `${role}-${getActiveTenantId()}`;
-};
-
 export const saveAdminSession = async (session: AdminSession) => {
-    try {
-        await saveFsSession({ ...session, userId: fsUserId(session.role || 'dev') });
-    } catch {
-        localStorage.setItem('versiory_admin_session_fallback', JSON.stringify(session));
-    }
+    const serialized = JSON.stringify(session);
+    localStorage.setItem('versiory_admin_session', serialized);
+    localStorage.setItem('versiory_admin_session_fallback', serialized);
 };
 
 export const getAdminSession = async (): Promise<AdminSession | null> => {
     try {
-        const userId = fsUserId('dev');
-        const session = await loadFsSession(userId);
-        if (!session) {
-            const fb = localStorage.getItem('versiory_admin_session_fallback');
-            if (!fb) return null;
-            const parsed = JSON.parse(fb) as AdminSession;
-            const maxAge = parsed.role === 'dev' ? 8 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-            if (Date.now() - parsed.loginTime > maxAge) {
-                localStorage.removeItem('versiory_admin_session_fallback');
-                return null;
-            }
-            return parsed;
-        }
+        const stored = localStorage.getItem('versiory_admin_session_fallback');
+        if (!stored) return null;
+        const session = JSON.parse(stored) as AdminSession;
         const maxAge = session.role === 'dev' ? 8 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
         if (Date.now() - session.loginTime > maxAge) {
-            await clearFsSession(session.userId || userId);
+            localStorage.removeItem('versiory_admin_session_fallback');
             return null;
         }
         return session;
-    } catch {
-        return null;
+    } catch (error) {
+        console.error('Erro ao recuperar sessão local do painel:', error);
+        throw error;
     }
 };
 
@@ -394,9 +518,7 @@ export const updateAdminActivity = async () => {
 };
 
 export const clearAdminSession = async () => {
-    try {
-        await clearFsSession(fsUserId('dev'));
-    } catch { /* ignore */ }
+    localStorage.removeItem('versiory_admin_session');
     localStorage.removeItem('versiory_admin_session_fallback');
 };
 
@@ -416,7 +538,7 @@ export interface AuditLogEntry {
 export const logAudit = async (entry: Omit<AuditLogEntry, 'id' | 'createdAt'>) => {
     try {
         const ref = doc(collection(db, 'audit_logs'));
-        await setDoc(ref, { ...entry, createdAt: Date.now() });
+        await setDoc(ref, { tenantId: entry.tenantId || getActiveTenantId(), ...entry, createdAt: Date.now() });
     } catch (error) {
         console.error('Erro ao registrar audit log:', error);
     }
@@ -446,5 +568,3 @@ export const saveTenantConfig = async (config: TenantConfig, tenantId = getActiv
 
 // ---- WhatsApp da loja ----
 export const STORE_WHATSAPP_NUMBER = '5511958540171';
-
-

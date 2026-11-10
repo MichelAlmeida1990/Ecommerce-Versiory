@@ -163,9 +163,9 @@ export interface Address {
 
 export interface Customer {
   id: number;
+  uid?: string;
   name: string;
   email: string;
-  password?: string;
   phone?: string;
   cpfCnpj?: string;
   avatar?: string;

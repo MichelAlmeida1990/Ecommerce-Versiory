@@ -12,7 +12,6 @@ export const listCustomers = async () => {
     console.log(`\n--- Cliente ${index + 1} ---`);
     console.log(`Nome: ${customer.name}`);
     console.log(`Email: ${customer.email}`);
-    console.log(`Senha (hash): ${customer.password}`);
     console.log(`Telefone: ${customer.phone || 'Não informado'}`);
     console.log(`CPF/CNPJ: ${customer.cpfCnpj || 'Não informado'}`);
     if (customer.addresses && customer.addresses.length > 0) {

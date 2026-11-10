@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { getTrackingItem, getOrder, STORE_WHATSAPP_NUMBER } from '../services/firebase';
+import { lookupOrderTracking, STORE_WHATSAPP_NUMBER } from '../services/firebase';
 import { TrackingItem, Order } from '../types';
 
 const Tracking: React.FC = () => {
   const [orderId, setOrderId] = useState('');
+  const [email, setEmail] = useState('');
   const [trackingData, setTrackingData] = useState<TrackingItem | null>(null);
   const [orderData, setOrderData] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
@@ -11,7 +12,7 @@ const Tracking: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orderId.trim()) return;
+    if (!orderId.trim() || !email.trim()) return;
 
     setLoading(true);
     setError('');
@@ -19,26 +20,13 @@ const Tracking: React.FC = () => {
     setOrderData(null);
 
     try {
-      // Tentar buscar o rastreamento primeiro
-      const tracking = await getTrackingItem(orderId.trim());
-      if (tracking) {
-        setTrackingData(tracking);
-        // Se achou rastreio, busca o pedido para mostrar dados básicos
-        const order = await getOrder(orderId.trim());
-        if (order) setOrderData(order);
-      } else {
-        // Se não tem rastreio, verifica se o pedido existe
-        const order = await getOrder(orderId.trim());
-        if (order) {
-          setOrderData(order);
-          setError('Pedido encontrado, mas o rastreamento ainda não foi postado.');
-        } else {
-          setError('Pedido não encontrado. Verifique o código informado.');
-        }
-      }
+      const result = await lookupOrderTracking(orderId.trim(), email.trim());
+      setTrackingData(result.tracking);
+      setOrderData(result.order);
+      if (!result.tracking) setError('Pedido encontrado, mas o rastreamento ainda não foi postado.');
     } catch (err) {
       console.error(err);
-      setError('Ocorreu um erro ao buscar o rastreamento.');
+      setError('Pedido não encontrado. Verifique o código e o e-mail utilizado na compra.');
     } finally {
       setLoading(false);
     }
@@ -70,7 +58,7 @@ const Tracking: React.FC = () => {
     <div className="max-w-4xl mx-auto px-4 py-12">
       <div className="text-center mb-12">
         <h1 className="text-4xl font-black text-slate-900 mb-4">Rastrear Pedido</h1>
-        <p className="text-lg text-slate-600">Insira o código do seu pedido para acompanhar a entrega.</p>
+        <p className="text-lg text-slate-600">Informe o código do pedido e o e-mail da compra para acompanhar a entrega.</p>
       </div>
 
       <div className="bg-white rounded-3xl shadow-2xl p-8 border border-slate-100 mb-8">
@@ -80,6 +68,14 @@ const Tracking: React.FC = () => {
             value={orderId}
             onChange={(e) => setOrderId(e.target.value)}
             placeholder="Ex: ORD-123456789"
+            className="flex-1 px-6 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-versiory-coral outline-none text-lg font-medium transition-all"
+          />
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="E-mail usado na compra"
+            required
             className="flex-1 px-6 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-versiory-coral outline-none text-lg font-medium transition-all"
           />
           <button
@@ -121,7 +117,7 @@ const Tracking: React.FC = () => {
             <div className="space-y-6">
               <div>
                 <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">Detalhes da Entrega</p>
-                <p className="text-slate-900 font-medium leading-relaxed">{orderData.address}</p>
+                <p className="text-slate-900 font-medium leading-relaxed">Status: {orderData.status}</p>
                 <p className="text-slate-500 text-sm mt-2">Previsão: {orderData.estimatedDelivery || '5 a 10 dias úteis'}</p>
               </div>
 

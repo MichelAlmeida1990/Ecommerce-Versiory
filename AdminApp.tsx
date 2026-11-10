@@ -12,7 +12,6 @@ import { PRODUCTS } from './constants';
 import AdminLogin from './components/AdminLogin';
 import AdminDashboard from './components/AdminDashboard';
 import {
-  getAdminSession,
   saveAdminSession,
   updateAdminActivity,
   clearAdminSession,
@@ -28,15 +27,13 @@ import {
   saveCategory,
   signInAdmin,
   signOutAdmin,
-  DEFAULT_TENANT_ID
+  onAdminAuthChanged,
 } from './services/firebase';
 import { getBillingStatus, getBillingConfig } from './services/billingConfig';
 import { logAudit } from './services/firebase';
 import { getActiveTenantId } from './services/tenantContext';
 import { STORE_WHATSAPP_NUMBER } from './utils/constants';
 
-const SELLER_PASSWORD = import.meta.env.VITE_SELLER_PASSWORD || 'vendedor2024';
-const DEV_PASSWORD = import.meta.env.VITE_DEV_PASSWORD || 'devsuporte2026';
 const BASE_CATEGORIES = ['Eletrônicos', 'Moda', 'Casa', 'Esportes'];
 
 const AdminApp: React.FC = () => {
@@ -52,25 +49,40 @@ const AdminApp: React.FC = () => {
   const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
 
-  // Verificar autenticação ao carregar
   useEffect(() => {
-    const checkAuth = async () => {
+    const unsubscribe = onAdminAuthChanged(async (user) => {
       try {
-        const session = await getAdminSession();
-        if (session && session.isAuthenticated) {
-          setIsAuthenticated(true);
-          setUserRole(session.role || 'seller');
-        } else {
+        if (!user) {
           setIsAuthenticated(false);
+          return;
         }
+        const claims = (await user.getIdTokenResult()).claims;
+        const role = claims.role;
+        const tenantId = claims.tenantId;
+        if (!['admin', 'seller', 'dev'].includes(String(role)) ||
+          (role !== 'dev' && (typeof tenantId !== 'string' || !tenantId))) {
+          await clearAdminSession();
+          setIsAuthenticated(false);
+          return;
+        }
+        const session = {
+          isAuthenticated: true,
+          role: role as 'admin' | 'seller' | 'dev',
+          tenantId: typeof tenantId === 'string' ? tenantId : undefined,
+          loginTime: Date.now(),
+          lastActivity: Date.now(),
+        };
+        await saveAdminSession(session);
+        setUserRole(session.role);
+        setIsAuthenticated(true);
       } catch (error) {
-        console.error('Erro ao recuperar sessão admin:', error);
+        console.error('Erro ao validar claims do painel:', error);
         setIsAuthenticated(false);
       } finally {
         setIsLoading(false);
       }
-    };
-    checkAuth();
+    });
+    return unsubscribe;
   }, []);
 
 
@@ -199,7 +211,7 @@ const AdminApp: React.FC = () => {
     };
   }, [isAuthenticated]);
 
-const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', totpCode?: string, email?: string) => {
+const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', email?: string) => {
     if (role !== 'dev') {
       const billing = getBillingStatus(getBillingConfig());
       if (billing.blocked) {
@@ -209,53 +221,29 @@ const handleLogin = async (password: string, role: 'admin' | 'seller' | 'dev', t
     }
 
     try {
-      if (role === 'admin') {
-        // Firebase Auth real para admin
-        if (!email) { setError('Informe o e-mail de acesso.'); return; }
-        const firebaseUser = await signInAdmin(email, password);
-        // Força refresh do token para garantir que os custom claims estejam disponíveis
-        const tokenResult = await firebaseUser.getIdTokenResult(true);
-        const tenantId = (tokenResult.claims.tenantId as string) || DEFAULT_TENANT_ID;
-        console.log('[AdminApp] login admin OK. uid:', firebaseUser.uid, 'claims:', tokenResult.claims);
-        await saveAdminSession({ isAuthenticated: true, role, tenantId, loginTime: Date.now(), lastActivity: Date.now() });
-      } else {
-        // Seller/Dev: tenta Firebase Auth se e-mail informado; senão senha local (fallback)
-        let usedFirebaseAuth = false;
-        if (email) {
-          try {
-            const firebaseUser = await signInAdmin(email, password);
-            const tokenResult = await firebaseUser.getIdTokenResult(true);
-            const claims = tokenResult.claims;
-            if (claims.role && claims.role !== role && claims.role !== 'dev') {
-              throw new Error('role-mismatch');
-            }
-            const tenantId = (claims.tenantId as string) || (role === 'seller' ? DEFAULT_TENANT_ID : undefined);
-            console.log(`[AdminApp] login ${role} via Firebase Auth. uid:`, firebaseUser.uid, 'claims:', claims);
-            await saveAdminSession({ isAuthenticated: true, role, tenantId, loginTime: Date.now(), lastActivity: Date.now() });
-            usedFirebaseAuth = true;
-          } catch (e: any) {
-            if (e?.message !== 'role-mismatch' && e?.code !== 'auth/user-not-found' && e?.code !== 'auth/invalid-credential' && e?.code !== 'auth/wrong-password') {
-              console.error('Erro Firebase Auth:', e);
-            }
-            usedFirebaseAuth = false;
-          }
-        }
-        if (!usedFirebaseAuth) {
-          const isValid =
-            (role === 'seller' && password === SELLER_PASSWORD) ||
-            (role === 'dev' && password === DEV_PASSWORD);
-          if (!isValid) { setError('Senha incorreta para o perfil selecionado.'); return; }
-          await saveAdminSession({ isAuthenticated: true, role, tenantId: role === 'seller' ? DEFAULT_TENANT_ID : undefined, loginTime: Date.now(), lastActivity: Date.now() });
-        }
+      if (!email?.trim()) {
+        setError('Informe o e-mail de acesso.');
+        return;
       }
-
+      const firebaseUser = await signInAdmin(email.trim(), password);
+      const claims = (await firebaseUser.getIdTokenResult(true)).claims;
+      if (claims.role !== role ||
+        (role !== 'dev' && (typeof claims.tenantId !== 'string' || !claims.tenantId))) {
+        await signOutAdmin();
+        throw new Error('role-mismatch');
+      }
+      const tenantId = typeof claims.tenantId === 'string' ? claims.tenantId : undefined;
+      const session = { isAuthenticated: true, role, tenantId, loginTime: Date.now(), lastActivity: Date.now() };
+      await saveAdminSession(session);
       setIsAuthenticated(true);
       setUserRole(role);
       setError('');
       logAudit({ action: 'login', userRole: role, details: 'Login no painel admin' });
     } catch (error: any) {
       console.error('Erro ao fazer login:', error);
-      if (error?.code === 'auth/invalid-credential' || error?.code === 'auth/wrong-password' || error?.code === 'auth/user-not-found') {
+      if (error?.message === 'role-mismatch') {
+        setError('Este usuário não possui a função ou o tenant selecionado.');
+      } else if (error?.code === 'auth/invalid-credential' || error?.code === 'auth/wrong-password' || error?.code === 'auth/user-not-found') {
         setError('E-mail ou senha incorretos.');
       } else if (error?.code === 'auth/too-many-requests') {
         setError('Muitas tentativas. Aguarde alguns minutos.');

@@ -13,7 +13,11 @@ import Account from './components/Account';
 import LoginRegister from './components/LoginRegister';
 import Tracking from './components/Tracking';
 import ProductDetail from './components/ProductDetail';
-import { getProducts, getCategories, subscribeToProducts } from './services/firebase';
+import StoreSelector from './components/StoreSelector';
+import StoreOnboardingPage from './components/StoreOnboardingPage';
+import StoreOnboardingWizard from './components/StoreOnboardingWizard';
+import StoreWrapper from './components/StoreWrapper';
+import { getCategories, SHOWCASE_TENANT_ID, subscribeToPublicProducts } from './services/firebase';
 import { getBannerConfig, getDefaultBannerConfig, BANNER_UPDATE_EVENT } from './services/bannerConfig';
 
 
@@ -44,6 +48,8 @@ const App: React.FC = () => {
   const [maxPrice, setMaxPrice] = useState<string>('');
   const [inStockOnly, setInStockOnly] = useState(false);
   const [isProductsLoading, setIsProductsLoading] = useState(true);
+  const [productsLoadError, setProductsLoadError] = useState(false);
+  const [catalogRetry, setCatalogRetry] = useState(0);
   const [activeSection, setActiveSection] = useState<'all' | 'best-sellers' | 'new' | 'recent'>('all');
   const [recentProductIds, setRecentProductIds] = useState<number[]>([]);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
@@ -107,8 +113,9 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // ERRCOM150: Usar subscribeToProducts para atualização em tempo real
-    const unsubscribe = subscribeToProducts((productsData) => {
+    // O catálogo público é atualizado periodicamente sem expor documentos internos.
+    const unsubscribe = subscribeToPublicProducts((productsData) => {
+      setProductsLoadError(false);
       if (productsData.length > 0) {
         setProducts(productsData);
         setIsProductsLoading(false);
@@ -119,13 +126,17 @@ const App: React.FC = () => {
           setIsProductsLoading(false);
         });
       }
+    }, SHOWCASE_TENANT_ID, (error) => {
+      console.error('Não foi possível carregar o catálogo público:', error);
+      setProductsLoadError(true);
+      setIsProductsLoading(false);
     });
 
     // Cleanup function para desinscrever quando o componente desmontar
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [catalogRetry]);
 
   useEffect(() => {
     const loadUserSession = async () => {
@@ -781,6 +792,23 @@ const App: React.FC = () => {
                           </div>
                         </div>
                       ))
+                    ) : productsLoadError && products.length === 0 ? (
+                      <div className="col-span-full flex flex-col items-center justify-center py-16 px-4 text-center">
+                        <h3 className="text-xl font-black text-slate-900 mb-2">Não foi possível carregar os produtos</h3>
+                        <p className="text-slate-500 max-w-md text-sm leading-relaxed mb-5">
+                          O catálogo da loja está temporariamente indisponível. Tente novamente em instantes.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsProductsLoading(true);
+                            setCatalogRetry(retry => retry + 1);
+                          }}
+                          className="bg-gradient-to-r from-versiory-ink to-slate-900 hover:from-versiory-coral hover:to-[#ff8368] text-white font-bold px-8 py-3 rounded-2xl shadow-xl shadow-black/10 transition-all cursor-pointer"
+                        >
+                          Tentar novamente
+                        </button>
+                      </div>
                     ) : filteredProducts.length > 0 ? (
                       filteredProducts.map(p => (
                         <ProductCard key={p.id} product={p} onAddToCart={addToCart} onViewDetails={setSelectedProduct} />
@@ -830,6 +858,14 @@ const App: React.FC = () => {
             <Route path="/tracking" element={<Tracking />} />
 
             <Route path="/login" element={<LoginRegister />} />
+
+            <Route path="/lojas" element={<StoreSelector />} />
+
+            <Route path="/loja/:tenantSlug/*" element={<StoreWrapper />} />
+
+            <Route path="/criar-loja" element={<StoreOnboardingPage />} />
+
+            <Route path="/criar-loja/cadastro" element={<StoreOnboardingWizard />} />
           </Routes>
         </main>
 

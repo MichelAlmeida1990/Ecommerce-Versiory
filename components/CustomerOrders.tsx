@@ -63,15 +63,12 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
 
     setIsReturning(true);
     try {
-      const { saveOrder } = await import('../services/firebase');
-      const updatedOrder = {
-        ...orderToReturn,
-        status: 'returned' as const,
-        notes: `DEVOLUÇÃO SOLICITADA PELO CLIENTE: ${returnReason.trim()}${orderToReturn.notes ? '\n\n' + orderToReturn.notes : ''}`,
-        returnedAt: new Date().toISOString(),
-        returnReason: returnReason.trim()
-      };
-      await saveOrder(updatedOrder);
+      const { updateCustomerOrder } = await import('../services/firebase');
+      const updatedOrder = await updateCustomerOrder({
+        orderId: orderToReturn.id,
+        action: 'request-return',
+        reason: returnReason.trim(),
+      });
       setOrders(prev => prev.map(o => o.id === orderToReturn.id ? { ...updatedOrder, emitNF: o.emitNF } as any : o));
       setSelectedOrder({ ...updatedOrder, emitNF: selectedOrder?.emitNF } as any);
       setShowReturnModal(false);
@@ -115,45 +112,12 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
 
     setIsCancelling(true);
     try {
-      const { saveOrder, getProducts, saveProduct, saveInventoryMovement } = await import('../services/firebase');
-
-      // Atualizar status do pedido com motivo do cancelamento
-      const updatedOrder = {
-        ...orderToCancel,
-        status: 'cancelled' as const,
-        notes: `CANCELADO PELO CLIENTE: ${cancelReason.trim()}${orderToCancel.notes ? '\n\n' + orderToCancel.notes : ''}`,
-        cancelledAt: new Date().toISOString(),
-        cancelReason: cancelReason.trim()
-      };
-      await saveOrder(updatedOrder);
-
-      // Devolver estoque e registrar movimentação
-      const products = await getProducts();
-      for (const item of orderToCancel.items) {
-        const product = products.find(p => p.id === item.productId);
-        if (product) { // REFCOM187: Produtos de Serviço também estornam estoque ao cancelar
-          const previousStock = product.stock || 0;
-          const newStock = previousStock + item.quantity;
-
-          // Atualizar estoque
-          await saveProduct({ ...product, stock: newStock });
-
-          // Registrar movimentação de estoque
-          const movement = {
-            id: Date.now() + item.productId,
-            productId: item.productId,
-            productName: item.name || product.name,
-            type: 'in' as const,
-            quantity: item.quantity,
-            previousStock,
-            newStock,
-            reason: `Devolução - Pedido ${orderToCancel.id} cancelado pelo cliente`,
-            date: new Date().toISOString(),
-            user: customerEmail
-          };
-          await saveInventoryMovement(movement);
-        }
-      }
+      const { updateCustomerOrder } = await import('../services/firebase');
+      const updatedOrder = await updateCustomerOrder({
+        orderId: orderToCancel.id,
+        action: 'cancel',
+        reason: cancelReason.trim(),
+      });
 
       // Atualizar lista local
       setOrders(orders.map(o => o.id === orderToCancel.id ? updatedOrder : o));
@@ -181,15 +145,14 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
 
     setIsUpdatingAddress(true);
     try {
-      const { saveOrder } = await import('../services/firebase');
+      const { updateCustomerOrder } = await import('../services/firebase');
       const formattedAddress = `${addressForm.street}, ${addressForm.number}${addressForm.complement ? ' - ' + addressForm.complement : ''}, ${addressForm.neighborhood}, ${addressForm.city} - ${addressForm.state}, CEP: ${addressForm.zipCode}`;
 
-      const updatedOrder = {
-        ...selectedOrder,
-        address: formattedAddress
-      };
-
-      await saveOrder(updatedOrder);
+      const updatedOrder = await updateCustomerOrder({
+        orderId: selectedOrder.id,
+        action: 'update-address',
+        address: formattedAddress,
+      });
 
       setOrders(orders.map(o => o.id === selectedOrder.id ? updatedOrder : o));
       setSelectedOrder(updatedOrder);
@@ -269,25 +232,8 @@ const CustomerOrders: React.FC<CustomerOrdersProps> = ({ customerEmail, isOpen, 
   const loadOrders = async () => {
     setLoading(true);
     try {
-      const { getOrders, getProducts } = await import('../services/firebase');
-      const allOrders = await getOrders();
-      const customerOrders = allOrders.filter((order) => order.customerEmail === customerEmail);
-      const products = await getProducts();
-
-      // Enriquecer pedidos com dados dos produtos
-      customerOrders.forEach(order => {
-        order.items.forEach(item => {
-          if (!item.name || !item.image) {
-            const product = products.find(p => p.id === item.productId);
-            if (product) {
-              if (!item.name) item.name = product.name;
-              if (!item.image) item.image = product.image;
-              if (!item.description) item.description = product.description;
-            }
-          }
-        });
-      });
-
+      const { getCustomerOrders } = await import('../services/firebase');
+      const customerOrders = await getCustomerOrders();
       customerOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setOrders(customerOrders);
     } catch (error) {

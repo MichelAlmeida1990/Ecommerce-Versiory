@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { generateInvoice } from '../services/invoice';
-import { CartItem, Order, OrderItem, Customer } from '../types';
+import { CartItem, OrderItem, Customer } from '../types';
 import { getFiscalConfig } from '../services/fiscalConfig';
-import { sanitizeData } from '../services/utils';
 import { calculateInstallments } from '../utils/installments';
 interface CheckoutProps {
   isOpen: boolean;
@@ -51,11 +49,6 @@ const Checkout: React.FC<CheckoutProps> = ({
   React.useEffect(() => {
     if (!isOpen) {
       setOrderPlaced(false);
-      // REFCOM093: Gerar novo código a cada abertura do checkout
-      setOtpCode(Math.floor(1000 + Math.random() * 9000).toString());
-      setOtpSent(false);
-      setIsOtpVerified(false);
-      setOtpError('');
     }
   }, [isOpen]);
   const [customerData, setCustomerData] = useState<Customer | null>(null);
@@ -65,6 +58,9 @@ const Checkout: React.FC<CheckoutProps> = ({
   const [discount, setDiscount] = useState(0);
   const [couponError, setCouponError] = useState('');
   const [couponApplied, setCouponApplied] = useState(false);
+  const effectiveIsStorePickup = isStorePickup;
+  const getItemPrice = (item: CartItem, pickup: boolean) =>
+    pickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price);
 
   // Auto-aplicar cupom vindo do Carrinho Drawer
   useEffect(() => {
@@ -72,14 +68,20 @@ const Checkout: React.FC<CheckoutProps> = ({
       setCouponCode(initialCouponCode);
       const autoApply = async () => {
         try {
-          const { validateAndUseCoupon } = await import('../services/firebase');
-          const { coupon, error } = await validateAndUseCoupon(initialCouponCode.toUpperCase().trim());
+          const { previewCoupon } = await import('../services/firebase');
+          const currentSubtotal = items.reduce(
+            (sum, item) => sum + getItemPrice(item, effectiveIsStorePickup) * item.quantity,
+            0
+          );
+          const { coupon, error } = await previewCoupon(
+            initialCouponCode.toUpperCase().trim(),
+            currentSubtotal
+          );
           if (coupon && !error) {
-            const sub = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
             const d = coupon.tipo === 'percentual'
-              ? sub * (coupon.valor / 100)
+              ? currentSubtotal * (coupon.valor / 100)
               : coupon.valor;
-            setDiscount(Math.min(d, sub));
+            setDiscount(Math.min(d, currentSubtotal));
             setCouponApplied(true);
           }
         } catch (e) {
@@ -88,12 +90,7 @@ const Checkout: React.FC<CheckoutProps> = ({
       };
       autoApply();
     }
-  }, [isOpen, initialCouponCode]);
-  const [otpSent, setOtpSent] = useState(false);
-  // REFCOM093: Gerar código automaticamente ao montar (sem etapa de clique)
-  const [otpCode, setOtpCode] = useState<string>(() => Math.floor(1000 + Math.random() * 9000).toString());
-  const [isOtpVerified, setIsOtpVerified] = useState(false);
-  const [otpError, setOtpError] = useState('');
+  }, [isOpen, initialCouponCode, items, effectiveIsStorePickup]);
   const [customerPhone, setCustomerPhone] = useState(''); // ERRCOM070
   const [customerCpfCnpj, setCustomerCpfCnpj] = useState(''); // ERRCOM070
   const [customerBirthDate, setCustomerBirthDate] = useState(''); // REFCOM166/181: Data de Nascimento
@@ -125,20 +122,14 @@ const Checkout: React.FC<CheckoutProps> = ({
   }, [customerEmail, customerAddress]);
   const hasService = items.some(item => item.category === 'Serviços');
 
-  const effectiveIsStorePickup = isStorePickup;
-
-  const getItemPrice = (item: any, pickup: boolean) =>
-    pickup ? (item.pricePOS || item.price) : (item.priceEcommerce || item.price);
-
   // Carregar dados do cliente ao abrir
   React.useEffect(() => {
     if (isOpen && effectiveEmail) {
       const loadCustomer = async () => {
         try {
           setIsLoadingCustomer(true);
-          const { getCustomers } = await import('../services/firebase');
-          const customers = await getCustomers();
-          const found = customers.find(c => c.email === effectiveEmail);
+          const { getCustomerProfile } = await import('../services/firebase');
+          const found = await getCustomerProfile();
           if (found) {
             setCustomerData(found);
             // ERRCOM100: Priorizar endereço padrão e evitar formulário manual desnecessário
@@ -181,6 +172,8 @@ const Checkout: React.FC<CheckoutProps> = ({
   // ERRCOM124: Validação dinâmica de cupons via Firebase (substituindo hardcoded)
   const applyCoupon = async () => {
     setCouponError('');
+    setDiscount(0);
+    setCouponApplied(false);
     const code = couponCode.toUpperCase().trim();
     if (!code) {
       setCouponError('Digite um cupom');
@@ -188,8 +181,8 @@ const Checkout: React.FC<CheckoutProps> = ({
     }
 
     try {
-      const { validateAndUseCoupon } = await import('../services/firebase');
-      const { coupon, error } = await validateAndUseCoupon(code);
+      const { previewCoupon } = await import('../services/firebase');
+      const { coupon, error } = await previewCoupon(code, subtotal);
 
       if (error || !coupon) {
         setCouponError(error || 'Cupom inválido ou expirado');
@@ -216,280 +209,95 @@ const Checkout: React.FC<CheckoutProps> = ({
   };
 
   const handleCheckout = async () => {
-    if (!isOtpVerified) {
-      alert('⚠️ Por favor, digite o código de segurança exibido acima para validar sua identidade antes de finalizar o pedido.');
-      return;
-    }
-
-    if (orderPlaced) return; // Segurança extra
-
-    setOrderPlaced(true); // ERRCOM082: bloquear imediatamente antes de qualquer await
+    if (orderPlaced) return;
+    setOrderPlaced(true);
     setIsProcessing(true);
 
     try {
-      const { saveOrder, getCustomers, saveCustomer, getProducts, saveProduct, saveInventoryMovement } = await import('../services/firebase');
+      const { createCustomerOrder, STORE_WHATSAPP_NUMBER } = await import('../services/firebase');
+      const savedUser = localStorage.getItem('versiory_last_user');
+      const savedSession = savedUser
+        ? localStorage.getItem(`versiory_user_${savedUser}`)
+        : null;
+      const cachedSession = savedSession ? JSON.parse(savedSession) : null;
+      const email = effectiveEmail || cachedSession?.email || '';
+      const fullName = customerData?.name || cachedSession?.name || email.split('@')[0];
+      const finalAddress = effectiveIsStorePickup
+        ? ''
+        : selectedAddressId === 'manual'
+          ? `${addressStreet}, ${addressNumber}${addressComplement ? ` - ${addressComplement}` : ''}, ${addressNeighborhood}, ${addressCity} - ${addressState}, CEP: ${addressZip}`
+          : customAddress || effectiveAddress;
 
-      // ERRCOM112: Validação de estoque em tempo real no checkout
-      const currentProducts = await getProducts();
-      for (const item of items) {
-        if (item.category === 'Serviços') continue;
-        const actualProduct = currentProducts.find(p => p.id === item.id);
-        if (!actualProduct) {
-          alert(`❌ O produto ${item.name} não está mais disponível no catálogo.`);
-          setIsProcessing(false);
-          setOrderPlaced(false);
-          return;
-        }
-
-        let availableStock = actualProduct.stock || 0;
-
-        // Verifica variações específicas de estoque
-        if (item.selectedSize && item.selectedColor && actualProduct.stockBySizeColor && actualProduct.stockBySizeColor[`${item.selectedSize}-${item.selectedColor}`] !== undefined) {
-          availableStock = Number(actualProduct.stockBySizeColor[`${item.selectedSize}-${item.selectedColor}`]);
-        } else if (item.selectedSize && actualProduct.stockBySize && actualProduct.stockBySize[item.selectedSize] !== undefined) {
-          availableStock = Number(actualProduct.stockBySize[item.selectedSize]);
-        }
-
-        if (item.quantity > availableStock) {
-          alert(`❌ Estoque insuficiente para ${item.name}. Desejado: ${item.quantity}, Disponível: ${availableStock}.`);
-          setIsProcessing(false);
-          setOrderPlaced(false);
-          return;
-        }
-      }
-
-      const orderId = generateOrderId();
-      let fullName = customerData?.name || '';
-
-      if (!fullName) {
-        try {
-          const lastUser = localStorage.getItem('versiory_last_user');
-          if (lastUser) {
-            const savedUser = localStorage.getItem(`versiory_user_${lastUser}`);
-            if (savedUser) {
-              const parsed = JSON.parse(savedUser);
-              fullName = parsed.name || parsed.email.split('@')[0];
-            }
-          }
-        } catch { }
-      }
-      if (!fullName) fullName = effectiveEmail.split('@')[0];
-
-      // ERRCOM086 / ERRCOM070: Garantir que o telefone e CPF venham do estado atualizado (inputs) ou do customerData
-      const finalPhone = customerPhone || customerData?.phone || '';
-      const finalCpfCnpj = customerCpfCnpj || customerData?.cpfCnpj || '';
-
-      // Consolidar endereço se for manual
-      let finalAddress = customAddress;
-      if (selectedAddressId === 'manual') {
-        finalAddress = `${addressStreet}, ${addressNumber}${addressComplement ? ` - ${addressComplement}` : ''}, ${addressNeighborhood}, ${addressCity} - ${addressState}, CEP: ${addressZip}`;
-      }
-
-      const orderData: Order = {
-        id: orderId,
-        customerId: customerData?.id || 0,
-        customerEmail: effectiveEmail,
-        customerName: fullName,
-        customerPhone: finalPhone || undefined,
-        customerCpfCnpj: finalCpfCnpj || undefined, // ERRCOM070 / ERRCOM081
-        customerBirthDate: customerBirthDate || undefined, // REFCOM193
-        date: new Date().toISOString(),
-        total: total,
-        discountAmount: discount > 0 ? discount : undefined, // ERRCOM108
-        couponCode: couponApplied ? couponCode.toUpperCase().trim() : undefined, // ERRCOM108
-        status: 'reserved',
-        address: effectiveIsStorePickup ? `Retirada na Loja - ${storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP'}` : finalAddress,
-        estimatedDelivery: effectiveIsStorePickup ? 'Retirada imediata (Seg-Sex: 09h às 18h)' : '5 a 10 dias úteis', // REFCOM169
-        items: items.map(item => {
-          const itemPrice = getItemPrice(item, effectiveIsStorePickup);
-
-          const orderItem: any = {
-            productId: item.id,
-            name: item.name,
-            quantity: item.quantity,
-            price: itemPrice, // REFCOM169/REFCOM211
-            priceEcommerce: itemPrice, // REFCOM169/REFCOM211: Salvar preço correto baseado em categoria e isStorePickup
-            image: item.image,
-            description: item.description,
-            selectedSize: item.selectedSize,
-            selectedColor: item.selectedColor,
-            installments: paymentMethod === 'credito' ? installments : 1
-          };
-          if (item.stockBySize) orderItem.stockBySize = item.stockBySize; // Include stockBySize
-          if (item.stockBySizeColor) orderItem.stockBySizeColor = item.stockBySizeColor; // Include stockBySizeColor
-          return orderItem;
-        }),
-        notes: orderNotes || '',
-        salesChannel: 'online',
-        orderTime: new Date().toLocaleTimeString('pt-BR'), // ERRCOM083
-        // REFCOM223/REFCOM224: parcelamento vale para Crédito e para WhatsApp (a combinar)
-        installments: (paymentMethod === 'credito' || paymentMethod === 'whatsapp') ? installments : 1, // ERRCOM088
-        paymentMethod: paymentMethod, // REFCOM135: Garantir que paymentMethod seja salvo
-        stockDecremented: true, // REFCOM219: Marcar que estoque já foi baixado no checkout (status reserved)
-        installmentDetails: (paymentMethod === 'credito' || paymentMethod === 'whatsapp') && installments > 1 ? (() => {
-          const cardRate = items[0]?.cardRate || 0;
-          return calculateInstallments({
-            total,
-            installments,
-            cardRate
-          }).map((inst, i) => ({
-            id: `${orderId}-inst-${i + 1}`,
-            number: inst.number,
-            amount: inst.amount,
-            status: 'pending' as const,
-            paymentMethod: paymentMethod === 'whatsapp' ? 'WhatsApp' : 'Credito'
-          }));
-        })() : undefined // REFCOM135: Gerar installmentDetails no checkout também
-      }; // REFCOM135.5: paymentMethod === 'credito' needs to be 'credito'
-
-      // Atualizar no Firebase
-      let targetCustomer: Customer;
-
-      const finalCpfCnpjForSearch = customerCpfCnpj || customerData?.cpfCnpj || '';
-
-      if (customerData) {
-        targetCustomer = { ...customerData };
-        if (customerBirthDate) targetCustomer.birthDate = customerBirthDate; // REFCOM166/181
-        targetCustomer.totalOrders = (targetCustomer.totalOrders || 0) + 1;
-        targetCustomer.totalSpent = (targetCustomer.totalSpent || 0) + total;
-        if (!targetCustomer.orderHistory) targetCustomer.orderHistory = [];
-        targetCustomer.orderHistory.push({ ...orderData, emitNF } as any);
-        orderData.customerId = targetCustomer.id;
-      } else {
-        const customers = await getCustomers();
-        let existing = customers.find(c => {
-          if (finalCpfCnpjForSearch && c.cpfCnpj) {
-            return c.cpfCnpj.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === finalCpfCnpjForSearch.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-          }
-          if (!finalCpfCnpjForSearch && !c.cpfCnpj) {
-            return c.email === effectiveEmail;
-          }
-          return false;
-        });
-
-        if (!existing && !finalCpfCnpjForSearch) {
-          existing = customers.find(c => c.email === effectiveEmail);
-        }
-
-        if (existing) {
-          targetCustomer = { ...existing };
-          if (customerBirthDate) targetCustomer.birthDate = customerBirthDate; // REFCOM166/181
-          targetCustomer.totalOrders = (targetCustomer.totalOrders || 0) + 1;
-          targetCustomer.totalSpent = (targetCustomer.totalSpent || 0) + total;
-          if (finalCpfCnpjForSearch && !targetCustomer.cpfCnpj) {
-            targetCustomer.cpfCnpj = finalCpfCnpjForSearch;
-          }
-          if (!targetCustomer.orderHistory) targetCustomer.orderHistory = [];
-          targetCustomer.orderHistory.push({ ...orderData, emitNF } as any);
-          orderData.customerId = targetCustomer.id;
-        } else {
-          targetCustomer = {
-            id: Date.now(),
-            name: fullName,
-            email: effectiveEmail,
-            phone: customerPhone,
-            cpfCnpj: finalCpfCnpjForSearch || undefined,
-            birthDate: customerBirthDate || undefined, // REFCOM166/181
-            totalOrders: 1,
-            totalSpent: total,
-            addresses: [],
-            createdAt: new Date().toISOString(),
-            orderHistory: [{ ...orderData, emitNF } as any]
-          };
-          orderData.customerId = targetCustomer.id;
-        }
-      }
-
-      // ERRCOM082: Prevenção de duplicatas
-      setOrderPlaced(true);
-
-      // BUGFIX: Sanitizar objetos antes de salvar — Firestore rejeita campos 'undefined'
-      const sanitizedOrder = sanitizeData(orderData);
-      const sanitizedCustomer = sanitizeData(targetCustomer);
-
-      await Promise.all([
-        saveOrder(sanitizedOrder),
-        saveCustomer(sanitizedCustomer)
-      ]);
-
-        // REFCOM190/REFCOM199: Baixar estoque para pedido de e-commerce com status Reservado, incluindo serviços
-        const allProducts = await getProducts();
-        for (const item of items) {
-          const productIndex = allProducts.findIndex(p => p.id === item.id);
-          if (productIndex === -1) continue;
-          const p = allProducts[productIndex];
-        const previousStock = p.stock || 0;
-        const newStock = Math.max(0, previousStock - item.quantity);
-
-        const updatedProduct: any = { ...p, stock: newStock };
-
-        if (item.selectedSize && p.stockBySize) {
-          updatedProduct.stockBySize = {
-            ...p.stockBySize,
-            [item.selectedSize]: Math.max(0, (p.stockBySize[item.selectedSize] || 0) - item.quantity)
-          };
-        }
-
-        if (item.selectedColor && p.stockBySizeColor) {
-          const key = item.selectedSize ? `${item.selectedSize}-${item.selectedColor}` : item.selectedColor;
-          updatedProduct.stockBySizeColor = {
-            ...p.stockBySizeColor,
-            [key]: Math.max(0, (p.stockBySizeColor[key] || 0) - item.quantity)
-          };
-        }
-
-        const sanitizedProduct = sanitizeData(updatedProduct);
-        await saveProduct(sanitizedProduct);
-
-        const movement = {
-          id: Date.now() + item.id,
+      const result = await createCustomerOrder({
+        items: items.map(item => ({
           productId: item.id,
-          productName: item.name,
-          type: 'out' as const,
           quantity: item.quantity,
-          previousStock,
-          newStock,
-          reason: `Pedido ${orderId} - Status Reservado`,
-          date: new Date().toISOString(),
-          user: 'Sistema'
-        };
-        await saveInventoryMovement(movement);
-      }
+          selectedSize: item.selectedSize,
+          selectedColor: item.selectedColor,
+        })),
+        customer: {
+          name: fullName,
+          email,
+          phone: customerPhone || customerData?.phone || cachedSession?.phone,
+          cpfCnpj: customerCpfCnpj || customerData?.cpfCnpj,
+          birthDate: customerBirthDate || customerData?.birthDate,
+        },
+        address: finalAddress,
+        isStorePickup: effectiveIsStorePickup,
+        paymentMethod,
+        installments: paymentMethod === 'pix' ? 1 : installments,
+        notes: orderNotes,
+        couponCode: couponApplied ? couponCode.toUpperCase().trim() : undefined,
+        emitNF,
+      });
 
       if (emitNF) {
         setInvoiceStatus('generating');
         setTimeout(() => setInvoiceStatus('none'), 2000);
       }
 
-      if (paymentMethod === 'whatsapp') {
-        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, effectiveIsStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : customAddress, paymentMethod);
-        const { STORE_WHATSAPP_NUMBER } = await import('../services/firebase');
+      if (paymentMethod === 'whatsapp' || paymentMethod === 'credito') {
+        const addressForMessage = effectiveIsStorePickup
+          ? (storePickupAddress || 'Retirada na Loja')
+          : finalAddress;
+        const message = buildWhatsAppMessage(
+          result.id, fullName, email, addressForMessage, paymentMethod, result.total, result.items
+        );
         const url = `https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
-      } else if (paymentMethod === 'credito') {
-        // REFCOM161: Integração WhatsApp automática para vendas em crédito
-        const message = buildWhatsAppMessage(orderId, fullName, effectiveEmail, effectiveIsStorePickup ? (storePickupAddress || 'Rua do Comércio, 123 - Centro, São Paulo - SP') : finalAddress, paymentMethod);
-        const { STORE_WHATSAPP_NUMBER } = await import('../services/firebase');
-        const url = `https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-        window.open(url, '_blank');
-        alert('Pagamento via cartão em desenvolvimento. Seu pedido foi registrado com sucesso!');
+        if (paymentMethod === 'credito') {
+          alert('Pagamento via cartão em desenvolvimento. Seu pedido foi registrado com sucesso!');
+        }
       }
 
       onOrderComplete();
-
-      if (!emitNF) {
-        onClose();
-      }
-
+      if (!emitNF) onClose();
     } catch (error) {
       console.error('Erro ao processar pedido:', error);
-      alert('Ocorreu um erro ao processar seu pedido. Tente novamente.');
+      setOrderPlaced(false);
+      alert('Ocorreu um erro ao processar seu pedido. Verifique os dados, o estoque e tente novamente.');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const buildWhatsAppMessage = (orderId: string, fullName: string, email: string, address: string, paymentMethod: string) => {
+  const buildWhatsAppMessage = (
+    orderId: string,
+    fullName: string,
+    email: string,
+    address: string,
+    paymentMethod: string,
+    orderTotal = total,
+    orderItems: OrderItem[] = items.map(item => ({
+      productId: item.id,
+      name: item.name,
+      quantity: item.quantity,
+      price: getItemPrice(item, effectiveIsStorePickup),
+      image: item.image,
+      selectedSize: item.selectedSize,
+      selectedColor: item.selectedColor,
+    }))
+  ) => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('pt-BR');
     const timeStr = now.toLocaleTimeString('pt-BR');
@@ -500,8 +308,8 @@ const Checkout: React.FC<CheckoutProps> = ({
       '*DADOS DO CLIENTE:*',
       `👤 Nome: ${fullName}`,
       `📧 Email: ${email}`,
-      `📞 Telefone: ${customerData?.phone || 'Não informado'}`,
-      `🆔 CPF/CNPJ: ${customerData?.cpfCnpj || 'Não informado'}`,
+      `📞 Telefone: ${customerPhone || customerData?.phone || 'Não informado'}`,
+      `🆔 CPF/CNPJ: ${customerCpfCnpj || customerData?.cpfCnpj || 'Não informado'}`,
       `📍 *Endereço de Entrega:* ${address}`,
       effectiveIsStorePickup ? `🏬 *MODALIDADE:* Retire na Loja` : `🚚 *MODALIDADE:* Entrega via Transportadora`,
       '',
@@ -511,23 +319,22 @@ const Checkout: React.FC<CheckoutProps> = ({
       `🏷️ Origem: E-commerce (Site)`,
       '',
       '*ITENS DO PEDIDO:*',
-      ...items.map(item => {
+      ...orderItems.map(item => {
         const details = [];
         if (item.selectedSize) details.push(`Tamanho: ${item.selectedSize}`);
         if (item.selectedColor) details.push(`Cor: ${item.selectedColor}`);
         const detailsStr = details.length > 0 ? ` (${details.join(', ')})` : '';
-        const unitPrice = getItemPrice(item, effectiveIsStorePickup);
-        return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${(unitPrice * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        return `• ${item.name}${detailsStr} x${item.quantity} - R$ ${(item.price * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
       }),
       '',
-      `*TOTAL: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*`,
+      `*TOTAL: R$ ${orderTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*`,
       '',
       // REFCOM255: Add installment details for parcelled purchases
       (paymentMethod === 'credito' || paymentMethod === 'whatsapp') && installments > 1 ? [
         '*PARCELAS:*',
         ...Array.from({ length: installments }, (_, i) => {
           const installmentNum = i + 1;
-          const installmentAmount = (total / installments).toFixed(2);
+          const installmentAmount = (orderTotal / installments).toFixed(2);
           return `- Parcela ${installmentNum}/${installments}: R$ ${installmentAmount} (Pendente)`;
         }),
         ''
@@ -1050,61 +857,6 @@ const Checkout: React.FC<CheckoutProps> = ({
               rows={3}
               className="w-full border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-versiory-coral"
             />
-          </div>
-
-          {/* Validação de Segurança (REFCOM093) */}
-          <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-2xl">
-            <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
-              <span className="text-lg">🛡️</span> Validação de Segurança
-            </h4>
-            <p className="text-xs text-slate-600 mb-3">Para sua segurança, valide o código abaixo antes de finalizar o pedido.</p>
-
-            {!isOtpVerified ? (
-              <div className="space-y-3">
-                <div className="bg-amber-100 p-3 rounded-lg text-center">
-                  <p className="text-[10px] text-amber-800 font-bold mb-1">CÓDIGO DE SEGURANÇA GERADO:</p>
-                  <span className="text-3xl font-black text-amber-900 tracking-[0.4em] select-all">{otpCode}</span>
-                  <p className="text-[10px] text-amber-700 mt-1">Anote este código e digite-o abaixo para confirmar.</p>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Digite o código de 4 dígitos"
-                    className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-center font-black tracking-[0.5em] focus:ring-2 focus:ring-blue-500 outline-none"
-                    maxLength={4}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === otpCode && val.length === 4) {
-                        setIsOtpVerified(true);
-                        setOtpError('');
-                      } else if (val.length === 4) {
-                        setOtpError('Código incorreto. Tente novamente.');
-                      } else {
-                        setOtpError('');
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={() => {
-                      // Gerar novo código
-                      setOtpCode(Math.floor(1000 + Math.random() * 9000).toString());
-                      setIsOtpVerified(false);
-                      setOtpError('');
-                    }}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl text-sm font-bold transition-all"
-                    title="Gerar novo código"
-                  >
-                    🔄
-                  </button>
-                </div>
-                {otpError && <p className="text-[10px] text-red-500 font-bold">{otpError}</p>}
-              </div>
-            ) : (
-              <div className="flex items-center justify-center gap-2 py-2 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-sm">
-                <span className="text-lg">✅</span> Código validado com sucesso!
-              </div>
-            )}
           </div>
 
           {/* Botões de Ação */}

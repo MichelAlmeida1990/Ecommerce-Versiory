@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Customer, Address } from '../types';
 import { fetchAddressByCep } from '../services/cep';
-import { hashPassword, verifyPassword } from '../utils/crypto';
 
 interface LoginRegisterProps {
   onClose?: () => void;
@@ -28,16 +27,10 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
     city: '',
     state: '',
   });
-  const [step, setStep] = useState<'form' | 'verification-register' | 'verification-reset' | 'forgot-password' | 'new-password'>('form');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [generatedCode, setGeneratedCode] = useState('');
+  const [step, setStep] = useState<'form' | 'forgot-password'>('form');
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState('');
   const [loadingCep, setLoadingCep] = useState(false);
-  const [loginAttempts, setLoginAttempts] = useState(0);
-  const [isLocked, setIsLocked] = useState(false);
-  const MAX_ATTEMPTS = 3;
-  const LOCK_TIME = 60000;
 
   // REFCOM232: A regra de faturamento/bloqueio por inadimplência NÃO se aplica ao
   // e-commerce. Ela é exclusiva do Login do ADM. Aqui o cliente externo só pode
@@ -71,66 +64,27 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
     }
   };
 
-  const sendVerificationCode = (forReset = false) => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedCode(code);
-    console.log(`[VERSIORY] Código de verificação para ${form.email}: ${code}`);
-    // Simulação de envio de e-mail (ERRCOM093)
-    alert(`🔐 UM CÓDIGO DE VERIFICAÇÃO FOI ENVIADO PARA: ${form.email}\n\n(Para fins de teste, o código é: ${code})`);
-    setStep(forReset ? 'verification-reset' : 'verification-register');
-  };
-
-  const handleVerifyAndSubmit = async (e: React.FormEvent) => {
+  const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (verificationCode !== generatedCode) {
-      setError('❌ Código incorreto. Verifique o e-mail e tente novamente.');
-      return;
-    }
-    setError('');
-    if (step === 'verification-reset') {
-      setStep('new-password');
-      return;
-    }
-    await finalizeSubmit();
-  };
-
-  const handleNewPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.password || form.password.length < 6) {
-      setError('A nova senha deve ter no mínimo 6 caracteres.');
-      return;
-    }
     setIsVerifying(true);
     try {
-      const { getCustomers, saveCustomer } = await import('../services/firebase');
-      let customers: Customer[] = await getCustomers();
-      const customer = customers.find(c => c.email === form.email);
-      if (!customer) {
-        setError('❌ Usuário não encontrado.');
-        setIsVerifying(false);
-        return;
-      }
-      customer.password = await hashPassword(form.password);
-      await saveCustomer(customer);
-      alert('✅ Senha alterada com sucesso! Faça login.');
+      const { sendCustomerPasswordReset } = await import('../services/firebase');
+      await sendCustomerPasswordReset(form.email.trim());
+      alert('Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.');
       setStep('form');
       setForm({ ...form, password: '' });
       setIsRegister(false);
     } catch (err) {
       console.error(err);
-      setError('Erro ao salvar nova senha.');
+      setError('Não foi possível enviar o link de redefinição. Verifique o e-mail e tente novamente.');
+    } finally {
+      setIsVerifying(false);
     }
-    setIsVerifying(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    if (isLocked) {
-      setError('🔒 Conta bloqueada. Aguarde 1 minuto antes de tentar novamente.');
-      return;
-    }
 
     if (!form.email || !form.password) {
       setError('⚠️ Preencha todos os campos obrigatórios.');
@@ -147,27 +101,22 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
         setError('⚠️ Preencha todos os campos obrigatórios do cadastro.');
         return;
       }
-      // Antes de salvar, validar e-mail
-      sendVerificationCode(false);
-    } else {
-      await finalizeSubmit();
     }
+    await finalizeSubmit();
   };
 
   const finalizeSubmit = async () => {
     setIsVerifying(true);
     try {
-      const { getCustomers, saveCustomer, saveUserSession } = await import('../services/firebase');
-      let customers: Customer[] = await getCustomers();
+      const {
+        registerCustomerAuth,
+        signInAdmin,
+        signOutAdmin,
+        ensureCustomerProfile,
+        saveUserSession,
+      } = await import('../services/firebase');
 
       if (isRegister) {
-        if (customers.find(c => c.email === form.email)) {
-          setError('❌ Este email já está cadastrado. Faça login ou use outro email.');
-          setStep('form');
-          setIsVerifying(false);
-          return;
-        }
-
         const newAddress: Address = {
           id: Date.now().toString(),
           street: address.street,
@@ -181,11 +130,11 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
           type: 'shipping',
         };
 
-        const newCustomer: Customer = {
+        const newCustomer: Partial<Customer> = {
           id: Date.now(),
+          uid: '',
           name: form.name,
           email: form.email,
-          password: await hashPassword(form.password),
           phone: form.phone,
           cpfCnpj: form.cpfCnpj,
           avatar: '',
@@ -196,78 +145,58 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
           orderHistory: [],
         };
 
-        await saveCustomer(newCustomer);
-
+        await registerCustomerAuth(form.email.trim(), form.password);
+        try {
+          await ensureCustomerProfile(newCustomer);
+        } catch (error) {
+          await signOutAdmin();
+          throw error;
+        }
+        await signOutAdmin();
+        alert('Conta criada. Confirme seu e-mail pelo link enviado e depois faça login.');
+        setIsRegister(false);
+        setStep('form');
+      } else {
+        const user = await signInAdmin(form.email.trim(), form.password);
+        if (!user.emailVerified) {
+          const { resendCustomerVerification } = await import('../services/firebase');
+          try {
+            await resendCustomerVerification();
+          } finally {
+            await signOutAdmin();
+          }
+          setError('Confirme seu e-mail. Enviamos um novo link de confirmação.');
+          return;
+        }
+        const customer = await ensureCustomerProfile();
+        const addr = customer.addresses?.find(item => item.isDefault) || customer.addresses?.[0];
+        const formattedAddr = addr ? `${addr.street}, ${addr.number} - ${addr.city}/${addr.state}` : '';
         const userSession = {
-          email: form.email,
-          name: form.name,
-          phone: form.phone,
-          cpfCnpj: form.cpfCnpj,
-          address: `${address.street}, ${address.number}${address.complement ? ', ' + address.complement : ''} - ${address.neighborhood}, ${address.city}/${address.state} - CEP: ${address.zipCode}`,
+          uid: user.uid,
+          email: customer.email,
+          name: customer.name,
+          phone: customer.phone,
+          cpfCnpj: customer.cpfCnpj,
+          address: formattedAddr,
           loginTime: Date.now()
         };
         await saveUserSession(userSession);
-
         onLoginSuccess?.(userSession.email, userSession.address, userSession.phone, userSession.cpfCnpj);
         onClose?.();
-        
-        if (!onLoginSuccess) {
-          navigate('/');
-        }
-      } else {
-        const customer = customers.find(c => c.email === form.email);
-
-        if (customer && customer.password) {
-          let isPasswordValid = await verifyPassword(form.password, customer.password);
-          
-          if (!isPasswordValid && customer.password === form.password) {
-            isPasswordValid = true;
-            customer.password = await hashPassword(form.password);
-            await saveCustomer(customer);
-          }
-          
-          if (isPasswordValid) {
-            const addr = customer.addresses[0];
-            const formattedAddr = addr ? `${addr.street}, ${addr.number} - ${addr.city}/${addr.state}` : '';
-            const userSession = { 
-              email: customer.email, 
-              name: customer.name, 
-              phone: customer.phone, 
-              cpfCnpj: customer.cpfCnpj, 
-              address: formattedAddr,
-              loginTime: Date.now()
-            };
-
-            await saveUserSession(userSession);
-            onLoginSuccess?.(userSession.email, userSession.address, userSession.phone, userSession.cpfCnpj);
-            onClose?.();
-            setLoginAttempts(0);
-            
-            if (!onLoginSuccess) {
-              navigate('/');
-            }
-          } else {
-            const newAttempts = loginAttempts + 1;
-            setLoginAttempts(newAttempts);
-            
-            if (newAttempts >= MAX_ATTEMPTS) {
-              setIsLocked(true);
-              setError(`🔒 Conta bloqueada temporariamente por segurança. Aguarde 1 minuto e tente novamente.`);
-              setTimeout(() => {
-                setIsLocked(false);
-                setLoginAttempts(0);
-              }, LOCK_TIME);
-            } else {
-              setError(`❌ Email ou senha incorretos. Tentativa ${newAttempts} de ${MAX_ATTEMPTS}. ${MAX_ATTEMPTS - newAttempts} restante(s).`);
-            }
-          }
-        } else {
-          setError('❌ Usuário não encontrado.');
-        }
+        if (!onLoginSuccess) navigate('/');
       }
     } catch (error) {
       console.error('Erro ao processar login/cadastro:', error);
-      setError('❌ Erro ao processar sua solicitação. Verifique sua conexão e tente novamente.');
+      const code = (error as { code?: string })?.code;
+      if (code === 'auth/email-already-in-use') {
+        setError('Este e-mail já possui uma conta. Faça login ou redefina a senha.');
+      } else if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
+        setError('E-mail ou senha incorretos.');
+      } else if (code === 'auth/too-many-requests') {
+        setError('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+      } else {
+        setError('❌ Erro ao processar sua solicitação. Verifique sua conexão e tente novamente.');
+      }
     } finally {
       setIsVerifying(false);
     }
@@ -296,55 +225,17 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
               </svg>
             </div>
             <h2 className="text-3xl font-black text-white mb-2">
-              {step.startsWith('verification') ? 'Verifique seu E-mail' : 
-               step === 'new-password' ? 'Nova Senha' :
-               step === 'forgot-password' ? 'Recuperar Senha' :
+              {step === 'forgot-password' ? 'Recuperar Senha' :
                isRegister ? 'Criar Conta' : 'Bem-vindo'}
             </h2>
             <p className="text-white/60">
-              {step.startsWith('verification') ? `Digite o código enviado para ${form.email}` :
-               step === 'new-password' ? 'Crie uma nova senha segura' :
-               step === 'forgot-password' ? 'Enviaremos um código para seu e-mail' :
+              {step === 'forgot-password' ? 'Enviaremos um link para redefinir sua senha' :
                isRegister ? 'Preencha seus dados para começar' : 'Faça login para continuar'}
             </p>
           </div>
 
-          {step.startsWith('verification') ? (
-            <form onSubmit={handleVerifyAndSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-bold text-white/80 mb-3 text-center">Código de 6 Dígitos</label>
-                <input
-                  type="text"
-                  placeholder="000000"
-                  value={verificationCode}
-                  onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}
-                  maxLength={6}
-                  className="w-full px-4 py-4 bg-white/5 border border-white/20 rounded-2xl text-white text-center text-3xl tracking-[1em] font-black focus:outline-none focus:ring-2 focus:ring-versiory-coral transition-all"
-                  required
-                  autoFocus
-                />
-              </div>
-
-              {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm animate-shake">{error}</div>}
-
-              <button 
-                type="submit" 
-                disabled={isVerifying}
-                className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all shadow-xl active:scale-[0.98] disabled:opacity-50"
-              >
-                {isVerifying ? 'Verificando...' : 'Verificar e Confirmar'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setStep('form')}
-                className="w-full text-white/40 hover:text-white/60 text-sm font-medium transition-colors"
-              >
-                Voltar para o formulário
-              </button>
-            </form>
-          ) : step === 'forgot-password' ? (
-            <form onSubmit={(e) => { e.preventDefault(); sendVerificationCode(true); }} className="space-y-4">
+          {step === 'forgot-password' ? (
+            <form onSubmit={handlePasswordReset} className="space-y-4">
                <div>
                 <label className="block text-sm font-bold text-white/80 mb-2">Seu E-mail</label>
                 <input
@@ -357,29 +248,11 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onClose, onLoginSuccess }
                 />
               </div>
               {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">{error}</div>}
-              <button type="submit" className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all">
-                Enviar Código
+              <button type="submit" disabled={isVerifying} className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all disabled:opacity-50">
+                {isVerifying ? 'Enviando...' : 'Enviar link de redefinição'}
               </button>
               <button type="button" onClick={() => setStep('form')} className="w-full text-white/40 hover:text-white/60 text-sm font-medium">
                 Voltar ao Login
-              </button>
-            </form>
-          ) : step === 'new-password' ? (
-            <form onSubmit={handleNewPasswordSubmit} className="space-y-4">
-               <div>
-                <label className="block text-sm font-bold text-white/80 mb-2">Nova Senha</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={form.password}
-                  onChange={e => setForm({ ...form, password: e.target.value })}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-versiory-coral transition-all"
-                  required
-                />
-              </div>
-              {error && <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">{error}</div>}
-              <button type="submit" disabled={isVerifying} className="w-full bg-versiory-coral hover:bg-[#ff8368] text-white py-4 rounded-xl font-black text-lg transition-all">
-                {isVerifying ? 'Salvando...' : 'Salvar Nova Senha'}
               </button>
             </form>
           ) : (

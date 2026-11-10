@@ -81,33 +81,14 @@ const Account: React.FC = () => {
   // Load orders from the canonical source (versiory_orders) whenever tab changes to 'orders'
   useEffect(() => {
     if (activeTab === 'orders' && customer) {
-      loadOrders(customer.email);
+      loadOrders();
     }
   }, [activeTab, customer]);
 
-  const loadOrders = async (email: string) => {
+  const loadOrders = async () => {
     try {
-      // Buscar do Firebase
-      const { getOrders } = await import('../services/firebase');
-      const allOrders = await getOrders();
-      const myOrders = allOrders.filter(o => o.customerEmail === email);
-      
-      // Enriquecer com dados dos produtos
-      const { getProducts } = await import('../services/firebase');
-      const products = await getProducts();
-      
-      myOrders.forEach(order => {
-        order.items.forEach(item => {
-          const p = products.find(gp => gp.id === item.productId);
-          if (p) {
-            if (!item.image) item.image = p.image;
-            if (!item.name) item.name = p.name;
-            if (!item.description) item.description = p.description;
-          }
-        });
-      });
-      
-      setCustomerOrders(myOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      const { getCustomerOrders } = await import('../services/firebase');
+      setCustomerOrders(await getCustomerOrders());
     } catch (error) {
       console.error('Erro ao carregar pedidos:', error);
       setCustomerOrders([]);
@@ -117,17 +98,14 @@ const Account: React.FC = () => {
   const loadCustomerData = async () => {
     setLoading(true);
     try {
-      const { getUserSession, getCustomers } = await import('../services/firebase');
+      const { getUserSession, getCustomerProfile } = await import('../services/firebase');
       const userSession = await getUserSession();
       if (!userSession) {
         setLoading(false);
         return;
       }
 
-      const { email } = userSession;
-      const customersList: Customer[] = await getCustomers();
-
-      const currentCustomer = customersList.find(c => c.email === email);
+      const currentCustomer = await getCustomerProfile();
       if (currentCustomer) {
         setCustomer(currentCustomer);
         setProfileForm({
@@ -150,8 +128,8 @@ const Account: React.FC = () => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 1024 * 1024) { // 1MB limit
-        alert('A imagem é muito grande. Escolha uma foto com menos de 1MB.');
+      if (file.size > 400 * 1024) {
+        alert('A imagem é muito grande. Escolha uma foto com menos de 400 KB.');
         return;
       }
       const reader = new FileReader();
@@ -206,7 +184,7 @@ const Account: React.FC = () => {
         birthDate: isoBirthDate || undefined,
       };
       await saveCustomer(updated);
-      await saveUserSession({ email: updated.email, name: updated.name, loginTime: Date.now() });
+      await saveUserSession({ uid: updated.uid, email: updated.email, name: updated.name, loginTime: Date.now() });
       setCustomer(updated);
       setProfileForm(prev => ({ ...prev, birthDate: toBrazilianBirthDate(isoBirthDate) }));
       setEditProfile(false);
@@ -236,29 +214,8 @@ const Account: React.FC = () => {
     }
 
     try {
-      const { verifyPassword, hashPassword } = await import('../utils/crypto');
-      const { saveCustomer, getCustomers } = await import('../services/firebase');
-      
-      const customers = await getCustomers();
-      const currentCustomer = customers.find(c => c.email === customer.email);
-      
-      if (!currentCustomer || !currentCustomer.password) {
-        setPasswordError('❌ Erro ao verificar senha atual');
-        return;
-      }
-
-      const isValid = await verifyPassword(passwordForm.current, currentCustomer.password) || 
-                      currentCustomer.password === passwordForm.current;
-
-      if (!isValid) {
-        setPasswordError('❌ Senha atual incorreta');
-        return;
-      }
-
-      const newHashedPassword = await hashPassword(passwordForm.new);
-      const updated = { ...customer, password: newHashedPassword };
-      await saveCustomer(updated);
-      setCustomer(updated);
+      const { changeCustomerPassword } = await import('../services/firebase');
+      await changeCustomerPassword(passwordForm.current, passwordForm.new);
       setShowChangePassword(false);
       setPasswordForm({ current: '', new: '', confirm: '' });
       alert('✅ Senha alterada com sucesso!');
@@ -396,7 +353,7 @@ const Account: React.FC = () => {
                   <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center text-3xl">📦</div>
                   <div>
                     <p className="text-slate-500 font-bold text-sm uppercase tracking-wider mb-1">Total de Pedidos</p>
-                    <p className="text-4xl font-black text-slate-900">{customer.orderHistory.length}</p>
+                    <p className="text-4xl font-black text-slate-900">{customer.totalOrders || 0}</p>
                   </div>
                 </div>
               </div>

@@ -73,13 +73,11 @@ const Cart: React.FC<CartProps> = ({
   // Recalcular desconto se subtotal mudar
   useEffect(() => {
     if (couponApplied) {
-      if (couponCode.toUpperCase().trim() === 'PRIMEIRACOMPRA') {
-        setCouponDiscount(subtotal * 0.1);
-      } else if (couponDiscount > subtotal) {
+      if (couponDiscount > subtotal) {
         setCouponDiscount(subtotal);
       }
     }
-  }, [subtotal, couponApplied, couponCode, couponDiscount]);
+  }, [subtotal, couponApplied, couponDiscount]);
 
   // Regra de Frete Grátis
   const qualifiesForFreeShipping = subtotal >= FREE_SHIPPING_THRESHOLD;
@@ -101,15 +99,8 @@ const Cart: React.FC<CartProps> = ({
     setCouponError('');
 
     try {
-      if (code === 'PRIMEIRACOMPRA') {
-        setCouponDiscount(subtotal * 0.1);
-        setCouponApplied(true);
-        setCouponLoading(false);
-        return;
-      }
-
-      const { validateAndUseCoupon } = await import('../services/firebase');
-      const { coupon, error } = await validateAndUseCoupon(code);
+      const { previewCoupon } = await import('../services/firebase');
+      const { coupon, error } = await previewCoupon(code, subtotal);
 
       if (error || !coupon) {
         setCouponError(error || 'Cupom inválido ou expirado');

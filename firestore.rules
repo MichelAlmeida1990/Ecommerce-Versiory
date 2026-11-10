@@ -1,82 +1,122 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
 
-    // Produtos e categorias: leitura pública, escrita só admin/dev
+    function isDev() {
+      return signedIn() && request.auth.token.role == 'dev';
+    }
+
+    function isTenantStaff(tenantId) {
+      return signedIn()
+        && request.auth.token.role in ['admin', 'seller', 'dev']
+        && (isDev() || request.auth.token.tenantId == tenantId);
+    }
+
+    function isProfileOwner(customerId) {
+      return signedIn() && request.auth.uid == customerId;
+    }
+
     match /tenants/{tenantId}/products/{docId} {
-      allow read: if true;
-      allow write: if request.auth != null && (
-        request.auth.token.tenantId == tenantId ||
-        request.auth.token.role == 'dev'
-      );
+      allow read: if signedIn() && request.auth.token.tenantId == tenantId;
+      allow write: if isTenantStaff(tenantId);
     }
 
     match /tenants/{tenantId}/categories/{docId} {
-      allow read: if true;
-      allow write: if request.auth != null && (
-        request.auth.token.tenantId == tenantId ||
-        request.auth.token.role == 'dev'
-      );
+      allow read: if signedIn() && request.auth.token.tenantId == tenantId;
+      allow write: if isTenantStaff(tenantId);
     }
 
-    // Cupons: leitura pública, escrita só admin/dev
     match /tenants/{tenantId}/coupons/{docId} {
-      allow read: if true;
-      allow write: if request.auth != null && (
-        request.auth.token.tenantId == tenantId ||
-        request.auth.token.role == 'dev'
-      );
+      allow read: if signedIn() && request.auth.token.tenantId == tenantId;
+      allow write: if isTenantStaff(tenantId);
     }
 
-    // Clientes: escrita pública (e-commerce cria/atualiza), leitura só admin/dev
-    match /tenants/{tenantId}/customers/{docId} {
-      allow write: if true;
-      allow read: if request.auth != null && (
-        request.auth.token.tenantId == tenantId ||
-        request.auth.token.role == 'dev'
-      );
+    match /tenants/{tenantId}/customers/{customerId} {
+      allow read: if isTenantStaff(tenantId)
+        || (isProfileOwner(customerId) && request.auth.token.tenantId == tenantId);
+      allow create: if isTenantStaff(tenantId)
+        || (isProfileOwner(customerId)
+          && request.auth.token.tenantId == tenantId
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.keys().hasOnly([
+            'uid', 'email', 'name', 'phone', 'cpfCnpj', 'avatar',
+            'birthDate', 'addresses', 'createdAt', 'updatedAt', 'tenantId'
+          ])
+          && request.resource.data.addresses.size() <= 20
+          && (!request.resource.data.keys().hasAny(['avatar'])
+            || request.resource.data.avatar.size() <= 600000)
+          && !request.resource.data.keys().hasAny(['password'])
+          && request.resource.data.tenantId == tenantId);
+      allow update: if isTenantStaff(tenantId)
+        || (isProfileOwner(customerId)
+          && request.auth.token.tenantId == tenantId
+          && request.resource.data.uid == request.auth.uid
+          && !request.resource.data.keys().hasAny(['password'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'phone', 'cpfCnpj', 'avatar', 'birthDate',
+            'addresses', 'updatedAt', 'tenantId'
+          ])
+          && (!request.resource.data.keys().hasAny(['avatar'])
+            || request.resource.data.avatar.size() <= 600000)
+          && (!request.resource.data.keys().hasAny(['addresses'])
+            || request.resource.data.addresses.size() <= 20));
+      allow delete: if isTenantStaff(tenantId);
     }
 
-    // Pedidos: leitura/escrita pública (e-commerce cria pedidos sem login Firebase)
-    match /tenants/{tenantId}/orders/{docId} {
-      allow read, write: if true;
+    match /tenants/{tenantId}/orders/{orderId} {
+      allow read: if isTenantStaff(tenantId)
+        || (signedIn() && resource.data.customerUid == request.auth.uid
+            && resource.data.tenantId == tenantId
+            && request.auth.token.tenantId == tenantId);
+      allow create: if signedIn()
+        && request.auth.token.tenantId == tenantId
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.tenantId == tenantId
+        && request.resource.data.status == 'pending';
+      allow update: if isTenantStaff(tenantId);
+      allow delete: if false;
     }
 
-    // Carrinho: leitura/escrita pública
-    match /tenants/{tenantId}/carts/{docId} {
-      allow read, write: if true;
+    match /tenants/{tenantId}/carts/{customerId} {
+      allow read, write: if isProfileOwner(customerId)
+        && request.auth.token.tenantId == tenantId;
     }
 
-    // Rastreamento: leitura pública, escrita só admin/dev
-    match /tenants/{tenantId}/tracking/{docId} {
-      allow read: if true;
-      allow write: if request.auth != null && (
-        request.auth.token.tenantId == tenantId ||
-        request.auth.token.role == 'dev'
-      );
+    match /tenants/{tenantId}/tracking/{orderId} {
+      allow read: if isTenantStaff(tenantId)
+        || (signedIn()
+            && resource.data.customerUid == request.auth.uid
+            && resource.data.tenantId == tenantId
+            && request.auth.token.tenantId == tenantId);
+      allow write: if isTenantStaff(tenantId);
     }
 
-    // Demais coleções do tenant: só admin/dev autenticado com tenant correto
     match /tenants/{tenantId}/{collection}/{docId} {
-      allow read, write: if request.auth != null && (
-        request.auth.token.tenantId == tenantId ||
-        request.auth.token.role == 'dev'
-      );
+      allow read, write: if false;
     }
 
-    // Audit logs: escrita pública (app loga sem auth), leitura só dev
+    match /pending_onboardings/{docId} {
+      allow create: if signedIn();
+      allow read: if isDev() || (signedIn() && request.auth.token.role == 'admin');
+      allow update, delete: if isDev() || (signedIn() && request.auth.token.role == 'admin');
+    }
+
     match /audit_logs/{logId} {
-      allow create: if true;
-      allow read: if request.auth != null && request.auth.token.role == 'dev';
+      allow create: if isTenantStaff(request.resource.data.tenantId);
+      allow read: if isDev();
+      allow update, delete: if false;
     }
 
-    // Config do tenant: leitura pública
     match /tenants/{tenantId} {
+      allow create: if signedIn() && request.auth.token.tenantId == tenantId;
       allow read: if true;
-      allow write: if request.auth != null && request.auth.token.role == 'dev';
+      allow update, delete: if isTenantStaff(tenantId);
     }
 
-    // Bloquear tudo mais (coleções raiz antigas)
     match /{document=**} {
       allow read, write: if false;
     }

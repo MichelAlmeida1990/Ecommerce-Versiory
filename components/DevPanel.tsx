@@ -2,12 +2,15 @@ import React, { useEffect, useState } from 'react';
 import {
   Tenant, TenantStatus, getTenants, saveTenant, updateTenant, deleteTenant,
   suspendTenant, activateTenant, extendTenantAccess, onboardTenant,
-  TENANT_STATUS_LABELS, TENANT_STATUS_COLORS
+  TENANT_STATUS_LABELS, TENANT_STATUS_COLORS,
+  createPendingOnboarding, getPendingOnboardings, approvePendingOnboarding, rejectPendingOnboarding,
+  PendingOnboarding
 } from '../services/tenantService';
 import { PlanId, PLAN_LABELS, PLAN_PRICES, PLAN_MODULES } from '../config/planConfig';
 import { getSubscriptions, updateSubscription, deleteSubscription } from '../services/subscriptionService';
 import { Subscription, SmtpSettings } from '../types';
 import { getSmtpConfigFromFirestore, saveSmtpConfigToFirestore } from '../services/smtpConfig';
+import { auth } from '../services/firebase';
 import { StoreSettingsModal } from './StoreSettingsModal';
 import { ErrorLogsModal } from './ErrorLogsModal';
 import { IntegrationHealthModal } from './IntegrationHealthModal';
@@ -18,7 +21,7 @@ import { PlanManagementModal } from './PlanManagementModal';
 import { MarketplaceIntegrationsModal } from './MarketplaceIntegrationsModal';
 import { DeveloperDashboardModal } from './DeveloperDashboardModal';
 
-type DevSubTab = 'tenants' | 'users' | 'smtp' | 'backups' | 'feature_flags';
+type DevSubTab = 'tenants' | 'onboardings' | 'users' | 'smtp' | 'backups' | 'feature_flags';
 
 const emptyForm = (): Omit<Tenant, 'id'> & { id: string } => ({
   id: '',
@@ -30,6 +33,7 @@ const emptyForm = (): Omit<Tenant, 'id'> & { id: string } => ({
   status: 'trial',
   monthlyValue: PLAN_PRICES.start,
   dueDay: 15,
+  adminUid: '',
   accessNotes: '',
   notes: ''
 });
@@ -58,6 +62,7 @@ const MODULE_NAMES: Record<string, string> = {
 const DevPanel: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<DevSubTab>('tenants');
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [pendingOnboardings, setPendingOnboardings] = useState<PendingOnboarding[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(emptyForm());
@@ -108,13 +113,15 @@ const DevPanel: React.FC = () => {
   const reload = async () => {
     setLoading(true);
     try {
-      const [t, s, smtp] = await Promise.all([
+      const [t, s, smtp, pending] = await Promise.all([
         getTenants(),
         getSubscriptions(),
-        getSmtpConfigFromFirestore()
+        getSmtpConfigFromFirestore(),
+        getPendingOnboardings()
       ]);
       setTenants(t);
       setSubscriptions(s);
+      setPendingOnboardings(pending);
       if (smtp) setSmtpSettings(smtp);
     } catch (e) {
       console.error('Erro ao recarregar DevPanel:', e);
@@ -142,7 +149,7 @@ const DevPanel: React.FC = () => {
         ownerName: 'Cliente Teste',
         email: 'admin@lojateste2.com',
         phone: '',
-        planId: 'basic',
+        planId: 'start',
         status: 'trial',
         monthlyValue: 99,
         dueDay: 10,
@@ -159,7 +166,7 @@ const DevPanel: React.FC = () => {
     setForm({
       id: t.id, storeName: t.storeName, ownerName: t.ownerName || '', email: t.email || '',
       phone: t.phone || '', planId: t.planId, status: t.status, monthlyValue: t.monthlyValue,
-      dueDay: t.dueDay || 15, accessNotes: t.accessNotes || '', notes: t.notes || ''
+      dueDay: t.dueDay || 15, adminUid: t.adminUid || '', accessNotes: t.accessNotes || '', notes: t.notes || ''
     });
     setShowForm(true);
   };
@@ -228,6 +235,51 @@ const DevPanel: React.FC = () => {
       reload();
       alert(`🔑 Senha provisória gerada para ${t.storeName}:\n\n${tempPass}\n\nEla foi registrada nas notas de acesso da loja.`);
     });
+  };
+
+  // Aprovar solicitação de onboarding
+  const handleApproveOnboarding = async (p: PendingOnboarding) => {
+    if (!window.confirm(`Aprovar a loja "${p.storeName}" (${p.subdomain})?`)) return;
+    try {
+      const tenantId = p.subdomain.toLowerCase().replace(/\s+/g, '-');
+      // Nota: o adminUid e custom claims devem ser criados manualmente no Console do Firebase
+      // Após criar o usuário Auth, o admin deve preencher o adminUid aqui
+      await approvePendingOnboarding(p.id, currentAdminUid, tenantId);
+      await onboardTenant({
+        id: tenantId,
+        storeName: p.storeName,
+        ownerName: p.ownerName,
+        email: p.email,
+        phone: p.phone,
+        subdomain: p.subdomain,
+        customDomain: p.customDomain,
+        planId: p.planId,
+        status: 'trial',
+        monthlyValue: p.monthlyValue,
+        dueDay: p.dueDay,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      await reload();
+      notify(`Loja "${p.storeName}" aprovada e criada. Configure o usuário Firebase Auth com tenantId ${tenantId}.`);
+    } catch (e) {
+      notify('Erro ao aprovar solicitação.');
+      console.error(e);
+    }
+  };
+
+  // Rejeitar solicitação de onboarding
+  const handleRejectOnboarding = async (p: PendingOnboarding) => {
+    const reason = window.prompt(`Motivo da rejeição para "${p.storeName}":`);
+    if (reason === null) return;
+    try {
+      await rejectPendingOnboarding(p.id, 'dev', reason);
+      await reload();
+      notify(`Solicitação "${p.storeName}" rejeitada.`);
+    } catch (e) {
+      notify('Erro ao rejeitar solicitação.');
+      console.error(e);
+    }
   };
 
   // Salvar e Testar SMTP
@@ -327,6 +379,7 @@ const DevPanel: React.FC = () => {
 
   const impersonatedTenantRaw = localStorage.getItem('versiory_impersonated_tenant');
   const impersonatedTenant: Tenant | null = impersonatedTenantRaw ? JSON.parse(impersonatedTenantRaw) : null;
+  const currentAdminUid = auth.currentUser?.uid || 'dev';
 
   return (
     <div className="space-y-6">
@@ -343,6 +396,7 @@ const DevPanel: React.FC = () => {
         <button onClick={() => setShowMetrics(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📊 Métricas</button>
         <button onClick={() => setShowAnnouncements(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📢 Avisos</button>
         <button onClick={() => setShowSupport(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🛠️ Ferramentas</button>
+        <button onClick={() => setActiveSubTab('onboardings')} className="px-4 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 text-sm font-bold hover:bg-amber-500/40">📥 Solicitações de Loja</button>
         <button onClick={() => setShowHealth(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">🔌 Saúde Integrações</button>
         <button onClick={() => setShowErrorLogs(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">📋 Logs de Erro</button>
         <button onClick={() => setShowStoreSettings(true)} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20">⚙️ Configurações da Loja</button>
@@ -546,6 +600,17 @@ const DevPanel: React.FC = () => {
                     className={inputCls}
                   />
                 </div>
+                <div>
+                  <label className={labelCls}>UID Firebase Auth (admin da loja)</label>
+                  <input
+                    type="text"
+                    placeholder="UID do usuário Firebase Auth"
+                    value={form.adminUid || ''}
+                    onChange={e => setForm({ ...form, adminUid: e.target.value.trim() })}
+                    className={inputCls}
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Defina este UID no Console do Firebase → Authentication → Usuários → Custom Claims: {{tenantId, role: admin}}</p>
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Dados de acesso (senhas, 2FA, contas de suporte)</label>
@@ -581,6 +646,7 @@ const DevPanel: React.FC = () => {
                       <th className="px-3 py-3">Loja</th>
                       <th className="px-3 py-3">Contato</th>
                       <th className="px-3 py-3">Plano</th>
+                      <th className="px-3 py-3">Admin UID</th>
                       <th className="px-3 py-3">Status</th>
                       <th className="px-3 py-3">Venc.</th>
                       <th className="px-3 py-3 text-right">Ações</th>
@@ -602,6 +668,11 @@ const DevPanel: React.FC = () => {
                             {planBadge(t.planId)}
                             <span className="text-slate-300 font-medium">R$ {(t.monthlyValue || 0).toFixed(2)}/mês</span>
                           </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`${t.adminUid ? 'text-emerald-300' : 'text-slate-500'} text-xs font-mono`}>
+                            {t.adminUid || '—'}
+                          </span>
                         </td>
                         <td className="px-3 py-3">
                           <span className={`${TENANT_STATUS_COLORS[t.status]} text-white text-xs font-bold px-2.5 py-1 rounded-full`}>
@@ -711,6 +782,94 @@ const DevPanel: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ABA 1.5: SOLICITAÇÕES DE ONBOARDING */}
+      {activeSubTab === 'onboardings' && (
+        <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6 space-y-6 animate-in fade-in duration-200">
+          <div>
+            <h3 className="text-xl font-black text-white flex items-center gap-2">
+              <span className="text-amber-400">📥</span> Solicitações de Nova Loja
+            </h3>
+            <p className="text-slate-300 text-sm mt-1">
+              Revise e aprove ou rejeite solicitações de onboarding enviadas pelos clientes.
+              Após aprovar, crie o usuário Firebase Admin com custom claims {{tenantId, role: 'admin'}} no Console do Firebase.
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="text-center text-slate-400 py-8">Carregando solicitações...</div>
+          ) : pendingOnboardings.length === 0 ? (
+            <div className="text-center text-slate-400 py-8">
+              <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <p>Nenhuma solicitação pendente no momento.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left text-slate-200">
+                <thead className="text-xs uppercase text-slate-400 border-b border-white/10">
+                  <tr>
+                    <th className="px-3 py-3">Loja</th>
+                    <th className="px-3 py-3">Contato</th>
+                    <th className="px-3 py-3">Plano</th>
+                    <th className="px-3 py-3">Subdomínio</th>
+                    <th className="px-3 py-3">Solicitado em</th>
+                    <th className="px-3 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {pendingOnboardings.map(p => (
+                    <tr key={p.id} className="hover:bg-white/5">
+                      <td className="px-3 py-3">
+                        <div className="font-bold text-white">{p.storeName}</div>
+                        <div className="text-xs text-slate-400 font-mono">{p.id}</div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div>{p.ownerName || '-'}</div>
+                        <div className="text-xs text-slate-400">{p.email}{p.phone ? ` • ${p.phone}` : ''}</div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          {planBadge(p.planId)}
+                          <span className="text-slate-300 font-medium">R$ {(p.monthlyValue || 0).toFixed(2)}/mês</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="font-mono text-xs text-slate-400">{p.subdomain}.versiory.com</span>
+                        {p.customDomain && (
+                          <div className="text-[10px] text-slate-500 mt-1">{p.customDomain}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        {p.createdAt ? new Date(p.createdAt).toLocaleDateString('pt-BR') : '-'}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <div className="flex gap-2 justify-end flex-wrap">
+                          <button
+                            onClick={() => handleApproveOnboarding(p)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors"
+                          >
+                            ✅ Aprovar
+                          </button>
+                          <button
+                            onClick={() => handleRejectOnboarding(p)}
+                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors"
+                          >
+                            ❌ Rejeitar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
